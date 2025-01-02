@@ -47,20 +47,16 @@ function rhs!(du, U, params, t)
     h = params.h
     N = params.N
     x = params.x
-    # apply boundary conditions
-    du[1] = 0.0
-    du[end] = 0.0
-    # evolution in the bulk/
-    for i in 2:(N - 1)
-        left_face = x[i] - 0.5h
-        right_face = x[i] + 0.5h
 
-        # Rj = reconstruct_func(x[i], U[i], U[i - 1], U[i + 1], params)
-        # Rl = reconstruct_func(x[i], U[i - 1], U[i - 2], U[i], params)
-        # Rr = reconstruct_func(x[i], U[i + 1], U[i], U[i + 2], params)
-        Rj = reconstruct_func(x[i], U[i], U[i - 1], U[i + 1], params)
-        Rl = reconstruct_func(x[i], U[i - 1], U[i - 1], U[i], params)
-        Rr = reconstruct_func(x[i], U[i + 1], U[i], U[i + 1], params)
+    # evolution in the bulk/
+    h2 = h * 0.5
+    for i in 2:(N - 1)
+        left_face = x[i] - h2
+        right_face = x[i] + h2
+
+        Rj = reconstruct_func(x[i], U[i], U[i], U[i], params)
+        Rl = reconstruct_func(x[i], U[i], U[i], U[i], params)
+        Rr = reconstruct_func(x[i], U[i], U[i], U[i], params)
 
         ulr = Rj(left_face, U[i])
         ull = Rl(left_face, U[i - 1])
@@ -75,7 +71,12 @@ function rhs!(du, U, params, t)
         # Fr = numerical_flux(url, urr, equation)
         du[i] = -(Fr - Fl) / h
     end
-
+    # apply boundary conditions
+    if equation.advection_velocity > 0
+        du[1] = 0.0
+    else
+        du[end] = 0.0
+    end
     return nothing
 end
 

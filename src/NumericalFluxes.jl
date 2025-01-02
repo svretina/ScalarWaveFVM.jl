@@ -5,7 +5,7 @@ function flux_central(ul, ur, flux)
     return (flux(ul) + flux(ur)) / 2
 end
 
-function flux_upwind(ul, ur)
+function flux_upwind(ul, ur, equation)
     return equation.advection_velocity * (ur - ul)
 end
 
