@@ -8,7 +8,7 @@
 
 TODO:
 --------
- ✅ Implement Advection Equation with Godunov Method
- ⬛ Implement Wave Equation
- ⬛ Implement Godunov method in Wave Propagation Form
+ -✅ Implement Advection Equation with Godunov Method
+ -⬛ Implement Wave Equation
+ -⬛ Implement Godunov method in Wave Propagation Form
  
