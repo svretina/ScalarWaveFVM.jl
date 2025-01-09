@@ -55,7 +55,7 @@ end
 
 function maxmod(σ1, σ2)
     if sign(σ1) == sign(σ2)
-        return max(σ1, σ2)
+        return max(σ1, σ2m)
     else
         return zero(σ1)
     end
@@ -68,5 +68,15 @@ function superbee(u, i, h)
     σR = minmod(σ1, 2σ2)
     return maxmod(σL, σR)
 end
+
+
+function reconstruct_left()
+
+    return ul, ur
+end
+
+function reconstruct_right()
+
+end ul, ur
 
 end

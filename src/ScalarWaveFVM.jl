@@ -1,33 +1,29 @@
 module ScalarWaveFVM
 
+include("Equations.jl")
 include("Reconstructions.jl")
 include("NumericalFluxes.jl")
 
 using ..Reconstructions
 using ..NumericalFluxes
+
 using OrdinaryDiffEqSSPRK
-
-struct LinearScalarAdvectionEquation1D{RealT<:Real}
-    advection_velocity::RealT
-end
-
-# Calculate 1D flux in for a single point
-@inline function flux(u, equation::LinearScalarAdvectionEquation1D)
-    a = equation.advection_velocity
-    return a * u
-end
+using StaticArrays
 
 function run(L, N, tf, cfl)
     xs = LinRange(-L, L, N + 1)
-    statevector = zeros(N + 1)
-    statevector[(div(N, 4) + 1):(3 * div(N, 4) + 1)] .= 1.0
+
+    Π = zeros(Float64, N + 1)
+    Ψ = zeros(Float64, N + 1)
+    Ψ[(div(N, 4) + 1):(3 * div(N, 4) + 1)] .= 1.0
+
     tspan = (0.0, tf)
     @show tf
     dx = (xs[2] - xs[1])
     dt = cfl * dx
     alg = SSPRK54()
 
-    equation = LinearScalarAdvectionEquation1D(1.0)
+    equation = LinearScalarWavequation1D(1.0)
     numerical_flux = NumericalFluxes.flux_godunov
     reconstruct_func = Reconstructions.piecewise_linear
     slope_func = Reconstructions.constant_slope
@@ -49,33 +45,27 @@ function rhs!(du, U, params, t)
     x = params.x
 
     # evolution in the bulk/
-    h2 = h * 0.5
+    half_h = h * 0.5
     for i in 2:(N - 1)
-        left_face = x[i] - h2
-        right_face = x[i] + h2
+        left_face = x[i] - half_h
+        right_face = x[i] + half_h
 
-        Rj = reconstruct_func(x[i], U[i], U[i], U[i], params)
+        Ri = reconstruct_func(x[i], U[i], U[i], U[i], params)
         Rl = reconstruct_func(x[i], U[i], U[i], U[i], params)
         Rr = reconstruct_func(x[i], U[i], U[i], U[i], params)
 
-        ulr = Rj(left_face, U[i])
+        ulr = Ri(left_face, U[i])
         ull = Rl(left_face, U[i - 1])
 
         urr = Rr(right_face, U[i + 1])
-        url = Rj(right_face, U[i])
+        url = Ri(right_face, U[i])
 
-        Fl = numerical_flux(ull, ulr, equation)
-        Fr = numerical_flux(url, urr, equation)
+        Fl = numerical_flux(ull, ulr, equation, +1)
+        Fr = numerical_flux(url, urr, equation, -1)
 
         # Fl = numerical_flux(ull, ulr, equation)
         # Fr = numerical_flux(url, urr, equation)
         du[i] = -(Fr - Fl) / h
-    end
-    # apply boundary conditions
-    if equation.advection_velocity > 0
-        du[1] = 0.0
-    else
-        du[end] = 0.0
     end
     return nothing
 end
