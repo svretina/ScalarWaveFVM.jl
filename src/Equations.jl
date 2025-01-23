@@ -75,4 +75,10 @@ end
     return A
 end
 
+@inline function Aabs(equation::LinearScalarWaveEquation1D)
+    c = equation.velocity
+    return @SMatrix [c zero(c)
+                     zero(c) c]
+end
+
 end # end of module

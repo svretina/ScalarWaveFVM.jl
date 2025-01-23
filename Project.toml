@@ -4,6 +4,10 @@ authors = ["Stamatis Vretinaris"]
 version = "1.0.0-DEV"
 
 [deps]
+CircularArrays = "7a955b69-7140-5f4e-a0ed-f168c5e2e749"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+GridFunctions = "28d702cb-9102-4da8-a82a-5023545b1c0c"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 OrdinaryDiffEqSSPRK = "669c94d9-1f4b-4b64-b377-1aa079aa2388"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
