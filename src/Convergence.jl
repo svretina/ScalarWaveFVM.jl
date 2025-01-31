@@ -3,17 +3,39 @@ module Convergence
 function convergence(L, N1, tf=1.0, cfl=0.5)
     x1, sol1 = ScalarWaveFVM.run(L, N1, tf, cfl)
     x2, sol2 = ScalarWaveFVM.run(L, 2N1, tf, cfl)
-    x4, sol4 = ScalarWaveFVM.run(L, 4N1, tf, cfl)
-    if all(x1 .== x2[1:2:end]) && all(x1 .== x4[1:4:end])
-        return x1, sol1, sol2, sol4
+    # x4, sol4 = ScalarWaveFVM.run(L, 4N1, tf, cfl)
+    if all(x1 .== x2[1:2:end]) #&& all(x1 .== x4[1:4:end])
+        return x1, sol1, sol2# , sol4
     else
         throw("grids do not match")
     end
 end
 
-function plot_errors(t, scale=2)
-    plot1 = scatter(x, (sol2[1:2:end, 1, 2t - 1] .- sol4[1:4:end, 1, 4t - 3]) .* scale)
-    scatter!(plot1, x, sol1[:, 1, t] .- sol2[1:2:end, 1, 2t - 1])
+function plot_errors(ti, scale=2)
+    t = sol1.t[ti]
+    p = scatter(x, sol1[:, 1, ti] .- dtGaussian1D.(t, x, A, σ))
+    scatter!(p, x, (sol2[1:2:end, 1, 2ti - 1] .- dtGaussian1D.(t, x, A, σ)) .* scale)
+    return p
+end
+
+function plot_self_errors(ti, scale=2)
+    plot1 = scatter(x, (sol2[1:2:end, 1, 2ti - 1] .- sol4[1:4:end, 1, 4ti - 3]) .* scale)
+    scatter!(plot1, x, sol1[:, 1, ti] .- sol2[1:2:end, 1, 2ti - 1])
+end
+
+function plot_res(t)
+    p = scatter(x, sol1[:, 1, t]; label="low res")
+    scatter!(p, x, sol2[1:2:end, 1, 2t - 1]; label="mid res")
+    #scatter!(p, x, sol4[1:4:end, 1, 4t - 3]; label="high res")
+    xaxis!(p, "x")
+    title!(p, "Π")
+    return p
+end
+
+function plot_res_errors(t)
+    p = plot_res(t)
+    scatter!(p, x, sol1[:, 1, t] .- sol2[1:2:end, 1, 2t - 1]; label="low-mid")
+    scatter!(p, x, (sol2[1:2:end, 1, 2t - 1] .- sol4[1:4:end, 1, 4t - 3]); label="mid-high")
 end
 
 function total_variation(q::AbstractArray)
@@ -24,14 +46,23 @@ function total_variation(q::AbstractArray)
     return TV
 end
 
-## I get 0.5 for 1-norm
-##  and 0.25 for 2-norm
 function convergence_order(p)
     order = zeros(length(sol1.t))
-    for i in 1:length(sol1.t)
-        tmp1 = sum(abs.(sol1[:, 1, i] .- sol2[1:2:end, 1, 2 * i - 1]) .^ p)^(1 / p)
-        tmp2 = sum(abs.(sol2[1:2:end, 1, 2 * i - 1] .- sol4[1:4:end, 1, 4 * i - 3]) .^ p)^(1 /
-                                                                                           p)
+    for i in 1:(length(sol1.t))
+        t = sol1.t[i]
+        tmp1 = sum(abs.(sol1[:, 1, i] .- dtGaussian1D.(t, x, A, σ)) .^ p)^(1 / p)
+        tmp2 = sum(abs.(sol2[1:2:end, 1, 2i - 1] .- dtGaussian1D.(t, x, A, σ)) .^ p)^(1 / p)
+        order[i] = log2(tmp1 / tmp2)
+    end
+    return order
+end
+
+function self_convergence_order(p)
+    order = zeros(length(sol1.t))
+    for i in 1:(length(sol1.t))
+        tmp1 = sum(abs.(sol1[:, 1, i] .- sol2[1:2:end, 1, 2i - 1]) .^ p)^(1 / p)
+        tmp2 = sum(abs.(sol2[1:2:end, 1, 2i - 1] .- sol4[1:4:end, 1, 4i - 3]) .^ p)^(1 /
+                                                                                     p)
         order[i] = log2(tmp1 / tmp2)
     end
     return order

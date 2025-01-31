@@ -94,8 +94,30 @@ end
     return max(zero(θ), min((one(θ) + θ) * 0.5, 2.0, 2θ))
 end
 
-@inline function van_Leer(θ)
+@inline function vanLeer(θ)
     return (θ + abs(θ)) / (one(θ) + θ)
+end
+
+@inline function koren(θ)
+    return max(zero(θ), min(2θ, min((one(θ) + 2θ) / 3, 2.0)))
+end
+
+@inline function ospre(θ)
+    θ2 = θ * θ
+    return (1.5 * (θ2 + θ)) / (θ2 + θ + one(θ))
+end
+
+@inline function vanAlbada(θ)
+    θ2 = θ * θ
+    return (θ2 + θ) / (θ2 + one(θ))
+end
+
+@inline function umist(θ)
+    return max(zero(θ), min(2θ, 0.25 + 0.75θ, 0.75 + 0.25θ, 2.0))
+end
+
+@inline function muscl(θ)
+    return max(zero(θ), min(one(θ) + θ, 2.0, 2θ))
 end
 
 end #end of module

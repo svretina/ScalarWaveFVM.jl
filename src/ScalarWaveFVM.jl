@@ -12,21 +12,32 @@ using ..NumericalFluxes
 
 using GridFunctions
 using OrdinaryDiffEqSSPRK
+using OrdinaryDiffEqLowOrderRK
 using StaticArrays
 using CircularArrays
 using ForwardDiff
 using LinearAlgebra
 
-@inline function Gaussian1D(t::Real, x::Real, σ::Real)
-    return exp(-(x - t)^2 / σ^2)
+@inline function Gaussian1D(t::Real, x::Real, A::Real, σ::Real)
+    L = 100
+    xc = t
+    xc = mod(xc + L, 2L) - L
+
+    x_shifted1 = x - xc + 2L
+    g1 = A * exp(-x_shifted1^2 / (2 * σ^2))
+    x_shiftedm1 = x - xc - 2L
+    gm1 = A * exp(-x_shiftedm1^2 / (2 * σ^2))
+    x_shifted0 = x - xc
+    g0 = A * exp(-x_shifted0^2 / (2 * σ^2))
+    return g1 + gm1 + g0
 end
 
-@inline function dtGaussian1D(t::Real, x::Real, σ::Real)
-    return ForwardDiff.derivative(t1 -> Gaussian1D(t1, x, σ), t)
+@inline function dtGaussian1D(t::Real, x::Real, A::Real, σ::Real)
+    return ForwardDiff.derivative(t1 -> Gaussian1D(t1, x, A, σ), t)
 end
 
-@inline function dxGaussian1D(t::Real, x::Real, σ::Real)
-    return ForwardDiff.derivative(x1 -> Gaussian1D(t, x1, σ), x)
+@inline function dxGaussian1D(t::Real, x::Real, A::Real, σ::Real)
+    return ForwardDiff.derivative(x1 -> Gaussian1D(t, x1, A, σ), x)
 end
 
 function run(L, N, tf, cfl)
@@ -38,31 +49,35 @@ function run(L, N, tf, cfl)
     # Ψ[(div(N, 4) + 1):(3 * div(N, 4) + 1)] .= -1.0 # -1 for right moving, +1 for left moving
     # Π[(div(N, 4) + 1):(3 * div(N, 4) + 1)] .= 1.0
 
-    σ = 8.0
-    Ψ .= dxGaussian1D.(0.0, x, σ)
-    Π .= dtGaussian1D.(0.0, x, σ)
+    σ = 20.0
+    A = 10.0
+    Ψ .= dxGaussian1D.(0.0, x, A, σ)
+    Π .= dtGaussian1D.(0.0, x, A, σ)
 
     statevector = hcat(Π, Ψ)
 
     tspan = (0.0, tf)
     dx = spacing(grid)
-    @show dx
 
-    alg = SSPRK54()
+    # alg = SSPRK54()
+    alg = SSPRK22()
+    # alg = Euler()
+
     c = 1.0
     equation = LinearScalarWaveEquation1D(c)
 
     dt = cfl * dx / c
-    @show dt
+    @show dx, dt
     numerical_flux = NumericalFluxes.flux_godunov
-    reconstruct_func = Reconstructions.piecewise_linear
-    slope_func = Reconstructions.constant_slope
-    flux_limiter = Limiters.MC
+    # reconstruct_func = Reconstructions.piecewise_linear
+    # slope_func = Reconstructions.constant_slope
+    flux_limiter = Limiters.Lax_Wendroff
     params = (equation=equation, numerical_flux=numerical_flux,
-              reconstruct_func=reconstruct_func,
-              slope_func=slope_func,
+              #reconstruct_func=reconstruct_func,
+              #slope_func=slope_func,
               flux_limiter=flux_limiter,
-              h=dx, N=N, x=GridFunctions.coords(grid), cfl=cfl)
+              h=dx, N=N, x=GridFunctions.coords(grid), cfl=cfl,
+              dt=dt)
 
     ode = ODEProblem{true}(rhs2!, statevector, tspan, params)
     # return statevector, params
@@ -74,17 +89,16 @@ function run(L, N, tf, cfl)
     # return du
 end
 
-# write this rhs in terms of a,W,λ
 function rhs2!(dQ, Q, params, t)
     equation = params.equation
     numerical_flux = params.numerical_flux
-    reconstruct_func = params.reconstruct_func
     flux_limiter = params.flux_limiter
     h = params.h
     N = params.N
     x = params.x
     cfl = params.cfl
     c = equation.velocity
+    dt = params.dt
 
     half_h = h * 0.5
     _h = 1.0 / h
@@ -93,7 +107,9 @@ function rhs2!(dQ, Q, params, t)
     λp = c
     λm = -c
     _2c = 1.0 / (2c)
+    #loop_over_1:(N
     @inbounds for i in 1:(N + 1)
+        ## Left Face
         ΔΠl = (Q[i, 1] - Q[i - 1, 1]) * _2c
         ΔΨl = (Q[i, 2] - Q[i - 1, 2]) * 0.5
         a1l = ΔΠl + ΔΨl
@@ -101,6 +117,7 @@ function rhs2!(dQ, Q, params, t)
         # W1l = a1l * r1 # left moving at left face
         W2l = a2l * r2 # right moving at left face
 
+        ## Right Face
         ΔΠr = (Q[i + 1, 1] - Q[i, 1]) * _2c
         ΔΨr = (Q[i + 1, 2] - Q[i, 2]) * 0.5
         a1r = ΔΠr + ΔΨr
@@ -108,59 +125,59 @@ function rhs2!(dQ, Q, params, t)
         W1r = a1r * r1 # left moving at right face
         # W2r = a2r * r2 # right moving at right face
 
+        ### Higher resolution stuff - Limiters
         ## Left Face
         # for λ<0
-        ΔΠlm = (Q[i + 1, 1] - Q[i, 1]) * _2c
-        ΔΨlm = (Q[i + 1, 2] - Q[i, 2]) * 0.5
-        a1lm = ΔΠlm + ΔΨlm
-        if a1lm == a1l
-            θ1l = 1.0
-        else
-            θ1l = a1lm / a1l
-        end
+        I = i + 1
+        ΔΠlp = (Q[I, 1] - Q[I - 1, 1]) * _2c
+        ΔΨlp = (Q[I, 2] - Q[I - 1, 2]) * 0.5
+        a1lp = ΔΠlp + ΔΨlp
+        a1lp == a1l ? θ1l = 1.0 : θ1l = a1lp / a1l
+
         a1l_tilde = flux_limiter(θ1l) * a1l
         W1l_tilde = a1l_tilde * r1
         # for λ>0
-        ΔΠlp = (Q[i - 1, 1] - Q[i - 2, 1]) * _2c
-        ΔΨlp = (Q[i - 1, 2] - Q[i - 2, 2]) * 0.5
-        a2lp = -ΔΠlp + ΔΨlp
-        if a2lp == a2l
-            θ2l = 1.0
-        else
-            θ2l = a2lp / a2l
-        end
+        I = i - 1
+        ΔΠlm = (Q[I, 1] - Q[I - 1, 1]) * _2c
+        ΔΨlm = (Q[I, 2] - Q[I - 1, 2]) * 0.5
+        a2lm = -ΔΠlm + ΔΨlm
+        a2lm == a2l ? θ2l = 1.0 : θ2l = a2lm / a2l
+
         a2l_tilde = flux_limiter(θ2l) * a2l
         W2l_tilde = a2l_tilde * r2
 
         ## Right Face
         # for λ<0
-        ΔΠrm = (Q[i + 2, 1] - Q[i + 1, 1]) * _2c
-        ΔΨrm = (Q[i + 2, 2] - Q[i + 1, 2]) * 0.5
-        a1rm = ΔΠrm + ΔΨrm
-        if a1rm == a1r
-            θ1r = 1.0
-        else
-            θ1r = a1rm / a1r
-        end
+        I = i + 1
+        ΔΠrp = (Q[I + 1, 1] - Q[I, 1]) * _2c
+        ΔΨrp = (Q[I + 1, 2] - Q[I, 2]) * 0.5
+        a1rp = ΔΠrp + ΔΨrp
+
+        a1rp == a1r ? θ1r = 1.0 : θ1r = a1rp / a1r
+
         a1r_tilde = flux_limiter(θ1r) * a1r
         W1r_tilde = a1r_tilde * r1
         # for λ>0
-        ΔΠrp = (Q[i, 1] - Q[i - 1, 1]) * _2c
-        ΔΨrp = (Q[i, 2] - Q[i - 1, 2]) * 0.5
-        a2rp = -ΔΠrp + ΔΨrp
-        if a2rp == a2r
-            θ2r = 1.0
-        else
-            θ2r = a2rp / a2r
-        end
+        I = i - 1
+        ΔΠrm = (Q[I + 1, 1] - Q[I, 1]) * _2c
+        ΔΨrm = (Q[I + 1, 2] - Q[I, 2]) * 0.5
+        a2rm = -ΔΠrm + ΔΨrm
+        a2rm == a2r ? θ2r = 1.0 : θ2r = a2rm / a2r
         a2r_tilde = flux_limiter(θ2r) * a2r
         W2r_tilde = a2r_tilde * r2
 
-        tmp = 2λp * (1.0 - cfl * 2λp)
-        Fl_tilde = 0.5 * (tmp * W1l_tilde + tmp * W2l_tilde)
-        Fr_tilde = 0.5 * (tmp * W1r_tilde + tmp * W2r_tilde)
+        ## 4 for cfl=1/4, 2 for cfl=1/2
+        ## WHY?! else I get phase error!
+        ## for those values, tmp = 0 and
+        ## i fall back to the upwind method,
+        ## thus the 1st order convergence.
+        ## although I get only 1st order conv
+        tmp = λp * (1.0 - cfl)
 
-        dQ[i, :] .= -(λm * W1r + λp * W2l) * _h - (Fr_tilde - Fl_tilde) * _h
+        Fl_tilde = tmp * (W1l_tilde + W2l_tilde)
+        Fr_tilde = tmp * (W1r_tilde + W2r_tilde)
+
+        dQ[i, :] .= -(λm * W1r + λp * W2l) * _h - 0.5 * (Fr_tilde - Fl_tilde) * _h
     end
     return nothing
 end
@@ -168,7 +185,6 @@ end
 function rhs!(dQ, Q, params, t)
     equation = params.equation
     numerical_flux = params.numerical_flux
-    reconstruct_func = params.reconstruct_func
     flux_limiter = params.flux_limiter
     h = params.h
     N = params.N
@@ -178,7 +194,7 @@ function rhs!(dQ, Q, params, t)
 
     half_h = h * 0.5
     _h = 1.0 / h
-    @inbounds for i in 1:(N + 1)
+    @inbounds for i in 1:N
         # left_face = x[i] - half_h
         # right_face = x[i] + half_h
 
@@ -227,29 +243,20 @@ function rhs!(dQ, Q, params, t)
         else
             θl = Limiters.θ(i, Q, equation, +1)
             θr = Limiters.θ(i, Q, equation, -1)
-            # # #@show θl
+
             ϕl = flux_limiter.(θl)
             ϕr = flux_limiter.(θr)
 
-            # Ap = Equations.Aplus(equation) ./ c
-            # Am = Equations.Aminus(equation) ./ c
             A = Equations.Aabs(equation)
-            # Fl_tilde = -0.5 * c * (1.0 - c * cfl) * Ap * Δql .* ϕl
-            # Fr_tilde = 0.5 * c * (1.0 - c * cfl) * Am * Δqr .* ϕr
 
             Fl_tilde = 0.5 * A * (I - cfl * A) * Δql .* ϕl
             Fr_tilde = 0.5 * A * (I - cfl * A) * Δqr .* ϕr
         end
         # @show ϕl, Fl_tilde
-        Fl = numerical_flux(Δql, equation, +1) + Fl_tilde
-        Fr = numerical_flux(Δqr, equation, -1) + Fr_tilde
 
-        # Ap = Equations.Aplus(equation)
-        # Am = Equations.Aminus(equation)
-        # Fl = Ap * Q[i - 1, :] + Am * Q[i, :] + Fl_tilde
-        # Fr = Ap * Q[i, :] + Am * Q[i + 1, :] + Fr_tilde
-        # dQ[i, 1] -= (Fr_tilde[1] - Fl_tilde[1]) * _h
-        # dQ[i, 2] -= (Fr_tilde[2] - Fl_tilde[2]) * _h
+        Fl = numerical_flux(Q[i - 1, :], Q[i, :], equation; cfl=cfl) + Fl_tilde
+        Fr = numerical_flux(Q[i, :], Q[i + 1, :], equation; cfl=cfl) + Fr_tilde
+
         dQ[i, :] .= -(Fr - Fl) * _h
     end
     return nothing
