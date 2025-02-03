@@ -60,36 +60,32 @@ function run(L, N, tf, cfl)
     dx = spacing(grid)
 
     # alg = SSPRK54()
-    alg = SSPRK22()
-    # alg = Euler()
+    # alg = SSPRK22()
+    alg = Euler()
 
     c = 1.0
     equation = LinearScalarWaveEquation1D(c)
 
     dt = cfl * dx / c
     @show dx, dt
-    numerical_flux = NumericalFluxes.flux_godunov
-    # reconstruct_func = Reconstructions.piecewise_linear
-    # slope_func = Reconstructions.constant_slope
-    flux_limiter = Limiters.Lax_Wendroff
+
+    numerical_flux = NumericalFluxes.flux_rusanov
+    slope_limiter = Limiters.superbee
+    flux_limiter = Limiters.MC
+
     params = (equation=equation, numerical_flux=numerical_flux,
-              #reconstruct_func=reconstruct_func,
-              #slope_func=slope_func,
-              flux_limiter=flux_limiter,
+              slope_limiter=slope_limiter, flux_limiter=flux_limiter,
               h=dx, N=N, x=GridFunctions.coords(grid), cfl=cfl,
               dt=dt)
 
-    ode = ODEProblem{true}(rhs2!, statevector, tspan, params)
+    ode = ODEProblem{true}(LxW!, statevector, tspan, params)
     # return statevector, params
     sol = solve(ode, alg; adaptive=false, dt=dt)
     return GridFunctions.coords(grid), sol
-    # du = similar(statevector)
-    # rhs!(du, statevector, params, 0.1)
-
-    # return du
 end
 
-function rhs2!(dQ, Q, params, t)
+# LaxWendroff schemes
+function LxW!(dQ, Q, params, t)
     equation = params.equation
     numerical_flux = params.numerical_flux
     flux_limiter = params.flux_limiter
@@ -107,7 +103,7 @@ function rhs2!(dQ, Q, params, t)
     λp = c
     λm = -c
     _2c = 1.0 / (2c)
-    #loop_over_1:(N
+
     @inbounds for i in 1:(N + 1)
         ## Left Face
         ΔΠl = (Q[i, 1] - Q[i - 1, 1]) * _2c
@@ -166,12 +162,6 @@ function rhs2!(dQ, Q, params, t)
         a2r_tilde = flux_limiter(θ2r) * a2r
         W2r_tilde = a2r_tilde * r2
 
-        ## 4 for cfl=1/4, 2 for cfl=1/2
-        ## WHY?! else I get phase error!
-        ## for those values, tmp = 0 and
-        ## i fall back to the upwind method,
-        ## thus the 1st order convergence.
-        ## although I get only 1st order conv
         tmp = λp * (1.0 - cfl)
 
         Fl_tilde = tmp * (W1l_tilde + W2l_tilde)
@@ -182,82 +172,105 @@ function rhs2!(dQ, Q, params, t)
     return nothing
 end
 
-function rhs!(dQ, Q, params, t)
+function muscl!(dQ, Q, params, t)
     equation = params.equation
     numerical_flux = params.numerical_flux
-    flux_limiter = params.flux_limiter
+    slope_limiter = params.slope_limiter
+
     h = params.h
     N = params.N
-    x = params.x
-    cfl = params.cfl
-    c = equation.velocity
 
-    half_h = h * 0.5
+    half_h = 0.5h
     _h = 1.0 / h
-    @inbounds for i in 1:N
-        # left_face = x[i] - half_h
-        # right_face = x[i] + half_h
+    @inbounds for i in 1:(N + 1)
+        #@show i
+        # Calculating slopes for Π
+        I = i - 1
+        σ_im1_D = downwind_slope(Q[I, 1], Q[I - 1, 1], Q[I + 1, 1], h)
+        σ_im1_U = upwind_slope(Q[I, 1], Q[I - 1, 1], Q[I + 1, 1], h)
+        # _im1_C = centered_slope(Q[I, 1], Q[I - 1, 1], Q[I + 1, 1], h)
+        θ_im1 = σ_im1_U / σ_im1_D
+        σ_im1 = slope_limiter(θ_im1) * σ_im1_D
+        # @show θ_im1
+        # @show σ_im1_D, σ_im1_U
+        # @show σ_im1
+        # σ_im1 = slope_limiter(σ_im1_D, σ_im1_U)
+        # # @show σ_im1_D, σ_im1_U
+        # @show σ_im1
 
-        ## no need for the reconstructions with the limiters!
-        ## rewrite!
-        # construct reconstruction functions based on neighboring cells
-        # for Π
+        I = i
+        σ_i_D = downwind_slope(Q[I, 1], Q[I - 1, 1], Q[I + 1, 1], h)
+        σ_i_U = upwind_slope(Q[I, 1], Q[I - 1, 1], Q[I + 1, 1], h)
+        # σ_i_C = centered_slope(Q[I, 1], Q[I - 1, 1], Q[I + 1, 1], h)
+        θ_i = σ_i_U / σ_i_D
+        σ_i = slope_limiter(θ_i) * σ_i_D
+        # σ_i = slope_limiter(σ_i_D, σ_i_U)
 
-        # Riπ = reconstruct_func(x[i], Q[i, 1], Q[i - 1, 1], Q[i + 1, 1], params)
-        # Rlπ = reconstruct_func(x[i], Q[i - 1, 1], Q[i - 2, 1], Q[i, 1], params)
-        # Rrπ = reconstruct_func(x[i], Q[i + 1, 1], Q[i, 1], Q[i + 2, 1], params)
+        I = i + 1
+        σ_ip1_D = downwind_slope(Q[I, 1], Q[I - 1, 1], Q[I + 1, 1], h)
+        σ_ip1_U = upwind_slope(Q[I, 1], Q[I - 1, 1], Q[I + 1, 1], h)
+        # σ_ip1_C = centered_slope(Q[I, 1], Q[I - 1, 1], Q[I + 1, 1], h)
+        θ_ip1 = σ_ip1_U / σ_ip1_D
+        σ_ip1 = slope_limiter(θ_ip1) * σ_ip1_D
+        # σ_ip1 = slope_limiter(σ_ip1_D, σ_ip1_U)
 
-        # # construct reconstruction functions based on neighboring cells
-        # # for Ψ
-        # Riψ = reconstruct_func(x[i], Q[i, 2], Q[i - 1, 2], Q[i + 1, 2], params)
-        # Rlψ = reconstruct_func(x[i], Q[i - 1, 2], Q[i - 2, 2], Q[i, 2], params)
-        # Rrψ = reconstruct_func(x[i], Q[i + 1, 2], Q[i, 2], Q[i + 2, 2], params)
+        # reconstruct Π values at faces
+        πlr = Q[i, 1] - σ_i * half_h
+        πrl = Q[i, 1] + σ_i * half_h
+        πll = Q[i - 1, 1] + σ_im1 * half_h
+        πrr = Q[i + 1, 1] - σ_ip1 * half_h
 
-        # # reconstruct Π values at faces
-        # πlr = Riπ(left_face)
-        # πll = Rlπ(left_face)
+        ## Calculating slopes for Ψ
+        I = i - 1
+        σ_im1_D = downwind_slope(Q[I, 2], Q[I - 1, 2], Q[I + 1, 2], h)
+        σ_im1_U = upwind_slope(Q[I, 2], Q[I - 1, 2], Q[I + 1, 2], h)
+        # σ_im1_C = centered_slope(Q[I, 2], Q[I - 1, 2], Q[I + 1, 2], h)
+        θ_im1 = σ_im1_U / σ_im1_D
+        σ_im1 = slope_limiter(θ_im1) * σ_im1_D
+        # σ_im1 = slope_limiter(σ_im1_D, σ_im1_U)
 
-        # πrr = Rrπ(right_face)
-        # πrl = Riπ(right_face)
+        I = i
+        σ_i_D = downwind_slope(Q[I, 2], Q[I - 1, 2], Q[I + 1, 2], h)
+        σ_i_U = upwind_slope(Q[I, 2], Q[I - 1, 2], Q[I + 1, 2], h)
+        # σ_i_C = centered_slope(Q[I, 2], Q[I - 1, 2], Q[I + 1, 2], h)
+        θ_i = σ_i_U / σ_i_D
+        σ_i = slope_limiter(θ_i) * σ_i_D
+        # σ_i = slope_limiter(σ_i_D, σ_i_U)
 
-        # # reconstruct Ψ values at faces
-        # ψlr = Riψ(left_face)
-        # ψll = Rlψ(left_face)
+        I = i + 1
+        σ_ip1_D = downwind_slope(Q[I, 2], Q[I - 1, 2], Q[I + 1, 2], h)
+        σ_ip1_U = upwind_slope(Q[I, 2], Q[I - 1, 2], Q[I + 1, 2], h)
+        # σ_ip1_C = centered_slope(Q[I, 2], Q[I - 1, 2], Q[I + 1, 2], h)
+        θ_ip1 = σ_ip1_U / σ_ip1_D
+        σ_ip1 = slope_limiter(θ_ip1) * σ_ip1_D
+        # σ_ip1 = slope_limiter(σ_ip1_D, σ_ip1_U)
 
-        # ψrr = Rrψ(right_face)
-        # ψrl = Riψ(right_face)
+        # reconstruct Ψ values at faces
+        ψlr = Q[i, 2] - σ_i * half_h
+        ψrl = Q[i, 2] + σ_i * half_h
+        ψll = Q[i - 1, 2] + σ_im1 * half_h
+        ψrr = Q[i + 1, 2] - σ_ip1 * half_h
 
-        # ### Construct differences at faces
-        # ###
-        # Δql = @SVector [πlr - πll, ψlr - ψll]
-        # Δqr = @SVector [πrr - πrl, ψrr - ψrl]
-        Δql = @SVector [Q[i, 1] - Q[i - 1, 1], Q[i, 2] - Q[i - 1, 2]]
-        Δqr = @SVector [Q[i + 1, 1] - Q[i, 1], Q[i + 1, 2] - Q[i, 2]]
-        ## +1  right direction
-        ## -1 left direction
+        qll = @SVector [πll, ψll]
+        qlr = @SVector [πlr, ψlr]
+
+        qrl = @SVector [πrl, ψrl]
+        qrr = @SVector [πrr, ψrr]
+
         ## Fl: flux on the left face, accounts for incoming right going flux
         ## Fr: flux on the right face, accounts for incoming left going flux
-        if flux_limiter == Limiters.upwind
-            Fl_tilde = @SVector [0.0, 0.0]
-            Fr_tilde = @SVector [0.0, 0.0]
-        else
-            θl = Limiters.θ(i, Q, equation, +1)
-            θr = Limiters.θ(i, Q, equation, -1)
 
-            ϕl = flux_limiter.(θl)
-            ϕr = flux_limiter.(θr)
-
-            A = Equations.Aabs(equation)
-
-            Fl_tilde = 0.5 * A * (I - cfl * A) * Δql .* ϕl
-            Fr_tilde = 0.5 * A * (I - cfl * A) * Δqr .* ϕr
-        end
-        # @show ϕl, Fl_tilde
-
-        Fl = numerical_flux(Q[i - 1, :], Q[i, :], equation; cfl=cfl) + Fl_tilde
-        Fr = numerical_flux(Q[i, :], Q[i + 1, :], equation; cfl=cfl) + Fr_tilde
+        Fl = numerical_flux(qll, qlr, equation)
+        Fr = numerical_flux(qrl, qrr, equation)
 
         dQ[i, :] .= -(Fr - Fl) * _h
+
+        # Δql = @SVector [πlr - πll, ψlr - ψll]
+        # Δqr = @SVector [πrr - πrl, ψrr - ψrl]
+
+        # Ap = Equations.Aplus(equation)
+        # Am = Equations.Aminus(equation)
+        # dQ[i, :] .= -(Ap * Δql + Am * Δqr) * _h
     end
     return nothing
 end

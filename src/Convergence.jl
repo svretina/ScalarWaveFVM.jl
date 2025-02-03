@@ -23,9 +23,11 @@ function plot_self_errors(ti, scale=2)
     scatter!(plot1, x, sol1[:, 1, ti] .- sol2[1:2:end, 1, 2ti - 1])
 end
 
-function plot_res(t)
-    p = scatter(x, sol1[:, 1, t]; label="low res")
-    scatter!(p, x, sol2[1:2:end, 1, 2t - 1]; label="mid res")
+function plot_res(ti)
+    t = sol1.t[ti]
+    p = scatter(x, sol1[:, 1, ti]; label="low res")
+    scatter!(p, x, sol2[1:2:end, 1, 2ti - 1]; label="mid res")
+    plot!(p, x, dtGaussian1D.(t, x, A, σ))
     #scatter!(p, x, sol4[1:4:end, 1, 4t - 3]; label="high res")
     xaxis!(p, "x")
     title!(p, "Π")
