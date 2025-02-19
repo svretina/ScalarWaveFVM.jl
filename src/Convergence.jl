@@ -1,20 +1,29 @@
 module Convergence
 
-function convergence(L, N1, tf=1.0, cfl=0.5)
-    x1, sol1 = ScalarWaveFVM.run(L, N1, tf, cfl)
-    x2, sol2 = ScalarWaveFVM.run(L, 2N1, tf, cfl)
+function convergence(L, N1, tf=1.0, cfl=0.5, muscl=true)
+    x1, sol1 = ScalarWaveFVM.run(L, N1, tf, cfl, muscl)
+    x2, sol2 = ScalarWaveFVM.run(L, 2N1, tf, cfl, muscl)
     # x4, sol4 = ScalarWaveFVM.run(L, 4N1, tf, cfl)
-    if all(x1 .== x2[1:2:end]) #&& all(x1 .== x4[1:4:end])
-        return x1, sol1, sol2# , sol4
-    else
-        throw("grids do not match")
-    end
+    return x1, x2, sol1, sol2# , sol4
 end
 
-function plot_errors(ti, scale=2)
-    t = sol1.t[ti]
-    p = scatter(x, sol1[:, 1, ti] .- dtGaussian1D.(t, x, A, σ))
-    scatter!(p, x, (sol2[1:2:end, 1, 2ti - 1] .- dtGaussian1D.(t, x, A, σ)) .* scale)
+function mymean(arr)
+    arr2 = zeros(eltype(arr), div(length(arr), 2))
+    for i in eachindex(arr2)
+        j = 2i - 1
+        arr2[i] = 0.5(arr[j] + arr[j + 1])
+    end
+    return arr2
+end
+
+function plot_errors(i, true_sol, scale=2)
+    t1 = sol1.t[i]
+    t2 = sol2.t[2i - 1]
+    @assert t1 == t2
+    t = t1
+    p = scatter(x1, sol1[:, 1, i] .- true_sol.(t, x1))
+    scatter!(p, x1, (mymean(sol2[:, 1, 2i - 1]) .- true_sol.(t, x1)) .* scale)
+    title!(p, "t=$t")
     return p
 end
 
@@ -23,21 +32,27 @@ function plot_self_errors(ti, scale=2)
     scatter!(plot1, x, sol1[:, 1, ti] .- sol2[1:2:end, 1, 2ti - 1])
 end
 
-function plot_res(ti)
-    t = sol1.t[ti]
-    p = scatter(x, sol1[:, 1, ti]; label="low res")
-    scatter!(p, x, sol2[1:2:end, 1, 2ti - 1]; label="mid res")
-    plot!(p, x, dtGaussian1D.(t, x, A, σ))
+function plot_res(i, true_sol)
+    t1 = sol1.t[i]
+    t2 = sol2.t[2i - 1]
+    @assert t1 == t2
+    t = t1
+    p = scatter(x1, sol1[:, 1, i]; label="low res")
+    scatter!(p, x1, mymean(sol2[:, 1, 2i - 1]); label="mid res")
+    plot!(p, x1[begin]:0.01:x1[end], true_sol.(t, x1[begin]:0.01:x1[end]))
     #scatter!(p, x, sol4[1:4:end, 1, 4t - 3]; label="high res")
     xaxis!(p, "x")
-    title!(p, "Π")
+    yaxis!(p, "Π")
+    title!(p, "t=$(t)")
     return p
 end
 
-function plot_res_errors(t)
-    p = plot_res(t)
-    scatter!(p, x, sol1[:, 1, t] .- sol2[1:2:end, 1, 2t - 1]; label="low-mid")
-    scatter!(p, x, (sol2[1:2:end, 1, 2t - 1] .- sol4[1:4:end, 1, 4t - 3]); label="mid-high")
+function plot_res_errors(i, true_sol)
+    p = plot_res(i, true_sol)
+    t = sol1.t[i]
+    scatter!(p, x1, sol1[:, 1, i] .- true_sol.(t, x1); label="low-mid")
+    scatter!(p, x1, mean(sol2[:, 1, 2i - 1]) .- true_sol.(t, x1); label="mid-high")
+    return p
 end
 
 function total_variation(q::AbstractArray)
@@ -48,18 +63,24 @@ function total_variation(q::AbstractArray)
     return TV
 end
 
-function convergence_order(p)
+function convergence_order(p, x1, x2, sol1, sol2, true_sol)
     order = zeros(length(sol1.t))
+
     for i in 1:(length(sol1.t))
-        t = sol1.t[i]
-        tmp1 = sum(abs.(sol1[:, 1, i] .- dtGaussian1D.(t, x, A, σ)) .^ p)^(1 / p)
-        tmp2 = sum(abs.(sol2[1:2:end, 1, 2i - 1] .- dtGaussian1D.(t, x, A, σ)) .^ p)^(1 / p)
+        t1 = sol1.t[i]
+        t2 = sol2.t[2i - 1]
+        t1 == t2 || println(t1, "   ", t2)
+        t = t1
+        u1 = true_sol.(t, x1)
+        u2 = true_sol.(t, x2)
+        tmp1 = sum(abs.(sol1[:, 1, i] .- u1) .^ p)^(1 / p)
+        tmp2 = sum(abs.(mymean(sol2[:, 1, 2i - 1] .- u2)) .^ p)^(1 / p)
         order[i] = log2(tmp1 / tmp2)
     end
     return order
 end
 
-function self_convergence_order(p)
+function self_convergence_order(p, x, sol1, sol2, sol4)
     order = zeros(length(sol1.t))
     for i in 1:(length(sol1.t))
         tmp1 = sum(abs.(sol1[:, 1, i] .- sol2[1:2:end, 1, 2i - 1]) .^ p)^(1 / p)

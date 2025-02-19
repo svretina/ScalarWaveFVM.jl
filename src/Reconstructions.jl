@@ -1,6 +1,6 @@
 module Reconstructions
 
-export downwind_slope, upwind_slope, forward_slope, centered_slope
+export downwind_slope, upwind_slope, forward_slope, centered_slope, compute_limited_slope
 
 @inline function piecewise_constant(u)
     return u
@@ -19,33 +19,30 @@ end
     return qL, qR
 end
 
-@inline function compute_slope(qi, ql, qr, h)
-    σF = forward_slope(qi, ql, qr, h)
-    σB = backward_slope(qi, ql, qr, h)
-    σC = central_slope(qi, ql, qr, h)
-    σ = slope_limiter(σF, σB)
+@inline function compute_limited_slope(qi, ql, qr, h, slope_limiter)
+    σD = downwind_slope(qi, ql, qr, h)
+    σU = upwind_slope(qi, ql, qr, h)
+    # σC = central_slope(qi, ql, qr, h)
+    θ = σU / σD
+    σ = slope_limiter(θ) * σD
     return σ
 end
 
 # Slopes
-@inline function constant_slope(u, ul, ur, h)
-    return zero(u)
+@inline function constant_slope(qi, ql, qr, h)
+    return zero(qi)
 end
 
-@inline function centered_slope(u, ul, ur, h)
-    return (ur - ul) / (2h)
+@inline function centered_slope(qi, ql, qr, h)
+    return (qr - ql) / (2h)
 end
 
-@inline function upwind_slope(u, ul, ur, h)
-    return (u - ul) / h
+@inline function upwind_slope(qi, ql, qr, h)
+    return (qi - ql) / h
 end
 
-@inline function forward_slope(u, ul, ur, h)
-    return (ur - u) / h
-end
-
-@inline function downwind_slope(u, ul, ur, h)
-    return forward_slope(u, ul, ur, h)
+@inline function downwind_slope(qi, ql, qr, h)
+    return (qr - qi) / h
 end
 
 end
