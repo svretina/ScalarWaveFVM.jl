@@ -1,10 +1,10 @@
 module Convergence
 
-function convergence(L, N1, tf=1.0, cfl=0.5, muscl=true)
-    x1, sol1 = ScalarWaveFVM.run(L, N1, tf, cfl, muscl)
-    x2, sol2 = ScalarWaveFVM.run(L, 2N1, tf, cfl, muscl)
-    # x4, sol4 = ScalarWaveFVM.run(L, 4N1, tf, cfl)
-    return x1, x2, sol1, sol2# , sol4
+function convergence(L, N1, tf=1.0, cfl=0.5, sf=true, muscl=true)
+    x1, sol1 = ScalarWaveFVM.Run.run(L, N1, tf, cfl, sf, muscl)
+    x2, sol2 = ScalarWaveFVM.Run.run(L, 2N1, tf, cfl, sf, muscl)
+    x4, sol4 = ScalarWaveFVM.Run.run(L, 4N1, tf, cfl, sf, muscl)
+    return x1, x2, x4, sol1, sol2, sol4
 end
 
 function mymean(arr)
@@ -28,19 +28,24 @@ function plot_errors(i, true_sol, scale=2)
 end
 
 function plot_self_errors(ti, scale=2)
-    plot1 = scatter(x, (sol2[1:2:end, 1, 2ti - 1] .- sol4[1:4:end, 1, 4ti - 3]) .* scale)
-    scatter!(plot1, x, sol1[:, 1, ti] .- sol2[1:2:end, 1, 2ti - 1])
+    plot1 = scatter(x1,
+                    (mymean(sol2[:, 1, 2ti - 1]) .-
+                     mymean(mymean(sol4[:, 1, 4ti - 3]))) .* scale)
+    scatter!(plot1, x1, sol1[:, 1, ti] .- sol2[1:2:end, 1, 2ti - 1])
+    return plot1
 end
 
-function plot_res(i, true_sol)
+function plot_res(i)
     t1 = sol1.t[i]
     t2 = sol2.t[2i - 1]
+    t4 = sol4.t[4i - 3]
     @assert t1 == t2
+    @assert t2 == t4
     t = t1
     p = scatter(x1, sol1[:, 1, i]; label="low res")
     scatter!(p, x1, mymean(sol2[:, 1, 2i - 1]); label="mid res")
-    plot!(p, x1[begin]:0.01:x1[end], true_sol.(t, x1[begin]:0.01:x1[end]))
-    #scatter!(p, x, sol4[1:4:end, 1, 4t - 3]; label="high res")
+    # plot!(p, x1[begin]:0.01:x1[end], true_sol.(t, x1[begin]:0.01:x1[end]))
+    scatter!(p, x1, mymean(mymean(sol4[:, 1, 4i - 3])); label="high res")
     xaxis!(p, "x")
     yaxis!(p, "Π")
     title!(p, "t=$(t)")
@@ -83,9 +88,10 @@ end
 function self_convergence_order(p, x, sol1, sol2, sol4)
     order = zeros(length(sol1.t))
     for i in 1:(length(sol1.t))
-        tmp1 = sum(abs.(sol1[:, 1, i] .- sol2[1:2:end, 1, 2i - 1]) .^ p)^(1 / p)
-        tmp2 = sum(abs.(sol2[1:2:end, 1, 2i - 1] .- sol4[1:4:end, 1, 4i - 3]) .^ p)^(1 /
-                                                                                     p)
+        tmp1 = sum(abs.(sol1[:, 1, i] .- mymean(sol2[:, 1, 2i - 1])) .^ p)^(1 / p)
+        tmp2 = sum(abs.(mymean(sol2[:, 1, 2i - 1]) .- mymean(mymean(sol4[:, 1, 4i - 3]))) .^
+                   p)^(1 /
+                       p)
         order[i] = log2(tmp1 / tmp2)
     end
     return order

@@ -4,6 +4,7 @@ module ScalarField
     return x * sqrt(x)
 end
 
+# boost with +v
 function ∂vΠ(x, q, xp, v)
     return -q * sign(x - xp) / (2exp32(one(v) - v * v))
 end
