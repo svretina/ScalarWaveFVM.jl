@@ -8,6 +8,7 @@ include("Reconstructions.jl")
 include("NumericalFluxes.jl")
 include("ParticleMotion.jl")
 include("ScalarField.jl")
+include("FractionalStepMethods.jl")
 include("ODE.jl")
 include("Run.jl")
 

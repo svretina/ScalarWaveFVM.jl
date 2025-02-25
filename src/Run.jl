@@ -6,6 +6,7 @@ using ..InitialData
 using ..Reconstructions
 using ..NumericalFluxes
 using ..Limiters
+using ..FractionalStepMethods
 
 using GridFunctions
 using RecursiveArrayTools
@@ -50,9 +51,9 @@ function run(L, N, tf, cfl, sf=false, muscl=true)
     flux_limiter = Limiters.minmod
 
     q1 = +1
-    q2 = +1                        
+    q2 = -1
     direction1 = +1
-    direction2 = -1
+    direction2 = +1
 
     # check for signs
     # either qs have same sign and directions not
@@ -64,8 +65,8 @@ function run(L, N, tf, cfl, sf=false, muscl=true)
 
     params = (equation=equation, numerical_flux=numerical_flux,
               slope_limiter=slope_limiter, flux_limiter=flux_limiter,
-              h=dx, N=N, x=x, cfl=cfl, L=L,
-              dt=dt, x1=L / 2, x2=-L / 2,
+              h=dx, N=N, x=x, cfl=cfl, L=L, f₀=2, vmax=0.9, A=1000 / 6,
+              dt=dt, x1=500, x2=-500,
               direction1=direction1, direction2=direction2,
               q1=q1, q2=q2)
     if muscl
@@ -156,7 +157,7 @@ function coupled_system(L, N, tf, cfl)
     # check for signs
     # either qs have same sign and directions not
     # or qs have different sign and directions have same sign
-                                   
+
     particle_statevector = [m10, x10, v10, m20, x20, v20]
     statevector = ArrayPartition(field_statevector, particle_statevector)
 
@@ -180,6 +181,74 @@ function coupled_system(L, N, tf, cfl)
     alg = SSPRK54()
     ode = ODEProblem{true}(ODE.coupled_rhs!, statevector, tspan,
                            params; saveat=t)
+
+    # return statevector, params
+    sol = solve(ode, alg; adaptive=false, dt=dt)
+    # PotentialEnergy = q1 * f(0.0, x10)
+    # KineticEnergyNR = 0.5 * m10 * v10^2
+    # KineticEnergyRel = (sqrt(1 / (1 - v10^2)) - 1) * m10 # (γ-1)m
+    # Energy = KineticEnergyRel + PotentialEnergy
+    # @show Energy, PotentialEnergy, KineticEnergyNR, KineticEnergyRel
+    # # @assert Energy < 0
+    return GridFunctions.coords(grid), sol
+end
+
+function coupled_system_fractional(L, N, tf, cfl)
+    c = 1.0
+    equation = LinearScalarWaveEquation1D(c)
+
+    grid = UniformStaggeredGrid1D(Float64[-L, L], N)
+    x = coords(grid) # cell centers
+
+    Π = zeros(Float64, length(grid))
+    Ψ = zeros(Float64, length(grid))
+
+    field_statevector = hcat(Π, Ψ)
+    q1 = -1.0
+    q2 = -1.0
+    m10 = 1.0
+    m20 = 1.0
+    x10 = -L / 2
+    x20 = L / 2
+    v10 = 0.1
+    v20 = -0.1
+    cond1 = (q1 * q2 > 0 && sign(v10) * sign(v20) < 0)
+    cond2 = (q1 * q2 < 0 && sign(v10) * sign(v20) > 0)
+    @assert cond1 || cond2
+    # check for signs
+    # either qs have same sign and directions not
+    # or qs have different sign and directions have same sign
+
+    particle_statevector = [m10, x10, v10, m20, x20, v20]
+    statevector = ArrayPartition(field_statevector, particle_statevector)
+
+    tspan = (0.0, tf)
+    dx = spacing(grid)
+
+    dt = cfl * dx / c
+    @show dx, dt
+    t = 0.0:dt:tf
+    numerical_flux = NumericalFluxes.flux_godunov
+    slope_limiter = Limiters.minmod
+    flux_limiter = Limiters.minmod
+
+    params = (equation=equation, numerical_flux=numerical_flux,
+              slope_limiter=slope_limiter, flux_limiter=flux_limiter,
+              h=dx, N=N, x=x, cfl=cfl, L=L,
+              dt=dt, x1=L / 2, x2=-L / 2,
+              direction1=direction1, direction2=direction2,
+              q1=q1, q2=q2, pifield=Π, psifield=Ψ)
+
+    alg1 = SSPRK54()
+    alg2 = Euler()
+    alg = FractionalStepMethods.MyCustonSolver(alg1, alg2; splitting=Strang)
+
+    ## TODO
+    ## implement source! function in ODE.jl
+    ## take care of dependencies!
+
+    ode = SplitODEProblem{true}(ODE.muscl!, ODE.source!, statevector, tspan,
+                                params; saveat=t)
 
     # return statevector, params
     sol = solve(ode, alg; adaptive=false, dt=dt)

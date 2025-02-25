@@ -75,14 +75,16 @@ function make_gif_with_particle(x, sol, params)
     L = params.L
     direction1 = params.direction1
     direction2 = params.direction2
-
+    vmax = params.vmax
+    f0 = params.f0
+    A = params.A
     anim = @animate for i in 1:10:nt
         p = plot()
-        ylims!(p, -0.1, 2.5)
+        ylims!(p, -3.1, 5.5)
         t = sol.t[i]
-        x1, v1, a1 = ParticleMotion.oscillator(t, x10, L, direction1)
-        x2, v2, a2 = ParticleMotion.oscillator(t, x20, L, direction2)
-        scatter!(p, x, sol[:, 1, i]; label=false)
+        x1, v1, a1 = ParticleMotion.oscillator2(t, x10, vmax, A, direction1)
+        x2, v2, a2 = ParticleMotion.oscillator2(t, x20, vmax, A, direction2)
+        plot!(p, x, sol[:, 1, i]; label=false)
         vline!(p, [x1]; label=false)
         vline!(p, [x2]; label=false)
         title!(p, "Π at t[$(i)]=$(round(t,digits=3))")

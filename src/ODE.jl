@@ -204,10 +204,13 @@ function field_rhs_forced!(dQ, Q, params, t)
     L = params.L
     x10 = params.x1
     x20 = params.x2
-
+    vmax = params.vmax
+    f0 = params.f₀
+    A = params.A
+    
     muscl!(dQ, Q, params, t)
-    x1, v1, a1 = ParticleMotion.oscillator(t, x10, L, direction1)
-    x2, v2, a2 = ParticleMotion.oscillator(t, x20, L, direction2)
+    x1, v1, a1 = ParticleMotion.oscillator2(t, x10, vmax, A, direction1)
+    x2, v2, a2 = ParticleMotion.oscillator2(t, x20, vmax, A, direction2)
     @inline s1(x) = a1 * ScalarField.∂vΠ(x, q1, x1, v1)
     @inline s2(x) = a2 * ScalarField.∂vΠ(x, q2, x2, v2)
     dtΠ = @view dQ[:, 1]
