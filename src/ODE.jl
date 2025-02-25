@@ -3,6 +3,7 @@ module ODE
 using ..Reconstructions
 using ..ParticleMotion
 using ..ScalarField
+using ..Interpolations
 using StaticArrays
 using Polyester
 
@@ -193,26 +194,26 @@ function muscl!(dQ, Q, params, t)
     return nothing
 end
 
-function rhs!(dQ, Q, params, t)
-    x1 = params.x1
-    x2 = params.x2
+function field_rhs_forced!(dQ, Q, params, t)
     x = params.x
-    L = params.L
-    direction1 = params.direction1
-    direction2 = params.direction2
+    N = params.N
     q1 = params.q1
     q2 = params.q2
-    N = params.N
-    h = params.h
+    direction1 = params.direction1
+    direction2 = params.direction2
+    L = params.L
+    x10 = params.x1
+    x20 = params.x2
 
     muscl!(dQ, Q, params, t)
-    xp1, vp1, ap1 = ParticleMotion.oscillator(t, x1, L, direction1)
-    xp2, vp2, ap2 = ParticleMotion.oscillator(t, x2, L, direction2)
-    @inline s1(x) = ap1 * ScalarField.∂vΠ(x, q1, xp1, vp1)
-    @inline s2(x) = ap2 * ScalarField.∂vΠ(x, q2, xp2, vp2)
+    x1, v1, a1 = ParticleMotion.oscillator(t, x10, L, direction1)
+    x2, v2, a2 = ParticleMotion.oscillator(t, x20, L, direction2)
+    @inline s1(x) = a1 * ScalarField.∂vΠ(x, q1, x1, v1)
+    @inline s2(x) = a2 * ScalarField.∂vΠ(x, q2, x2, v2)
     dtΠ = @view dQ[:, 1]
 
-    for i in 1:N
+    @inbounds for i in 1:N
+        # source term evaluated at cell centers
         dtΠ[i] -= s1(x[i]) + s2(x[i])
     end
     # the source term should be just averaged over the cell
@@ -231,76 +232,115 @@ function rhs!(dQ, Q, params, t)
     #
     # If this does not work, consider implementing
     # the Fractional Step method of LeVeque Chapter 17.1 pg 377
-
+    return nothing
 end
 
-## potential field is provided as a function
-function particle_motion!(du, U, params, t)
-    fΠ = params.pifield
-    fΨ = params.psifield
-
+function field_rhs!(dQ, Q, params, t)
+    x = params.x
+    N = params.N
     q1 = params.q1
     q2 = params.q2
 
-    m1 = U[1]
-    x1 = U[2]
-    v1 = U[3]
-    @assert v1 <= 1
-    m2 = U[4]
-    x2 = U[5]
-    v2 = U[6]
-    @assert v2 <= 1
+    Q_field = Q.x[1]
+    Q_particle = Q.x[2]
+    dQ_field = dQ.x[1]
+    dQ_particle = dQ.x[2]
 
-    Π1 = fΠ(t, x1)
-    Ψ1 = fΨ(t, x1)
-    Π2 = fΠ(t, x2)
-    Ψ2 = fΨ(t, x2)
+    a1 = dQ_particle[3]
+    a2 = dQ_particle[6]
+    x1 = Q_particle[2]
+    x2 = Q_particle[5]
+    v1 = Q_particle[3] ##  or dQ_particle[2]??
+    v2 = Q_particle[6] ##  or dQ_particle[5]??
+    muscl!(dQ_field, Q_field, params, t)
+    # xp1, vp1, ap1 = ParticleMotion.oscillator(t, x1, L, direction1)
+    # xp2, vp2, ap2 = ParticleMotion.oscillator(t, x2, L, direction2)
+    @inline s1(x) = a1 * ScalarField.∂vΠ(x, q1, x1, v1)
+    @inline s2(x) = a2 * ScalarField.∂vΠ(x, q2, x2, v2)
+    dtΠ = @view dQ_field[:, 1]
+
+    @inbounds for i in 1:N
+        # source term evaluated at cell centers
+        dtΠ[i] -= s1(x[i]) + s2(x[i])
+    end
+    # the source term should be just averaged over the cell
+    # meaning that i need to calculate
+    # an integral
+    #
+    # as 0th order approximation i will just sample
+    # the source term at the cell center
+    #
+    # then as a 1st order approximation
+    # I can evaluate it at the faces and take the average
+    # of it
+    #
+    # the exact thing to do is to
+    # take the integral of it
+    #
+    # If this does not work, consider implementing
+    # the Fractional Step method of LeVeque Chapter 17.1 pg 377
+    return nothing
+end
+
+## potential field is provided as a function
+function particle_rhs!(dQ, Q, params, t)
+    Q_field = Q.x[1]
+    Q_particle = Q.x[2]
+    # dQ_field = @view dQ[1]
+    dQ_particle = dQ.x[2]
+
+    Π = @view Q_field[:, 1]
+    Ψ = @view Q_field[:, 1]
+    x = params.x
+    q1 = params.q1
+    q2 = params.q2
+
+    m1 = Q_particle[1]
+    x1 = Q_particle[2]
+    v1 = Q_particle[3]
+    @assert v1 <= 1
+    m2 = Q_particle[4]
+    x2 = Q_particle[5]
+    v2 = Q_particle[6]
+    @assert v2 <= 1
+    Π1 = Interpolations.LinearInterpolation1D(x1, x, Π)
+    Ψ1 = Interpolations.LinearInterpolation1D(x1, x, Ψ)
+    Π2 = Interpolations.LinearInterpolation1D(x2, x, Π)
+    Ψ2 = Interpolations.LinearInterpolation1D(x2, x, Ψ)
 
     v12 = v1 * v1
     a1 = sqrt(one(v1) - v12) # reciprocal
     a12 = a1 * a1
-    #a14 = a12 * a12
     @assert a1 > 0
     γ1 = one(a1) / a1
     v22 = v2 * v2
     a2 = sqrt(one(v2) - v22) # reciprocal
     a22 = a2 * a2
-    # a24 = a22 * a22
     @assert a2 > 0
     γ2 = one(a2) / a2 # sqrt(β² + 1)
 
     # temporary variables
     # check mathematica file: RelativisticMotion.nb
-    # uᵗΠ1 = uᵗ1 * Π1
-    # u∇Φ1 = uᵗΠ1 + u1 * Ψ1
-
-    # uᵗΠ2 = uᵗ2 * Π2
-    # u∇Φ2 = uᵗΠ2 + u2 * Ψ2
-
-    # # particle 1
-    # du[1] = -q1 * u∇Φ1 ## mass evolution
-    # du[2] = u1       ## x-coordinate
-    # du[3] = (a14 * q1 / m1) * (u1 * u∇Φ1 / a12 + Ψ1) ## x-velocity
-    # # particle 2
-    # du[4] = -q2 * u∇Φ2 ## mass evolution
-    # du[5] = u2       ## x-coordinate
-    # du[6] = (a24 * q2 / m2) * (u2 * u∇Φ2 / a22 + Ψ2) ## x-velocity
-
     v∇Φ1 = -Π1 + v1 * Ψ1
     v∇Φ2 = -Π2 + v2 * Ψ2
     # mass
-    du[1] = -q1 * v∇Φ1
-    du[4] = -q2 * v∇Φ2
+    dQ_particle[1] = -q1 * v∇Φ1
+    dQ_particle[4] = -q2 * v∇Φ2
     # position
-    du[2] = v1
-    du[5] = v2
+    dQ_particle[2] = v1
+    dQ_particle[5] = v2
     # velocity
     γ12 = γ1 * γ1
     γ22 = γ2 * γ2
 
-    du[3] = (q1 / m1) * (-γ1 * Π1 / (one(γ1) + v12 * γ12) + a12 * Ψ1)
-    du[6] = (q2 / m2) * (-γ2 * Π2 / (one(γ2) + v22 * γ22) + a22 * Ψ2)
+    dQ_particle[3] = (q1 / m1) * (-γ1 * Π1 / (one(γ1) + v12 * γ12) + a12 * Ψ1)
+    dQ_particle[6] = (q2 / m2) * (-γ2 * Π2 / (one(γ2) + v22 * γ22) + a22 * Ψ2)
+    return nothing
+end
 
+function coupled_rhs!(dQ, Q, params, t)
+    particle_rhs!(dQ, Q, params, t)
+    field_rhs!(dQ, Q, params, t)
     return nothing
 end
 
