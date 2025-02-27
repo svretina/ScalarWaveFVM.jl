@@ -6,12 +6,13 @@ using ..InitialData
 using ..Reconstructions
 using ..NumericalFluxes
 using ..Limiters
-using ..FractionalStepMethods
+# using ..FractionalStepMethods
 
 using GridFunctions
 using RecursiveArrayTools
 using OrdinaryDiffEqSSPRK
 using OrdinaryDiffEqLowOrderRK
+using DataInterpolations
 
 function run(L, N, tf, cfl, sf=false, muscl=true)
     c = 1.0
@@ -89,44 +90,57 @@ function run(L, N, tf, cfl, sf=false, muscl=true)
     return GridFunctions.coords(grid), sol
 end
 
-function particle_given_potential(L, tf, dt)
+function particle_given_potential(tf, dt)
     tspan = (0.0, tf)
     t = 0.0:dt:tf
-    h = 1.0
-    x1 = L / 2 + h / 2
-    x2 = -L / 2 + h / 2
-    x = (-L):h:L
-    f(t, x) = 1 / (1 + (x - x1)^2) + 1 / (1 + (x - x2)^2)
-    ft(t, x) = zero(x)
-    function fx(t, x)
-        tmp = (2(x - x1) / (one(x) + 0.5(x - x1)^2)^2) +
-              (2(x - x2) / (one(x) + 0.5(x - x2)^2)^2)
-        return tmp
-    end
 
-    Π = ft.(0.0, x)
-    Ψ = fx.(0.0, x)
+    n = 50
+    c = 1
+    A = 1 / (2π)
+    λ = 10
+    Lwave = λ * n
+
+    Ψ(tt, xx) = InitialData.dxSineWave(tt, xx, n, c, A, Lwave)
+    Π(tt, xx) = InitialData.dtSineWave(tt, xx, n, c, A, Lwave)
     q1 = -1.0
-    q2 = -1.0
-
     m10 = 1.0
-    m20 = 1.0
-    x10 = x1
-    x20 = x2
-    v10 = 0.1
-    v20 = 0.1
+    x10 = 0.0
+    v10 = 0.0
 
-    # PotentialEnergy = q1 * f(0.0, x10)
-    # KineticEnergyNR = 0.5 * m10 * v10^2
-    # KineticEnergyRel = (sqrt(1 / (1 - v10^2)) - 1) * m10 # (γ-1)m
-    # Energy = KineticEnergyRel + PotentialEnergy
-    # @show Energy, PotentialEnergy, KineticEnergyNR, KineticEnergyRel
-    # # @assert Energy < 0
-
-    statevector = [m10, x10, v10, m20, x20, v20]
-    params = (q1=q1, q2=q2, pifield=Π, psifield=Ψ, x=x)
+    statevector = [m10, x10, v10] #, m20, x20, v20]
+    params = (q1=q1, pifield=Π, psifield=Ψ)
     alg = SSPRK54()
-    ode = ODEProblem{true}(ODE.particle_motion!, statevector,
+    ode = ODEProblem{true}(ODE.particle_rhs_functions!, statevector,
+                           tspan, params; saveat=t)
+    sol = solve(ode, alg; adaptive=false, dt=dt)
+    return sol
+end
+
+function particle_given_interpolation(L, dx, tf, dt)
+    tspan = (0.0, tf)
+    t = 0.0:dt:tf
+
+    x = (-L):dx:L
+
+    n = 50
+    c = 1
+    A = 1 / (2π)
+    λ = 10
+    Lwave = λ * n
+
+    Ψ(tt, xx) = InitialData.dxSineWave(tt, xx, n, c, A, Lwave)
+    Π(tt, xx) = InitialData.dtSineWave(tt, xx, n, c, A, Lwave)
+
+    q1 = -1.0
+    m10 = 1.0
+    x10 = 0.0
+    v10 = 0.0
+    interpolation_method = QuadraticInterpolation
+    statevector = [m10, x10, v10] #, m20, x20, v20]
+    params = (q1=q1, pifield=Π.(0.0, x), psifield=Ψ.(0.0, x),
+              interpolation_method=interpolation_method, x=x)
+    alg = SSPRK54()
+    ode = ODEProblem{true}(ODE.particle_rhs_interpolation!, statevector,
                            tspan, params; saveat=t)
     sol = solve(ode, alg; adaptive=false, dt=dt)
     return sol
@@ -137,28 +151,29 @@ function coupled_system(L, N, tf, cfl)
     equation = LinearScalarWaveEquation1D(c)
 
     grid = UniformStaggeredGrid1D(Float64[-L, L], N)
-    x = coords(grid) # cell centers
+    x = GridFunctions.Grids.coords(grid) # cell centers
 
     Π = zeros(Float64, length(grid))
     Ψ = zeros(Float64, length(grid))
 
-    field_statevector = hcat(Π, Ψ)
-    q1 = -1.0
-    q2 = -1.0
-    m10 = 1.0
-    m20 = 1.0
-    x10 = -L / 2
-    x20 = L / 2
-    v10 = 0.1
-    v20 = -0.1
-    cond1 = (q1 * q2 > 0 && sign(v10) * sign(v20) < 0)
-    cond2 = (q1 * q2 < 0 && sign(v10) * sign(v20) > 0)
-    @assert cond1 || cond2
-    # check for signs
-    # either qs have same sign and directions not
-    # or qs have different sign and directions have same sign
+    n = 50
+    A = 1 / (2π)
+    λ = 30
+    Lwave = λ * n
+    @show 2A * n * π / Lwave
+    Ψ = InitialData.dxSineWave.(0.0, x, n, c, A, Lwave)
+    # @show div(N, 2), Ψ[div(N, 2)], x[div(N, 2)]
+    # Π = InitialData.dtSineWave.(0.0, x, 5, c, 1.0, 50)
 
-    particle_statevector = [m10, x10, v10, m20, x20, v20]
+    field_statevector = hcat(Π, Ψ)
+
+    ## Particle 1
+    q1 = -0.001
+    m10 = 1.0
+    x10 = 0.0 #-L / 4.2341
+    v10 = 0.0
+
+    particle_statevector = [m10, x10, v10]#, m20, x20, v20]
     statevector = ArrayPartition(field_statevector, particle_statevector)
 
     tspan = (0.0, tf)
@@ -168,97 +183,119 @@ function coupled_system(L, N, tf, cfl)
     @show dx, dt
     t = 0.0:dt:tf
     numerical_flux = NumericalFluxes.flux_godunov
-    slope_limiter = Limiters.minmod
+    slope_limiter = Limiters.upwind
     flux_limiter = Limiters.minmod
+    interpolation_method = QuadraticInterpolation# LinearInterpolation # QuadraticInterpolation
+
+    function condition(u, t, integrator)
+        # Check if either particle is outside the domain
+        particle1_out = u.x[2][2] >= L || u.x[2][2] < -L
+        particle2_out = u.x[2][5] >= L || u.x[2][5] < -L
+        return particle1_out || particle2_out
+    end
+
+    function affect!(integrator)
+        # Check and adjust first particle
+        if integrator.u.x[2][2] >= L
+            integrator.u.x[2][2] -= 2L
+        elseif integrator.u.x[2][2] < -L
+            integrator.u.x[2][2] += 2L
+        end
+
+        # Check and adjust second particle
+        if integrator.u.x[2][5] >= L
+            integrator.u.x[2][5] -= 2L
+        elseif integrator.u.x[2][5] < -L
+            integrator.u.x[2][5] += 2L
+        end
+    end
+
+    # Define and apply the callback
+    cb = DiscreteCallback(condition, affect!)
 
     params = (equation=equation, numerical_flux=numerical_flux,
               slope_limiter=slope_limiter, flux_limiter=flux_limiter,
               h=dx, N=N, x=x, cfl=cfl, L=L,
-              dt=dt, x1=L / 2, x2=-L / 2,
-              direction1=direction1, direction2=direction2,
-              q1=q1, q2=q2, pifield=Π, psifield=Ψ)
+              dt=dt, x1=x10, # x2=x20,
+              # direction1=direction1, direction2=direction2,
+              q1=q1, # q2=q2,
+              pifield=Π, psifield=Ψ,
+              interpolation_method=interpolation_method)
 
     alg = SSPRK54()
     ode = ODEProblem{true}(ODE.coupled_rhs!, statevector, tspan,
                            params; saveat=t)
 
-    # return statevector, params
-    sol = solve(ode, alg; adaptive=false, dt=dt)
-    # PotentialEnergy = q1 * f(0.0, x10)
-    # KineticEnergyNR = 0.5 * m10 * v10^2
-    # KineticEnergyRel = (sqrt(1 / (1 - v10^2)) - 1) * m10 # (γ-1)m
-    # Energy = KineticEnergyRel + PotentialEnergy
-    # @show Energy, PotentialEnergy, KineticEnergyNR, KineticEnergyRel
-    # # @assert Energy < 0
+    sol = solve(ode, alg; adaptive=false, dt=dt)#, callback=cb)
     return GridFunctions.coords(grid), sol
 end
 
-function coupled_system_fractional(L, N, tf, cfl)
-    c = 1.0
-    equation = LinearScalarWaveEquation1D(c)
+# function coupled_system_fractional(L, N, tf, cfl)
+#     c = 1.0
+#     equation = LinearScalarWaveEquation1D(c)
 
-    grid = UniformStaggeredGrid1D(Float64[-L, L], N)
-    x = coords(grid) # cell centers
+#     grid = UniformStaggeredGrid1D(Float64[-L, L], N)
+#     x = coords(grid) # cell centers
 
-    Π = zeros(Float64, length(grid))
-    Ψ = zeros(Float64, length(grid))
+#     Π = zeros(Float64, length(grid))
+#     Ψ = zeros(Float64, length(grid))
 
-    field_statevector = hcat(Π, Ψ)
-    q1 = -1.0
-    q2 = -1.0
-    m10 = 1.0
-    m20 = 1.0
-    x10 = -L / 2
-    x20 = L / 2
-    v10 = 0.1
-    v20 = -0.1
-    cond1 = (q1 * q2 > 0 && sign(v10) * sign(v20) < 0)
-    cond2 = (q1 * q2 < 0 && sign(v10) * sign(v20) > 0)
-    @assert cond1 || cond2
-    # check for signs
-    # either qs have same sign and directions not
-    # or qs have different sign and directions have same sign
+#     field_statevector = hcat(Π, Ψ)
+#     q1 = -1.0
+#     q2 = -1.0
+#     m10 = 1.0
+#     m20 = 1.0
+#     x10 = -L / 2
+#     x20 = L / 2
+#     v10 = 0.1
+#     v20 = -0.1
+#     cond1 = (q1 * q2 > 0 && sign(v10) * sign(v20) < 0)
+#     cond2 = (q1 * q2 < 0 && sign(v10) * sign(v20) > 0)
+#     @assert cond1 || cond2
+#     # check for signs
+#     # either qs have same sign and directions not
+#     # or qs have different sign and directions have same sign
 
-    particle_statevector = [m10, x10, v10, m20, x20, v20]
-    statevector = ArrayPartition(field_statevector, particle_statevector)
+#     particle_statevector = [m10, x10, v10, m20, x20, v20]
+#     statevector = ArrayPartition(field_statevector, particle_statevector)
 
-    tspan = (0.0, tf)
-    dx = spacing(grid)
+#     tspan = (0.0, tf)
+#     dx = spacing(grid)
 
-    dt = cfl * dx / c
-    @show dx, dt
-    t = 0.0:dt:tf
-    numerical_flux = NumericalFluxes.flux_godunov
-    slope_limiter = Limiters.minmod
-    flux_limiter = Limiters.minmod
+#     dt = cfl * dx / c
+#     @show dx, dt
+#     t = 0.0:dt:tf
+#     numerical_flux = NumericalFluxes.flux_godunov
+#     slope_limiter = Limiters.minmod
+#     flux_limiter = Limiters.minmod
 
-    params = (equation=equation, numerical_flux=numerical_flux,
-              slope_limiter=slope_limiter, flux_limiter=flux_limiter,
-              h=dx, N=N, x=x, cfl=cfl, L=L,
-              dt=dt, x1=L / 2, x2=-L / 2,
-              direction1=direction1, direction2=direction2,
-              q1=q1, q2=q2, pifield=Π, psifield=Ψ)
+#     params = (equation=equation, numerical_flux=numerical_flux,
+#               slope_limiter=slope_limiter, flux_limiter=flux_limiter,
+#               h=dx, N=N, x=x, cfl=cfl, L=L,
+#               dt=dt, x1=L / 2, x2=-L / 2,
+#               direction1=direction1, direction2=direction2,
+#               q1=q1, q2=q2, pifield=Π, psifield=Ψ)
 
-    alg1 = SSPRK54()
-    alg2 = Euler()
-    alg = FractionalStepMethods.MyCustonSolver(alg1, alg2; splitting=Strang)
+#     alg1 = SSPRK54()
+#     alg2 = Euler()
+#     alg = FractionalStepMethods.MyCustonSolver(alg1, alg2; splitting=Strang)
 
-    ## TODO
-    ## implement source! function in ODE.jl
-    ## take care of dependencies!
+#     ## TODO
+#     ## implement source! function in ODE.jl
+#     ## take care of dependencies!
 
-    ode = SplitODEProblem{true}(ODE.muscl!, ODE.source!, statevector, tspan,
-                                params; saveat=t)
+#     ode = SplitODEProblem{true}(ODE.muscl!, ODE.source!, statevector, tspan,
+#                                 params; saveat=t)
 
-    # return statevector, params
-    sol = solve(ode, alg; adaptive=false, dt=dt)
-    # PotentialEnergy = q1 * f(0.0, x10)
-    # KineticEnergyNR = 0.5 * m10 * v10^2
-    # KineticEnergyRel = (sqrt(1 / (1 - v10^2)) - 1) * m10 # (γ-1)m
-    # Energy = KineticEnergyRel + PotentialEnergy
-    # @show Energy, PotentialEnergy, KineticEnergyNR, KineticEnergyRel
-    # # @assert Energy < 0
-    return GridFunctions.coords(grid), sol
-end
+#     # return statevector, params
+#     sol = solve(ode, alg; adaptive=false, dt=dt)
+#     # PotentialEnergy = q1 * f(0.0, x10)
+#     # KineticEnergyNR = 0.5 * m10 * v10^2
+#     # KineticEnergyRel = (sqrt(1 / (1 - v10^2)) - 1) * m10 # (γ-1)m
+#     # Energy = KineticEnergyRel + PotentialEnergy
+#     # @show Energy, PotentialEnergy, KineticEnergyNR, KineticEnergyRel
+#     # # @assert Energy < 0
+#     return GridFunctions.coords(grid), sol
+# end
 
 end # end of module

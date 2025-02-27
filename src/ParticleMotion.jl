@@ -20,7 +20,7 @@ function oscillator2(t, x0, vmax, A, direction)
     arg = ω * t
     prosimo = sign(direction)
     x = x0 + A * sin(prosimo * arg)
-    v = prosimo * vmax * cos(arg)
+    v =prosimo * vmax * cos(arg)
     @assert v < 1.0
     a = -ω * prosimo * vmax * sin(arg)
     return x, v, a

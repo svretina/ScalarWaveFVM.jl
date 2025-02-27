@@ -67,7 +67,7 @@ function make_gif(x, sol)
     gif(anim, "anim_fps15.gif"; fps=15)
 end
 
-function make_gif_with_particle(x, sol, params)
+function make_gif_with_forced_particle(x, sol, params)
     nt = length(sol.t)
 
     x10 = params.x1
@@ -90,6 +90,114 @@ function make_gif_with_particle(x, sol, params)
         title!(p, "Π at t[$(i)]=$(round(t,digits=3))")
     end
     gif(anim, "anim_fps15.gif"; fps=15)
+end
+
+function make_gif_with_particle(xs, sol)
+    nt = length(sol.t)
+    ymins = zeros(nt)
+    ymaxs = zeros(nt)
+    for i in 1:nt
+        ymins[i] = min(sol.u[i].x[1][:, 1]...)
+        ymaxs[i] = max(sol.u[i].x[1][:, 1]...)
+    end
+    ymin = min(ymins...)
+    ymax = max(ymaxs...)
+    p = plot()
+    anim = @animate for i in 1:10:nt
+        p = plot()
+        # ylims!(p, 1.1ymin, 1.1ymax)
+        t = sol.t[i]
+        x1 = sol.u[i].x[2][2]
+
+        plot!(p, xs, sol.u[i].x[1][:, 1]; label=false)
+        vline!(p, [x1]; label=false)
+        title!(p, "Π at t[$(i)]=$(round(t,digits=3))")
+    end
+    gif(anim, "anim_fps15.gif"; fps=15)
+end
+
+function make_gif_with_particles(x, sol)
+    nt = length(sol.t)
+    ymins = zeros(nt)
+    ymaxs = zeros(nt)
+    for i in 1:nt
+        ymins[i] = min(sol.u[i].x[1][:, 1]...)
+        ymaxs[i] = max(sol.u[i].x[1][:, 1]...)
+    end
+    ymin = min(ymins...)
+    ymax = max(ymaxs...)
+    anim = @animate for i in 1:10:nt
+        p = plot()
+        # ylims!(p, 1.1ymin, 1.1ymax)
+        t = sol.t[i]
+        x1 = sol.u[i].x[2][2]
+        x2 = sol.u[i].x[2][5]
+
+        plot!(p, x, sol.u[i].x[1][:, 1]; label=false)
+        vline!(p, [x1]; label=false)
+        vline!(p, [x2]; label=false)
+        title!(p, "Π at t[$(i)]=$(round(t,digits=3))")
+    end
+    gif(anim, "anim_fps15.gif"; fps=15)
+end
+
+function plot_position(sol, existing_fig=nothing; invert=false)
+    if existing_fig === nothing
+        # Create a new figure with 1 row and 2 columns if no figure is provided
+        p = plot(; layout=(1, 2))
+    else
+        # Use the existing figure
+        p = existing_fig
+        # Get the layout dimensions
+        rows, cols = size(p.layout)
+        # Check if there's a second row available
+        if rows < 2
+            error("The existing figure must have at least 2 rows to plot in the second row")
+        end
+    end
+    if existing_fig === nothing
+        idx1, idx2 = 1, 2
+    else
+        idx1 = cols + 1      # Start of second row
+        idx2 = cols + 2      # Second position in second row
+        # Check if these indices exist in the layout
+        if idx2 > rows * cols
+            error("Not enough subplots in the existing figure's layout for second row plotting")
+        end
+    end
+    nt = length(sol.t)
+    x1 = zeros(nt)
+    x2 = zeros(nt)
+    for (i, ti) in enumerate(sol.t)
+        x1[i] = sol.u[i].x[2][2]
+        x2[i] = sol.u[i].x[2][5]
+    end
+    if invert
+        plot!(p[idx1], x1, sol.t; title="particle 1", xlabel="x", ylabel="t", label=false)
+        plot!(p[idx2], x2, sol.t; title="particle 2", xlabel="x", ylabel="", label=false)
+    else
+        plot!(p[idx1], sol.t, x1; title="particle 1", xlabel="t", ylabel="x", label=false)
+        plot!(p[idx2], sol.t, x2; title="particle 2", xlabel="t", ylabel="", label=false)
+    end
+    return p
+end
+
+function plot_position1(sol; invert=false)
+    p = plot()
+
+    nt = length(sol.t)
+    x1 = zeros(nt)
+    x2 = zeros(nt)
+    for (i, ti) in enumerate(sol.t)
+        x1[i] = sol.u[i].x[2][2]
+    end
+    if invert
+        plot!(p, x1, sol.t; title="particle 1", xlabel="x", ylabel="t", label=false)
+    else
+        plot!(p, sol.t, x1; title="particle 1", xlabel="t", ylabel="x", label=false)
+    end
+    savefig(p, "particle_location.png")
+    return p
 end
 
 end # end of module

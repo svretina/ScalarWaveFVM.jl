@@ -6,6 +6,7 @@ using ..ScalarField
 using ..Interpolations
 using StaticArrays
 using Polyester
+using DataInterpolations
 
 # LaxWendroff schemes
 function LxW!(dQ, Q, params, t)
@@ -207,7 +208,7 @@ function field_rhs_forced!(dQ, Q, params, t)
     vmax = params.vmax
     f0 = params.f₀
     A = params.A
-    
+
     muscl!(dQ, Q, params, t)
     x1, v1, a1 = ParticleMotion.oscillator2(t, x10, vmax, A, direction1)
     x2, v2, a2 = ParticleMotion.oscillator2(t, x20, vmax, A, direction2)
@@ -242,7 +243,7 @@ function field_rhs!(dQ, Q, params, t)
     x = params.x
     N = params.N
     q1 = params.q1
-    q2 = params.q2
+    # q2 = params.q2
 
     Q_field = Q.x[1]
     Q_particle = Q.x[2]
@@ -250,21 +251,22 @@ function field_rhs!(dQ, Q, params, t)
     dQ_particle = dQ.x[2]
 
     a1 = dQ_particle[3]
-    a2 = dQ_particle[6]
     x1 = Q_particle[2]
-    x2 = Q_particle[5]
-    v1 = Q_particle[3] ##  or dQ_particle[2]??
-    v2 = Q_particle[6] ##  or dQ_particle[5]??
+    v1 = dQ_particle[2] ### ASK ERIK dQ or Q ?
+    ###
+    # a2 = dQ_particle[6]
+    # x2 = Q_particle[5]
+    # v2 = dQ_particle[5] ##  or dQ_particle[5]??
     muscl!(dQ_field, Q_field, params, t)
     # xp1, vp1, ap1 = ParticleMotion.oscillator(t, x1, L, direction1)
     # xp2, vp2, ap2 = ParticleMotion.oscillator(t, x2, L, direction2)
     @inline s1(x) = a1 * ScalarField.∂vΠ(x, q1, x1, v1)
-    @inline s2(x) = a2 * ScalarField.∂vΠ(x, q2, x2, v2)
+    # @inline s2(x) = a2 * ScalarField.∂vΠ(x, q2, x2, v2)
     dtΠ = @view dQ_field[:, 1]
 
     @inbounds for i in 1:N
         # source term evaluated at cell centers
-        dtΠ[i] -= s1(x[i]) + s2(x[i])
+        dtΠ[i] -= s1(x[i]) # + s2(x[i])
     end
     # the source term should be just averaged over the cell
     # meaning that i need to calculate
@@ -285,59 +287,86 @@ function field_rhs!(dQ, Q, params, t)
     return nothing
 end
 
-## potential field is provided as a function
 function particle_rhs!(dQ, Q, params, t)
     Q_field = Q.x[1]
     Q_particle = Q.x[2]
-    # dQ_field = @view dQ[1]
     dQ_particle = dQ.x[2]
 
     Π = @view Q_field[:, 1]
-    Ψ = @view Q_field[:, 1]
+    Ψ = @view Q_field[:, 2]
     x = params.x
+    interpolation_method = params.interpolation_method
     q1 = params.q1
-    q2 = params.q2
 
     m1 = Q_particle[1]
     x1 = Q_particle[2]
     v1 = Q_particle[3]
-    @assert v1 <= 1
-    m2 = Q_particle[4]
-    x2 = Q_particle[5]
-    v2 = Q_particle[6]
-    @assert v2 <= 1
-    Π1 = Interpolations.LinearInterpolation1D(x1, x, Π)
-    Ψ1 = Interpolations.LinearInterpolation1D(x1, x, Ψ)
-    Π2 = Interpolations.LinearInterpolation1D(x2, x, Π)
-    Ψ2 = Interpolations.LinearInterpolation1D(x2, x, Ψ)
+    abs(v1) <= 1 || throw("v1=$v1 > 1, at t=$(t), a1 = $(dQ_particle[3])")
+
+    interpolator_Ψ = interpolation_method(Ψ, x; extrapolation=ExtrapolationType.Extension)
+    interpolator_Π = interpolation_method(Π, x; extrapolation=ExtrapolationType.Extension)
+    Π1 = interpolator_Π(x1)
+    Ψ1 = interpolator_Ψ(x1)
 
     v12 = v1 * v1
-    a1 = sqrt(one(v1) - v12) # reciprocal
-    a12 = a1 * a1
-    @assert a1 > 0
-    γ1 = one(a1) / a1
-    v22 = v2 * v2
-    a2 = sqrt(one(v2) - v22) # reciprocal
-    a22 = a2 * a2
-    @assert a2 > 0
-    γ2 = one(a2) / a2 # sqrt(β² + 1)
+    a12 = one(v1) - v12
 
-    # temporary variables
-    # check mathematica file: RelativisticMotion.nb
-    v∇Φ1 = -Π1 + v1 * Ψ1
-    v∇Φ2 = -Π2 + v2 * Ψ2
-    # mass
-    dQ_particle[1] = -q1 * v∇Φ1
-    dQ_particle[4] = -q2 * v∇Φ2
-    # position
+    # v∇Φ1 = Π1 + v1 * Ψ1
+
+    dQ_particle[1] = -q1 * (Π1 + v1 * Ψ1)
     dQ_particle[2] = v1
-    dQ_particle[5] = v2
-    # velocity
-    γ12 = γ1 * γ1
-    γ22 = γ2 * γ2
+    dQ_particle[3] = q1 * a12 * (v1 * Π1 + Ψ1) / m1
+    return nothing
+end
 
-    dQ_particle[3] = (q1 / m1) * (-γ1 * Π1 / (one(γ1) + v12 * γ12) + a12 * Ψ1)
-    dQ_particle[6] = (q2 / m2) * (-γ2 * Π2 / (one(γ2) + v22 * γ22) + a22 * Ψ2)
+function particle_rhs_functions!(dQ, Q, params, t)
+    Π = params.pifield
+    Ψ = params.psifield
+    q1 = params.q1
+
+    m1 = Q[1]
+    x1 = Q[2]
+    v1 = Q[3]
+    abs(v1) <= 1 || throw("v1=$v1 > 1, at t=$(t), a1 = $(dQ_particle[3])")
+
+    Π1 = Π(t, x1)
+    Ψ1 = Ψ(t, x1)
+
+    v12 = v1 * v1
+    a12 = one(v1) - v12
+
+    v∇Φ1 = Π1 + v1 * Ψ1
+
+    dQ[1] = -q1 * v∇Φ1
+    dQ[2] = v1
+    dQ[3] = q1 * a12 * (v1 * Π1 + Ψ1) / m1
+    return nothing
+end
+
+function particle_rhs_interpolation!(dQ, Q, params, t)
+    Π = params.pifield
+    Ψ = params.psifield
+    q1 = params.q1
+    x = params.x
+    interpolation_method = params.interpolation_method
+    m1 = Q[1]
+    x1 = Q[2]
+    v1 = Q[3]
+    abs(v1) <= 1 || throw("v1=$v1 > 1, at t=$(t), a1 = $(dQ_particle[3])")
+
+    interpolator_Ψ = interpolation_method(Ψ, x; extrapolation=ExtrapolationType.Extension)
+    interpolator_Π = interpolation_method(Π, x; extrapolation=ExtrapolationType.Extension)
+    Π1 = interpolator_Π(x1)
+    Ψ1 = interpolator_Ψ(x1)
+
+    v12 = v1 * v1
+    a12 = one(v1) - v12
+
+    v∇Φ1 = Π1 + v1 * Ψ1
+
+    dQ[1] = -q1 * v∇Φ1
+    dQ[2] = v1
+    dQ[3] = q1 * a12 * (v1 * Π1 + Ψ1) / m1
     return nothing
 end
 
