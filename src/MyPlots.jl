@@ -3,6 +3,21 @@ module MyPlots
 using Plots
 using ..ParticleMotion
 
+Plots.PGFPlotsXBackend()
+default(; legend=:topright,              # Legend position
+        framestyle=:box,              # Boxed frame style for axes
+        linewidth=1.5,                # Line width for plot lines
+        grid=false,                   # Disable grid lines (as seen in the PDF)
+        label="",                     # No labels for the lines by default
+        tickfontsize=20,              # Font size for tick labels
+        guidefontsize=20,             # Font size for axis labels
+        legendfontsize=12,            # Font size for legend text
+        foreground_color_border=:black, # Black axis lines
+        size=(800, 600),              # Size of the plot
+        fontfamily="Computer Modern",  # Use Computer Modern font
+        dpi=200,
+        thickness_scaling=2)
+
 function plot_errors(i, true_sol, scale=2)
     t1 = sol1.t[i]
     t2 = sol2.t[2i - 1]
@@ -183,6 +198,7 @@ function plot_position(sol, existing_fig=nothing; invert=false)
 end
 
 function plot_position1(sol; invert=false)
+    pgfplotsx()
     p = plot()
 
     nt = length(sol.t)

@@ -115,16 +115,16 @@ end
     return ForwardDiff.derivative(x1 -> Gaussian1D(t, x1, A, σ), x)
 end
 
-@inline function SineWave(t, x, n, c, A, L)
-    return A * sin(2π * n * (x - c * t) / L)
+@inline function SineWave(t, x, A, λ, c)
+    return A * sin(2π * (x - c * t) / λ)
 end
 
-@inline function dtSineWave(t::Real, x::Real, n, c, A, L)
-    return -2A * n * π * c * cos(2n * π * (x - c * t) / L) / L
+@inline function dtSineWave(t::Real, x::Real, A, λ, c)
+    return -2A * π * c * cos(2π * (x - c * t) / λ) / λ
 end
 
-@inline function dxSineWave(t::Real, x::Real, n, c, A, L)
-    return 2A * n * π * cos(2n * π * (x - c * t) / L) / L
+@inline function dxSineWave(t::Real, x::Real, A, λ, c)
+    return 2A * π * cos(2π * (x - c * t) / λ) / λ
 end
 
 end # end of module

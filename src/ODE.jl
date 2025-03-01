@@ -233,9 +233,6 @@ function field_rhs_forced!(dQ, Q, params, t)
     #
     # the exact thing to do is to
     # take the integral of it
-    #
-    # If this does not work, consider implementing
-    # the Fractional Step method of LeVeque Chapter 17.1 pg 377
     return nothing
 end
 
@@ -244,7 +241,7 @@ function field_rhs!(dQ, Q, params, t)
     N = params.N
     q1 = params.q1
     # q2 = params.q2
-
+    sf = params.sf
     Q_field = Q.x[1]
     Q_particle = Q.x[2]
     dQ_field = dQ.x[1]
@@ -260,13 +257,14 @@ function field_rhs!(dQ, Q, params, t)
     muscl!(dQ_field, Q_field, params, t)
     # xp1, vp1, ap1 = ParticleMotion.oscillator(t, x1, L, direction1)
     # xp2, vp2, ap2 = ParticleMotion.oscillator(t, x2, L, direction2)
-    @inline s1(x) = a1 * ScalarField.∂vΠ(x, q1, x1, v1)
-    # @inline s2(x) = a2 * ScalarField.∂vΠ(x, q2, x2, v2)
-    dtΠ = @view dQ_field[:, 1]
 
-    @inbounds for i in 1:N
-        # source term evaluated at cell centers
-        dtΠ[i] -= s1(x[i]) # + s2(x[i])
+    if sf
+        @inline s1(x) = a1 * ScalarField.∂vΠ(x, q1, x1, v1)
+        dtΠ = @view dQ_field[:, 1]
+        @inbounds for i in 1:N
+            # source term evaluated at cell centers
+            dtΠ[i] -= s1(x[i]) # + s2(x[i])
+        end
     end
     # the source term should be just averaged over the cell
     # meaning that i need to calculate

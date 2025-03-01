@@ -13,6 +13,11 @@ using RecursiveArrayTools
 using OrdinaryDiffEqSSPRK
 using OrdinaryDiffEqLowOrderRK
 using DataInterpolations
+using DiffEqCallbacks
+
+function save()
+    # SavingCallback
+end
 
 function run(L, N, tf, cfl, sf=false, muscl=true)
     c = 1.0
@@ -146,52 +151,59 @@ function particle_given_interpolation(L, dx, tf, dt)
     return sol
 end
 
-function coupled_system(L, N, tf, cfl)
+function coupled_system(L, N, tf, cfl, sf=true)
     c = 1.0
     equation = LinearScalarWaveEquation1D(c)
 
     grid = UniformStaggeredGrid1D(Float64[-L, L], N)
     x = GridFunctions.Grids.coords(grid) # cell centers
-
-    Π = zeros(Float64, length(grid))
-    Ψ = zeros(Float64, length(grid))
-
-    n = 50
-    A = 1 / (2π)
-    λ = 30
-    Lwave = λ * n
-    @show 2A * n * π / Lwave
-    Ψ = InitialData.dxSineWave.(0.0, x, n, c, A, Lwave)
-    # @show div(N, 2), Ψ[div(N, 2)], x[div(N, 2)]
-    # Π = InitialData.dtSineWave.(0.0, x, 5, c, 1.0, 50)
-
-    field_statevector = hcat(Π, Ψ)
-
-    ## Particle 1
-    q1 = -0.001
-    m10 = 1.0
-    x10 = 0.0 #-L / 4.2341
-    v10 = 0.0
-
-    particle_statevector = [m10, x10, v10]#, m20, x20, v20]
-    statevector = ArrayPartition(field_statevector, particle_statevector)
-
     tspan = (0.0, tf)
     dx = spacing(grid)
 
     dt = cfl * dx / c
     @show dx, dt
     t = 0.0:dt:tf
+
+    Π = zeros(Float64, length(grid))
+    # Ψ = zeros(Float64, length(grid))
+
+    n = 5
+    A = 1 / (2π)
+    λ = 80 # L / n
+    @show 2A * π / λ
+    @show λ
+    Ψ = InitialData.dxSineWave.(0.0, x, A, λ, c)
+    # Π = InitialData.dtSineWave.(0.0, x, 5, c, 1.0, 50)
+
+    field_statevector = hcat(Π, Ψ)
+
+    ## Particle 1
+    q1 = 0.08
+    # @assert abs(q1) > dt
+    m10 = 1.0
+    x10 = 0.0
+    v10 = 0.0
+
+    println("Particle:")
+    println("q = $q1")
+    println("m = $m10")
+    println("x = $x10")
+    println("v = $v10")
+
+    particle_statevector = [m10, x10, v10]#, m20, x20, v20]
+    statevector = ArrayPartition(field_statevector,
+                                 particle_statevector)
+
     numerical_flux = NumericalFluxes.flux_godunov
     slope_limiter = Limiters.upwind
     flux_limiter = Limiters.minmod
-    interpolation_method = QuadraticInterpolation# LinearInterpolation # QuadraticInterpolation
+    interpolation_method = QuadraticInterpolation # LinearInterpolation # QuadraticInterpolation
 
     function condition(u, t, integrator)
         # Check if either particle is outside the domain
         particle1_out = u.x[2][2] >= L || u.x[2][2] < -L
-        particle2_out = u.x[2][5] >= L || u.x[2][5] < -L
-        return particle1_out || particle2_out
+        # particle2_out = u.x[2][5] >= L || u.x[2][5] < -L
+        return particle1_out #|| particle2_out
     end
 
     function affect!(integrator)
@@ -216,9 +228,8 @@ function coupled_system(L, N, tf, cfl)
     params = (equation=equation, numerical_flux=numerical_flux,
               slope_limiter=slope_limiter, flux_limiter=flux_limiter,
               h=dx, N=N, x=x, cfl=cfl, L=L,
-              dt=dt, x1=x10, # x2=x20,
-              # direction1=direction1, direction2=direction2,
-              q1=q1, # q2=q2,
+              dt=dt, x1=x10,
+              q1=q1, sf=sf,
               pifield=Π, psifield=Ψ,
               interpolation_method=interpolation_method)
 
