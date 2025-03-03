@@ -1,10 +1,19 @@
 module Convergence
 
+using ..Run
+
 function convergence(L, N1, tf=1.0, cfl=0.5, sf=true, muscl=true)
     x1, sol1 = ScalarWaveFVM.Run.run(L, N1, tf, cfl, sf, muscl)
     x2, sol2 = ScalarWaveFVM.Run.run(L, 2N1, tf, cfl, sf, muscl)
     x4, sol4 = ScalarWaveFVM.Run.run(L, 4N1, tf, cfl, sf, muscl)
     return x1, x2, x4, sol1, sol2, sol4
+end
+
+function run_coupled_sims(L, N, tf, cfl, sf)
+    sim1 = Run.coupled_system(L, N, tf, cfl, sf)
+    sim2 = Run.coupled_system(L, 2N, tf, cfl, sf)
+    sim4 = Run.coupled_system(L, 4N, tf, cfl, sf)
+    return sim1, sim2, sim4
 end
 
 function mymean(arr)
@@ -16,8 +25,6 @@ function mymean(arr)
     return arr2
 end
 
-
-
 function total_variation(q::AbstractArray)
     TV = zero(eltype(q))
     for i in eachindex(q)
@@ -28,7 +35,6 @@ end
 
 function convergence_order(p, x1, x2, sol1, sol2, true_sol)
     order = zeros(length(sol1.t))
-
     for i in 1:(length(sol1.t))
         t1 = sol1.t[i]
         t2 = sol2.t[2i - 1]

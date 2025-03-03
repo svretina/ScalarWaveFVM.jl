@@ -19,6 +19,25 @@ function save()
     # SavingCallback
 end
 
+struct SimulationParameters{T}
+    L::Int64
+    N::Int64
+    dx::T
+    x::Vector{T}
+    q::T
+    m::T
+    x0::T
+    v0::T
+    sf::Bool
+    λ::T
+    cfl::T
+end
+
+struct Simulation{T}
+    params::SimulationParameters{T}
+    sol::SciMLBase.ODESolution
+end
+
 function run(L, N, tf, cfl, sf=false, muscl=true)
     c = 1.0
     equation = LinearScalarWaveEquation1D(c)
@@ -92,6 +111,7 @@ function run(L, N, tf, cfl, sf=false, muscl=true)
 
     # return statevector, params
     sol = solve(ode, alg; adaptive=false, dt=dt)
+    # res = Result(sim, sol)
     return GridFunctions.coords(grid), sol
 end
 
@@ -167,18 +187,18 @@ function coupled_system(L, N, tf, cfl, sf=true)
     Π = zeros(Float64, length(grid))
     # Ψ = zeros(Float64, length(grid))
 
-    n = 5
+    #n = 5
     A = 1 / (2π)
-    λ = 80 # L / n
+    λ = 200.0 # L / n
     @show 2A * π / λ
     @show λ
     Ψ = InitialData.dxSineWave.(0.0, x, A, λ, c)
-    # Π = InitialData.dtSineWave.(0.0, x, 5, c, 1.0, 50)
+    Π = InitialData.dtSineWave.(0.0, x, A, λ, c)
 
     field_statevector = hcat(Π, Ψ)
 
     ## Particle 1
-    q1 = 0.08
+    q1 = 0.04
     # @assert abs(q1) > dt
     m10 = 1.0
     x10 = 0.0
@@ -195,7 +215,7 @@ function coupled_system(L, N, tf, cfl, sf=true)
                                  particle_statevector)
 
     numerical_flux = NumericalFluxes.flux_godunov
-    slope_limiter = Limiters.upwind
+    slope_limiter = Limiters.minmod
     flux_limiter = Limiters.minmod
     interpolation_method = QuadraticInterpolation # LinearInterpolation # QuadraticInterpolation
 
@@ -232,13 +252,16 @@ function coupled_system(L, N, tf, cfl, sf=true)
               q1=q1, sf=sf,
               pifield=Π, psifield=Ψ,
               interpolation_method=interpolation_method)
-
+    sim = SimulationParameters(L, N, dx, x, q1,
+                               m10, x10, v10,
+                               sf, λ, cfl)
     alg = SSPRK54()
     ode = ODEProblem{true}(ODE.coupled_rhs!, statevector, tspan,
                            params; saveat=t)
 
     sol = solve(ode, alg; adaptive=false, dt=dt)#, callback=cb)
-    return GridFunctions.coords(grid), sol
+    res = Simulation(sim, sol)
+    return res
 end
 
 # function coupled_system_fractional(L, N, tf, cfl)
