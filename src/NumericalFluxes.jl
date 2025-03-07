@@ -69,4 +69,11 @@ function flux_rusanov(ql, qr, equation::LinearScalarWaveEquation1D; kwargs...)
     return 0.5 * (A * (ql + qr)) - 0.5equation.velocity * (qr - ql)
 end
 
+# same as rusanov
+# function flux_HLLE(ql, qr, equation::LinearScalarWaveEquation1D; kwargs...)
+
+#     A = Equations.principal_part(equation)
+#     return (c * A * ql + c * A * qr - c * c(qr - ql)) / (2c)
+# end
+
 end #end of module

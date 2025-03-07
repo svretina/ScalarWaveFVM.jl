@@ -3,7 +3,6 @@ module ODE
 using ..Reconstructions
 using ..ParticleMotion
 using ..ScalarField
-using ..Interpolations
 using StaticArrays
 using Polyester
 using DataInterpolations
@@ -198,41 +197,26 @@ end
 function field_rhs_forced!(dQ, Q, params, t)
     x = params.x
     N = params.N
-    q1 = params.q1
-    q2 = params.q2
-    direction1 = params.direction1
-    direction2 = params.direction2
+    q = params.q
+    h = params.h
     L = params.L
     x10 = params.x1
-    x20 = params.x2
-    vmax = params.vmax
-    f0 = params.f₀
     A = params.A
+    ω = params.ω
 
     muscl!(dQ, Q, params, t)
-    x1, v1, a1 = ParticleMotion.oscillator2(t, x10, vmax, A, direction1)
-    x2, v2, a2 = ParticleMotion.oscillator2(t, x20, vmax, A, direction2)
-    @inline s1(x) = a1 * ScalarField.∂vΠ(x, q1, x1, v1)
-    @inline s2(x) = a2 * ScalarField.∂vΠ(x, q2, x2, v2)
+    x1, v1, a1 = ParticleMotion.oscillator(t, x10, A, ω)
+    # x2, v2, a2 = ParticleMotion.oscillator2(t, x20, vmax,
+    #                                         A, direction2)
+    # @inline s1(x) = a1 * ScalarField.∂vΠ(x, q1, x1, v1)
+    # @inline s2(x) = a2 * ScalarField.∂vΠ(x, q2, x2, v2)
     dtΠ = @view dQ[:, 1]
-
+    h2 = 0.5h
     @inbounds for i in 1:N
-        # source term evaluated at cell centers
-        dtΠ[i] -= s1(x[i]) + s2(x[i])
+        left_face = x[i] - h2
+        right_face = x[i] + h2
+        dtΠ[i] -= ScalarField.cell_average(left_face, right_face, q, x1, v1, h)
     end
-    # the source term should be just averaged over the cell
-    # meaning that i need to calculate
-    # an integral
-    #
-    # as 0th order approximation i will just sample
-    # the source term at the cell center
-    #
-    # then as a 1st order approximation
-    # I can evaluate it at the faces and take the average
-    # of it
-    #
-    # the exact thing to do is to
-    # take the integral of it
     return nothing
 end
 
@@ -266,22 +250,47 @@ function field_rhs!(dQ, Q, params, t)
             dtΠ[i] -= s1(x[i]) # + s2(x[i])
         end
     end
-    # the source term should be just averaged over the cell
-    # meaning that i need to calculate
-    # an integral
-    #
-    # as 0th order approximation i will just sample
-    # the source term at the cell center
-    #
-    # then as a 1st order approximation
-    # I can evaluate it at the faces and take the average
-    # of it
-    #
-    # the exact thing to do is to
-    # take the integral of it
-    #
-    # If this does not work, consider implementing
-    # the Fractional Step method of LeVeque Chapter 17.1 pg 377
+    return nothing
+end
+
+function field_rhs2!(dQ, Q, params, t)
+    x = params.x
+    N = params.N
+    q1 = params.q1
+    q2 = params.q2
+    sf = params.sf
+    h = params.h
+    h2 = 0.5h
+    _h = 1 / h
+    Q_field = Q.x[1]
+    Q_particle = Q.x[2]
+    dQ_field = dQ.x[1]
+    dQ_particle = dQ.x[2]
+
+    a1 = dQ_particle[3]
+    x1 = Q_particle[2]
+    v1 = Q_particle[3] ### ASK ERIK dQ or Q ?
+    ###
+    a2 = dQ_particle[6]
+    x2 = Q_particle[5]
+    v2 = Q_particle[6] ##  or dQ_particle[5]??
+    muscl!(dQ_field, Q_field, params, t)
+    if sf
+        @inline s1(x) = a1 * ScalarField.∂vΠ(x, q1, x1, v1)
+        @inline s2(x) = a2 * ScalarField.∂vΠ(x, q2, x2, v2)
+        dtΠ = @view dQ_field[:, 1]
+
+        @inbounds for i in 1:N
+            left_face = x[i] - h2
+            right_face = x[i] + h2
+            # subcell integration
+            singular_term1_averaged = cell_average(s1, left_face, right_face, x1, h)
+            singular_term2_averaged = cell_average(s2, left_face, right_face, x2, h)
+
+            # dtΠ[i] -= s1(x[i]) + s2(x[i])
+            dtΠ[i] -= singular_term1_averaged + singular_term2_averaged
+        end
+    end
     return nothing
 end
 
@@ -317,27 +326,102 @@ function particle_rhs!(dQ, Q, params, t)
     return nothing
 end
 
+function interacting_particle_rhs!(dQ, Q, params, t)
+    Q_field = Q.x[1]
+    Q_particle = Q.x[2]
+    dQ_particle = dQ.x[2]
+
+    Π = @view Q_field[:, 1]
+    Ψ = @view Q_field[:, 2]
+    x = params.x
+    interpolation_method = params.interpolation_method
+    q1 = params.q1
+    q2 = params.q2
+
+    m1 = Q_particle[1]
+    x1 = Q_particle[2]
+    v1 = Q_particle[3]
+
+    m2 = Q_particle[4]
+    x2 = Q_particle[5]
+    v2 = Q_particle[6]
+
+    # abs(v1) <= 1 || throw("v1=$v1 > 1, at t=$(t), a1 = $(dQ_particle[3])")
+    # abs(v2) <= 1 || throw("v2=$v2 > 1, at t=$(t), a1 = $(dQ_particle[6])")
+    vel = 0.9
+    v1 = max(-vel, min(vel, v1))
+    Q_particle[3] = v1
+    v2 = max(-vel, min(vel, v2))
+    Q_particle[6] = v2
+
+    # if any(isnan, Ψ)
+    #     @show t, v1, v2
+    #     return x, Ψ
+    #     throw()
+    # end
+    # if any(isnan, Π)
+    #     @show t, v1, v2
+    #     return x, Π
+    #     throw()
+    # end
+
+    interpolator_Ψ = interpolation_method(Ψ, x; extrapolation=ExtrapolationType.Extension)
+    interpolator_Π = interpolation_method(Π, x; extrapolation=ExtrapolationType.Extension)
+    Πr_at_1 = interpolator_Π(x1)
+    Ψr_at_1 = interpolator_Ψ(x1)
+    Πr_at_2 = interpolator_Π(x2)
+    Ψr_at_2 = interpolator_Ψ(x2)
+
+    # value of singular field of first particle
+    # evaluated at position of 2nd particle
+    Πs1_at_2 = ScalarField.Πs(x2, q1, x1, v1)
+    Ψs1_at_2 = ScalarField.Ψs(x2, q1, x1, v1)
+    # value of singular field of second particle
+    # evaluated at position of 1st particle
+    Πs2_at_1 = ScalarField.Πs(x1, q2, x2, v2)
+    Ψs2_at_1 = ScalarField.Ψs(x1, q2, x2, v2)
+
+    v12 = v1 * v1
+    a12 = one(v1) - v12
+    v22 = v2 * v2
+    a22 = one(v2) - v22
+
+    Π1 = Πr_at_1 + Πs2_at_1
+    Ψ1 = Ψr_at_1 + Ψs2_at_1
+    Π2 = Πr_at_2 + Πs1_at_2
+    Ψ2 = Ψr_at_2 + Ψs1_at_2
+    # Particle 1
+    dQ_particle[1] = -q1 * (Π1 + v1 * Ψ1)
+    dQ_particle[2] = v1
+    dQ_particle[3] = q1 * a12 * (v1 * Π1 + Ψ1) / m1
+    # Particle 2
+    dQ_particle[4] = -q2 * (Π2 + v2 * Ψ2)
+    dQ_particle[5] = v2
+    dQ_particle[6] = q2 * a22 * (v2 * Π2 + Ψ2) / m2
+    params.acc[1] = max(dQ_particle[3], dQ_particle[6])
+    return nothing
+end
+
 function particle_rhs_functions!(dQ, Q, params, t)
     Π = params.pifield
     Ψ = params.psifield
     q1 = params.q1
 
-    m1 = Q[1]
-    x1 = Q[2]
-    v1 = Q[3]
-    abs(v1) <= 1 || throw("v1=$v1 > 1, at t=$(t), a1 = $(dQ_particle[3])")
-
+    @inbounds m1 = Q[1]
+    @inbounds x1 = Q[2]
+    @inbounds v1 = Q[3]
+    # abs(v1) <= 1 || throw("v1=$v1 > 1, at t=$(t), a1 = $(dQ[3])")
+    v1 = max(-1.0, min(1.0, v1))
+    Q[3] = v1
     Π1 = Π(t, x1)
     Ψ1 = Ψ(t, x1)
 
     v12 = v1 * v1
     a12 = one(v1) - v12
 
-    v∇Φ1 = Π1 + v1 * Ψ1
-
-    dQ[1] = -q1 * v∇Φ1
-    dQ[2] = v1
-    dQ[3] = q1 * a12 * (v1 * Π1 + Ψ1) / m1
+    @inbounds dQ[1] = -q1 * (Π1 + v1 * Ψ1)
+    @inbounds dQ[2] = v1
+    @inbounds dQ[3] = q1 * a12 * (v1 * Π1 + Ψ1) #/ m1
     return nothing
 end
 
@@ -371,6 +455,12 @@ end
 function coupled_rhs!(dQ, Q, params, t)
     particle_rhs!(dQ, Q, params, t)
     field_rhs!(dQ, Q, params, t)
+    return nothing
+end
+
+function interacting_coupled_rhs!(dQ, Q, params, t)
+    interacting_particle_rhs!(dQ, Q, params, t)
+    field_rhs2!(dQ, Q, params, t)
     return nothing
 end
 

@@ -16,6 +16,13 @@ function run_coupled_sims(L, N, tf, cfl, sf)
     return sim1, sim2, sim4
 end
 
+function run_forced_sims(Nosc, dx0, cfl, sf=true)
+    sim1 = Run.forced_motion(Nosc, dx0, cfl, sf)
+    sim2 = Run.forced_motion(Nosc, dx0 / 2, cfl, sf)
+    sim4 = Run.forced_motion(Nosc, dx0 / 4, cfl, sf)
+    return sim1, sim2, sim4
+end
+
 function mymean(arr)
     arr2 = zeros(eltype(arr), div(length(arr), 2))
     for i in eachindex(arr2)
