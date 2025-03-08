@@ -215,7 +215,7 @@ function field_rhs_forced!(dQ, Q, params, t)
     @inbounds for i in 1:N
         left_face = x[i] - h2
         right_face = x[i] + h2
-        dtΠ[i] -= ScalarField.cell_average(left_face, right_face, q, x1, v1, h)
+        dtΠ[i] -= a1 * ScalarField.cell_average(left_face, right_face, q, x1, v1, h)
     end
     return nothing
 end
@@ -223,7 +223,8 @@ end
 function field_rhs!(dQ, Q, params, t)
     x = params.x
     N = params.N
-    q1 = params.q1
+    q = params.q
+
     # q2 = params.q2
     sf = params.sf
     Q_field = Q.x[1]
@@ -243,11 +244,14 @@ function field_rhs!(dQ, Q, params, t)
     # xp2, vp2, ap2 = ParticleMotion.oscillator(t, x2, L, direction2)
 
     if sf
-        @inline s1(x) = a1 * ScalarField.∂vΠ(x, q1, x1, v1)
+        h = params.h
+        h2 = 0.5h
+        # @inline s1(x) = a1 * ScalarField.∂vΠ(x, q1, x1, v1)
         dtΠ = @view dQ_field[:, 1]
         @inbounds for i in 1:N
-            # source term evaluated at cell centers
-            dtΠ[i] -= s1(x[i]) # + s2(x[i])
+            left_face = x[i] - h2
+            right_face = x[i] + h2
+            dtΠ[i] -= a1 * ScalarField.cell_average(left_face, right_face, q, x1, v1, h)
         end
     end
     return nothing
@@ -261,7 +265,7 @@ function field_rhs2!(dQ, Q, params, t)
     sf = params.sf
     h = params.h
     h2 = 0.5h
-    _h = 1 / h
+    # _h = 1 / h
     Q_field = Q.x[1]
     Q_particle = Q.x[2]
     dQ_field = dQ.x[1]
@@ -269,11 +273,11 @@ function field_rhs2!(dQ, Q, params, t)
 
     a1 = dQ_particle[3]
     x1 = Q_particle[2]
-    v1 = Q_particle[3] ### ASK ERIK dQ or Q ?
+    v1 = dQ_particle[2] ### ASK ERIK dQ or Q ?
     ###
     a2 = dQ_particle[6]
     x2 = Q_particle[5]
-    v2 = Q_particle[6] ##  or dQ_particle[5]??
+    v2 = dQ_particle[5] ##  or dQ_particle[5] or Q_particle[3]??
     muscl!(dQ_field, Q_field, params, t)
     if sf
         @inline s1(x) = a1 * ScalarField.∂vΠ(x, q1, x1, v1)
@@ -281,14 +285,18 @@ function field_rhs2!(dQ, Q, params, t)
         dtΠ = @view dQ_field[:, 1]
 
         @inbounds for i in 1:N
-            left_face = x[i] - h2
-            right_face = x[i] + h2
-            # subcell integration
-            singular_term1_averaged = cell_average(s1, left_face, right_face, x1, h)
-            singular_term2_averaged = cell_average(s2, left_face, right_face, x2, h)
+            # left_face = x[i] - h2
+            # right_face = x[i] + h2
+            # # subcell integration
+            # singular_term1_averaged = a1 *
+            #                           ScalarField.cell_average(left_face, right_face,
+            #                                                    q1, x1, v1, h)
+            # singular_term2_averaged = a2 *
+            #                           ScalarField.cell_average(left_face, right_face,
+            #                                                    q2, x2, v2, h)
 
-            # dtΠ[i] -= s1(x[i]) + s2(x[i])
-            dtΠ[i] -= singular_term1_averaged + singular_term2_averaged
+            dtΠ[i] -= s1(x[i]) + s2(x[i])
+            # dtΠ[i] -= singular_term1_averaged + singular_term2_averaged
         end
     end
     return nothing
@@ -303,7 +311,7 @@ function particle_rhs!(dQ, Q, params, t)
     Ψ = @view Q_field[:, 2]
     x = params.x
     interpolation_method = params.interpolation_method
-    q1 = params.q1
+    q = params.q
 
     m1 = Q_particle[1]
     x1 = Q_particle[2]
@@ -320,9 +328,9 @@ function particle_rhs!(dQ, Q, params, t)
 
     # v∇Φ1 = Π1 + v1 * Ψ1
 
-    dQ_particle[1] = -q1 * (Π1 + v1 * Ψ1)
+    dQ_particle[1] = -q * (Π1 + v1 * Ψ1)
     dQ_particle[2] = v1
-    dQ_particle[3] = q1 * a12 * (v1 * Π1 + Ψ1) / m1
+    dQ_particle[3] = q * a12 * (v1 * Π1 + Ψ1) / m1
     return nothing
 end
 
@@ -346,24 +354,13 @@ function interacting_particle_rhs!(dQ, Q, params, t)
     x2 = Q_particle[5]
     v2 = Q_particle[6]
 
-    # abs(v1) <= 1 || throw("v1=$v1 > 1, at t=$(t), a1 = $(dQ_particle[3])")
-    # abs(v2) <= 1 || throw("v2=$v2 > 1, at t=$(t), a1 = $(dQ_particle[6])")
-    vel = 0.9
-    v1 = max(-vel, min(vel, v1))
-    Q_particle[3] = v1
-    v2 = max(-vel, min(vel, v2))
-    Q_particle[6] = v2
-
-    # if any(isnan, Ψ)
-    #     @show t, v1, v2
-    #     return x, Ψ
-    #     throw()
-    # end
-    # if any(isnan, Π)
-    #     @show t, v1, v2
-    #     return x, Π
-    #     throw()
-    # end
+    abs(v1) <= 1 || throw("v1=$v1 > 1, at t=$(t), a1 = $(dQ[3])")
+    abs(v2) <= 1 || throw("v2=$v2 > 1, at t=$(t), a1 = $(dQ[6])")
+    # vel = 0.9
+    # v1 = max(-vel, min(vel, v1))
+    # Q_particle[3] = v1
+    # v2 = max(-vel, min(vel, v2))
+    # Q_particle[6] = v2
 
     interpolator_Ψ = interpolation_method(Ψ, x; extrapolation=ExtrapolationType.Extension)
     interpolator_Π = interpolation_method(Π, x; extrapolation=ExtrapolationType.Extension)

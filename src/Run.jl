@@ -92,22 +92,23 @@ function forced_motion(Nosc, dx, cfl, sf=true, muscl=true)
     c = 1.0
     equation = LinearScalarWaveEquation1D(c)
 
-    vmax = 0.5
+    vmax = 0.999
     # ω = 2π
     # T = 1.0
     # A = vmax / ω
 
-    A = 200.0
+    A = 1.0
     ω = round(vmax / A; digits=9)
-    T = ceil(2π / ω)
+    T = (2π / ω)
 
-    L = 4Nosc * T / 3
+    L = ceil(4Nosc * T / 3)
     @show ω
     @show A
     @show L
     @show T
     N = 2Int64(L)
-    N = Int64(N / dx)
+    N = Int64(ceil(N / dx))
+    @show N
     grid = UniformStaggeredGrid1D(Float64[-L, L], N)
     x = coords(grid) # cell centers
     @show length(x)
@@ -125,14 +126,14 @@ function forced_motion(Nosc, dx, cfl, sf=true, muscl=true)
     slope_limiter = Limiters.minmod
     flux_limiter = Limiters.minmod
 
-    q = +10
+    q = +1
     x10 = 0.0
     direction = +1
 
     tf = Nosc * T
     tspan = (0.0, tf)
     t = 0.0:dt:(tf + dt)
-
+    @show length(t)
     sim = SimulationParametersForced(L, N, dx, x,
                                      q, x10, A,
                                      ω, vmax, direction, Nosc,
@@ -236,7 +237,7 @@ function coupled_system(L, N, tf, cfl, sf=true)
     @show dx, dt
     t = 0.0:dt:tf
 
-    Π = zeros(Float64, length(grid))
+    # Π = zeros(Float64, length(grid))
     # Ψ = zeros(Float64, length(grid))
 
     #n = 5
@@ -244,20 +245,22 @@ function coupled_system(L, N, tf, cfl, sf=true)
     λ = 200.0 # L / n
     @show 2A * π / λ
     @show λ
+    Π = zeros(Float64, length(grid))
+
     Ψ = InitialData.dxSineWave.(0.0, x, A, λ, c)
     Π = InitialData.dtSineWave.(0.0, x, A, λ, c)
 
     field_statevector = hcat(Π, Ψ)
 
     ## Particle 1
-    q1 = 0.04
+    q = 0.001
     # @assert abs(q1) > dt
     m10 = 1.0
     x10 = 0.0
     v10 = 0.0
 
     println("Particle:")
-    println("q = $q1")
+    println("q = $q")
     println("m = $m10")
     println("x = $x10")
     println("v = $v10")
@@ -275,10 +278,10 @@ function coupled_system(L, N, tf, cfl, sf=true)
               slope_limiter=slope_limiter, flux_limiter=flux_limiter,
               h=dx, N=N, x=x, cfl=cfl, L=L,
               dt=dt, x1=x10,
-              q1=q1, sf=sf,
+              q=q, sf=sf,
               pifield=Π, psifield=Ψ,
               interpolation_method=interpolation_method)
-    sim = SimulationParameters1(L, N, dx, x, q1,
+    sim = SimulationParameters1(L, N, dx, x, q,
                                 m10, x10, v10,
                                 sf, λ, cfl)
     alg = SSPRK54()
@@ -312,12 +315,12 @@ function interacting_coupled_system(L, N, tf, cfl, sf=true)
     q1 = 0.04
     m10 = 1.0
     x10 = -L / 4
-    v10 = 0.5
+    v10 = 0.999
     ## Particle 2
     q2 = 0.04
     m20 = 1.0
     x20 = L / 4
-    v20 = -0.5
+    v20 = -0.999
 
     println("Particle 1:         Particle 2:")
     println("q = $q1             q = $q2")
@@ -353,32 +356,6 @@ function interacting_coupled_system(L, N, tf, cfl, sf=true)
     res = Simulation(sim, sol)
     return res
 end
-
-#     function condition(u, t, integrator)
-#     # Check if either particle is outside the domain
-#     particle1_out = u.x[2][2] >= L || u.x[2][2] < -L
-#     # particle2_out = u.x[2][5] >= L || u.x[2][5] < -L
-#     return particle1_out #|| particle2_out
-# end
-
-# function affect!(integrator)
-#     # Check and adjust first particle
-#     if integrator.u.x[2][2] >= L
-#         integrator.u.x[2][2] -= 2L
-#     elseif integrator.u.x[2][2] < -L
-#         integrator.u.x[2][2] += 2L
-#     end
-
-#     # Check and adjust second particle
-#     if integrator.u.x[2][5] >= L
-#         integrator.u.x[2][5] -= 2L
-#     elseif integrator.u.x[2][5] < -L
-#         integrator.u.x[2][5] += 2L
-#     end
-# end
-
-# # Define and apply the callback
-# cb = DiscreteCallback(condition, affect!)
 
 function coupled_system_fractional(L, N, tf, cfl, sf=true)
     c = 1.0

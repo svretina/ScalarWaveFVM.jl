@@ -4,6 +4,7 @@ using LaTeXStrings
 using ..ParticleMotion
 using ..Run
 using LinearAlgebra
+using MakieCore
 using Makie
 using CairoMakie
 
@@ -179,10 +180,10 @@ function plot_pifield_resolutions_forced(i, sim1, sim2, sim4)
 
     xp, _, _ = ParticleMotion.oscillator(t, sim1.params.x0, sim1.params.A, sim1.params.ω)
 
-    fig = Figure(; ize=(253, 200))
+    fig = Figure(; size=(253, 200))
     ax = Axis(fig[1, 1];
               xlabel=L"x",
-              ylabel=L"\Pi",
+              ylabel=L"\Pi_\mathrm{r}",
               title=L"t=%$(round(t, digits=3))",
               limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
     # Plot the data
@@ -196,12 +197,82 @@ function plot_pifield_resolutions_forced(i, sim1, sim2, sim4)
 
     # Adjust layout to ensure proper spacing
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
-    rowsize!(fig.layout, 2, Relative(0.2))  # Allocate 15% of height for legend
-    rowgap!(fig.layout, 2)  # Small gap between plot and legend
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    save(joinpath(FIG_PATH, "pifield_res_forced_i=$(i).pdf"), fig)
-    save(joinpath(FIG_PATH, "pifield_res_forced_i=$(i).svg"), fig)
+    save(joinpath(FIG_PATH,
+                  "forced_motion/pifield_res_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl)_i=$(i).pdf"),
+         fig)
+    save(joinpath(FIG_PATH,
+                  "forced_motion/pifield_res_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl)_i=$(i).svg"),
+         fig)
+    return fig
+end
+
+function plot_psifield_resolutions_forced(i, sim1, sim2, sim4)
+    set_theme!(mytheme_aps())
+    # Get time points and assert equality
+    t1 = sim1.sol.t[i]
+    t2 = sim2.sol.t[2i - 1]
+    t4 = sim4.sol.t[4i - 3]
+    @show t1, t2, t4
+    @assert t1 == t2
+    @assert t2 == t4
+    t = t1
+
+    # Create figure and axis
+
+    L = sim1.params.L
+    x_range = (-L / 2, L / 2)
+    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    x_filtered = sim1.params.x[mask]
+
+    # Filter sim1 data (640 points)
+    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    x1_filtered = sim1.params.x[mask1]  # ~320 elements if symmetric around 0
+    y1_filtered = sim1.sol.u[i][mask1, 2]  # Matches x1_filtered length
+
+    y2_raw = mymean(sim2.sol.u[2i - 1][:, 2])  # ~640 elements
+    y2_filtered = y2_raw[mask1]           # Should reduce to ~320 elements
+
+    y4_raw = mymean(mymean(sim4.sol.u[4i - 3][:, 2]))  # ~1280 elements
+    y4_filtered = y4_raw[mask1]   # Should reduce to ~320 elements
+
+    # Compute y-limits with padding
+    y_min = minimum([minimum(y1_filtered), minimum(y2_filtered), minimum(y4_filtered)])
+    y_max = maximum([maximum(y1_filtered), maximum(y2_filtered), maximum(y4_filtered)])
+    padding = 0.1 * (y_max - y_min)  # Add 10% padding
+    y_limits = (y_min - padding, y_max + padding)
+
+    xp, _, _ = ParticleMotion.oscillator(t, sim1.params.x0, sim1.params.A, sim1.params.ω)
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"x",
+              ylabel=L"\Psi_\mathrm{r}",
+              title=L"t=%$(round(t, digits=3))",
+              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+    # Plot the data
+    lines!(ax, x_filtered, y1_filtered; label=L"\textrm{low}")
+    lines!(ax, x_filtered, y2_filtered; label=L"\textrm{mid}")
+    lines!(ax, x_filtered, y4_filtered; label=L"\textrm{high}")
+    vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+    # Add legend at the bottom
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal,
+                 tellwidth=false, tellheight=true)
+
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    # Save the figure
+    save(joinpath(FIG_PATH,
+                  "forced_motion/psifield_res_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl)_i=$(i).pdf"),
+         fig)
+    save(joinpath(FIG_PATH,
+                  "forced_motion/psifield_res_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl)_i=$(i).svg"),
+         fig)
     return fig
 end
 
@@ -243,10 +314,10 @@ function plot_pifield_diff_forced(i, sim1, sim2, sim4)
 
     xp, _, _ = ParticleMotion.oscillator(t, sim1.params.x0, sim1.params.A, sim1.params.ω)
 
-    fig = Figure(; ize=(253, 200))
+    fig = Figure(; size=(253, 200))
     ax = Axis(fig[1, 1];
               xlabel=L"x",
-              ylabel=L"\Pi",
+              ylabel=L"\Pi_\mathrm{r}",
               title=L"t=%$(round(t, digits=3))",
               limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
     # Plot the data
@@ -260,74 +331,16 @@ function plot_pifield_diff_forced(i, sim1, sim2, sim4)
 
     # Adjust layout to ensure proper spacing
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
-    rowsize!(fig.layout, 2, Relative(0.2))  # Allocate 15% of height for legend
-    rowgap!(fig.layout, 2)  # Small gap between plot and legend
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    save(joinpath(FIG_PATH, "pifield_diff_forced_i=$(i).pdf"), fig)
-    save(joinpath(FIG_PATH, "pifield_diff_forced_i=$(i).svg"), fig)
-    return fig
-end
-
-function plot_psifield_resolutions_forced(i, sim1, sim2, sim4)
-    set_theme!(mytheme_aps())
-    # Get time points and assert equality
-    t1 = sim1.sol.t[i]
-    t2 = sim2.sol.t[2i - 1]
-    t4 = sim4.sol.t[4i - 3]
-    @assert t1 == t2
-    @assert t2 == t4
-    t = t1
-
-    # Create figure and axis
-
-    L = sim1.params.L
-    x_range = (-L / 2, L / 2)
-    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
-    x_filtered = sim1.params.x[mask]
-
-    # Filter sim1 data (640 points)
-    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
-    x1_filtered = sim1.params.x[mask1]  # ~320 elements if symmetric around 0
-    y1_filtered = sim1.sol.u[i][mask1, 2]  # Matches x1_filtered length
-
-    y2_raw = mymean(sim2.sol.u[2i - 1][:, 2])  # ~640 elements
-    y2_filtered = y2_raw[mask1]           # Should reduce to ~320 elements
-
-    y4_raw = mymean(mymean(sim4.sol.u[4i - 3][:, 2]))  # ~1280 elements
-    y4_filtered = y4_raw[mask1]   # Should reduce to ~320 elements
-
-    # Compute y-limits with padding
-    y_min = minimum([minimum(y1_filtered), minimum(y2_filtered), minimum(y4_filtered)])
-    y_max = maximum([maximum(y1_filtered), maximum(y2_filtered), maximum(y4_filtered)])
-    padding = 0.1 * (y_max - y_min)  # Add 10% padding
-    y_limits = (y_min - padding, y_max + padding)
-
-    xp, _, _ = ParticleMotion.oscillator(t, sim1.params.x0, sim1.params.A, sim1.params.ω)
-
-    fig = Figure(; ize=(253, 200))
-    ax = Axis(fig[1, 1];
-              xlabel=L"x",
-              ylabel=L"\Psi",
-              title=L"t=%$(round(t, digits=3))",
-              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
-    # Plot the data
-    lines!(ax, x_filtered, y1_filtered; label=L"\textrm{low}")
-    lines!(ax, x_filtered, y2_filtered; label=L"\textrm{mid}")
-    lines!(ax, x_filtered, y4_filtered; label=L"\textrm{high}")
-    vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
-    # Add legend at the bottom
-    leg = Legend(fig[2, 1], ax; orientation=:horizontal,
-                 tellwidth=false, tellheight=true)
-
-    # Adjust layout to ensure proper spacing
-    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
-    rowsize!(fig.layout, 2, Relative(0.2))  # Allocate 15% of height for legend
-    rowgap!(fig.layout, 2)  # Small gap between plot and legend
-    colsize!(fig.layout, 1, Relative(0.9))
-    # Save the figure
-    save(joinpath(FIG_PATH, "psifield_res_forced_i=$(i).pdf"), fig)
-    save(joinpath(FIG_PATH, "psifield_res_forced_i=$(i).svg"), fig)
+    save(joinpath(FIG_PATH,
+                  "forced_motion/pifield_diff_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl)_i=$(i).pdf"),
+         fig)
+    save(joinpath(FIG_PATH,
+                  "forced_motion/pifield_diff_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl)_i=$(i).svg"),
+         fig)
     return fig
 end
 
@@ -369,10 +382,10 @@ function plot_psifield_diff_forced(i, sim1, sim2, sim4)
 
     xp, _, _ = ParticleMotion.oscillator(t, sim1.params.x0, sim1.params.A, sim1.params.ω)
 
-    fig = Figure(; ize=(253, 200))
+    fig = Figure(; size=(253, 200))
     ax = Axis(fig[1, 1];
               xlabel=L"x",
-              ylabel=L"\Psi",
+              ylabel=L"\Psi_\mathrm{r}",
               title=L"t=%$(round(t, digits=3))",
               limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
     # Plot the data
@@ -384,14 +397,17 @@ function plot_psifield_diff_forced(i, sim1, sim2, sim4)
     leg = Legend(fig[2, 1], ax; orientation=:horizontal,
                  tellwidth=false, tellheight=true)
 
-    # Adjust layout to ensure proper spacing
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
-    rowsize!(fig.layout, 2, Relative(0.2))  # Allocate 15% of height for legend
-    rowgap!(fig.layout, 2)  # Small gap between plot and legend
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    save(joinpath(FIG_PATH, "psifield_diff_forced_i=$(i).pdf"), fig)
-    save(joinpath(FIG_PATH, "psifield_diff_forced_i=$(i).svg"), fig)
+    save(joinpath(FIG_PATH,
+                  "forced_motion/psifield_diff_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl)_i=$(i).pdf"),
+         fig)
+    save(joinpath(FIG_PATH,
+                  "forced_motion/psifield_diff_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl)_i=$(i).svg"),
+         fig)
     return fig
 end
 
@@ -439,11 +455,11 @@ function plot_pifield_convfac_forced(sim1, sim2, sim4)
     y_max = maximum(convfac)
     padding = 0.1 * (y_max - y_min)  # Add 10% padding
     y_limits = (y_min - padding, y_max + padding)
-    fig = Figure(; ize=(253, 200))
+    fig = Figure(; size=(253, 200))
     ax = Axis(fig[1, 1];
               xlabel=L"t",
               # ylabel=L"",
-              title=L"\textrm{Convergence Factor of \Pi field}",
+              title=L"\textrm{Convergence Factor of \Pi_\mathrm{r} field}",
               limits=(-1, sim1.sol.t[end], 1, 2))
     # Plot the data
     lines!(ax, sim1.sol.t[2:end], convfac[2:end]; linewidth=1)
@@ -454,8 +470,12 @@ function plot_pifield_convfac_forced(sim1, sim2, sim4)
     # rowgap!(fig.layout, 2)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    save(joinpath(FIG_PATH, "pifield_convfac_forced.pdf"), fig)
-    save(joinpath(FIG_PATH, "pifield_convfac_forced.svg"), fig)
+    save(joinpath(FIG_PATH,
+                  "forced_motion/pifield_convfac_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl).pdf"),
+         fig)
+    save(joinpath(FIG_PATH,
+                  "forced_motion/pifield_convfac_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl).svg"),
+         fig)
     return fig
 end
 
@@ -507,8 +527,8 @@ function plot_psifield_convfac_forced(sim1, sim2, sim4)
     ax = Axis(fig[1, 1];
               xlabel=L"t",
               # ylabel=L"",
-              title=L"\textrm{Convergence Factor of \Psi field}",
-              limits=(-1, sim1.sol.t[end], 1, 1.1ymax))
+              title=L"\textrm{Convergence Factor of \Psi_\mathrm{r} field}",
+              limits=(-1, sim1.sol.t[end], 1, 3))
     # Plot the data
     lines!(ax, sim1.sol.t[2:end], convfac[2:end]; linewidth=1)
     # scatter!(ax, sim1.sol.t[2:end], convfac[2:end]; markersize=5)
@@ -518,8 +538,12 @@ function plot_psifield_convfac_forced(sim1, sim2, sim4)
     # rowgap!(fig.layout, 2)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    save(joinpath(FIG_PATH, "psifield_convfac_forced.pdf"), fig)
-    save(joinpath(FIG_PATH, "psifield_convfac_forced.svg"), fig)
+    save(joinpath(FIG_PATH,
+                  "forced_motion/psifield_convfac_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl).pdf"),
+         fig)
+    save(joinpath(FIG_PATH,
+                  "forced_motion/psifield_convfac_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl).svg"),
+         fig)
     return fig
 end
 
@@ -571,8 +595,8 @@ function plot_pifield_convord_forced(sim1, sim2, sim4)
     ax = Axis(fig[1, 1];
               xlabel=L"t",
               # ylabel=L"",
-              title=L"\textrm{Convergence Order of \Pi field}",
-              limits=(-1, sim1.sol.t[end], 0, 2.5))
+              title=L"\textrm{Convergence Order of \Pi_\mathrm{r} field}",
+              limits=(0, sim1.sol.t[end], 0, 4))
     # Plot the data
     lines!(ax, sim1.sol.t[2:end], log2.(convfac[2:end]); linewidth=1)
     # scatter!(ax, sim1.sol.t[2:end], convfac[2:end]; markersize=5)
@@ -582,8 +606,12 @@ function plot_pifield_convord_forced(sim1, sim2, sim4)
     # rowgap!(fig.layout, 2)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    save(joinpath(FIG_PATH, "pifield_convfac_forced.pdf"), fig)
-    save(joinpath(FIG_PATH, "pifield_convfac_forced.svg"), fig)
+    save(joinpath(FIG_PATH,
+                  "forced_motion/pifield_convord_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl).pdf"),
+         fig)
+    save(joinpath(FIG_PATH,
+                  "forced_motion/pifield_convord_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl).svg"),
+         fig)
     return fig
 end
 
@@ -635,8 +663,8 @@ function plot_psifield_convord_forced(sim1, sim2, sim4)
     ax = Axis(fig[1, 1];
               xlabel=L"t",
               # ylabel=L"",
-              title=L"\textrm{Convergence Order of \Psi field}",
-              limits=(-1, sim1.sol.t[end], 0, 2.5))
+              title=L"\textrm{Convergence Order of \Psi_\mathrm{r} field}",
+              limits=(0, sim1.sol.t[end], 0, 4))
     # Plot the data
     lines!(ax, sim1.sol.t[2:end], log2.(convfac[2:end]); linewidth=1)
     # scatter!(ax, sim1.sol.t[2:end], convfac[2:end]; markersize=5)
@@ -646,15 +674,425 @@ function plot_psifield_convord_forced(sim1, sim2, sim4)
     # rowgap!(fig.layout, 2)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    save(joinpath(FIG_PATH, "psifield_convord_forced.pdf"), fig)
-    save(joinpath(FIG_PATH, "psifield_convord_forced.svg"), fig)
+    save(joinpath(FIG_PATH,
+                  "forced_motion/psifield_convord_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl).pdf"),
+         fig)
+    save(joinpath(FIG_PATH,
+                  "forced_motion/psifield_convord_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl).svg"),
+         fig)
     return fig
 end
 
-#### Plots for free motion of 1 particle in potential
-####
-####
-####
+function plot_convergence_panel_forced(sim1, sim2, sim4)
+    nt = length(sim1.sol.t)
+    fig1 = plot_pifield_resolutions_forced(nt, sim1, sim2, sim4)  # Your existing function
+    fig2 = plot_psifield_resolutions_forced(nt, sim1, sim2, sim4)  # Replace with your second function
+    fig3 = plot_pifield_convord_forced(sim1, sim2, sim4)  # Replace with your third function
+    fig4 = plot_psifield_convord_forced(sim1, sim2, sim4)  # Replace with your fourth function
+
+    fig = Figure(; size=(600, 500))
+
+    # Add supertitle
+    supertitle = Label(fig[1, 1:2], L"v_{max}=%$(sim1.params.vmax)";
+                       fontsize=20, font=:bold, halign=:center)
+
+    # Function to recreate Axis content
+    function recreate_axis!(fig, src_fig, row, col)
+        src_ax = contents(src_fig[1, 1])[1]  # Original Axis
+
+        # Create new Axis with same properties
+        new_ax = Axis(fig[row, col];
+                      xlabel=src_ax.xlabel[],
+                      ylabel=src_ax.ylabel[],
+                      title=src_ax.title[],
+                      limits=src_ax.limits[])
+
+        # Copy plot objects
+        for plot in src_ax.scene.plots
+            if plot isa MakieCore.Scatter
+                label = haskey(plot.attributes, :label) ? plot.label[] : nothing
+                scatter!(new_ax, plot[1][], plot[2][]; label=label,
+                         markersize=plot.markersize[])
+            elseif plot isa MakieCore.Lines
+                data = plot[1][]  # Single Observable
+                label = haskey(plot.attributes, :label) ? plot.label[] : nothing
+                if isa(data, Vector{Point{2,Float64}})  # Regular Lines
+                    x = [p[1] for p in data]
+                    y = [p[2] for p in data]
+                    lines!(new_ax, x, y; label=label, linewidth=plot.linewidth[])
+                elseif isa(data, Vector{Float64})  # VLines misclassified as Lines
+                    @show "ASDFA"
+                    vlines!(new_ax, data; color=plot.color[], linestyle=plot.linestyle[],
+                            linewidth=plot.linewidth[])
+                end
+            end
+        end
+
+        # Add Legend if it exists, place in the next row under the column
+        leg_content = contents(src_fig[2, 1])
+        if !isempty(leg_content)
+            Legend(fig[row + 1, col], new_ax; orientation=:horizontal, tellwidth=false,
+                   tellheight=true)
+        end
+    end
+
+    # Recreate each plot in the grid
+    recreate_axis!(fig, fig1, 2, 1)  # Top-left: Π field resolutions (Axis in row 2, Legend in row 3)
+    recreate_axis!(fig, fig2, 2, 2)  # Top-right: Ψ field resolutions (Axis in row 2, Legend in row 3)
+    recreate_axis!(fig, fig3, 4, 1)  # Bottom-left: Π field convergence (Axis in row 4)
+    recreate_axis!(fig, fig4, 4, 2)  # Bottom-right: Ψ field convergence (Axis in row 4)
+
+    # Adjust layout with padding on the right
+    rowsize!(fig.layout, 1, Relative(0.1)) # Supertitle row
+    rowsize!(fig.layout, 2, Auto())       # Top row of plots (fig1, fig2)
+    rowsize!(fig.layout, 3, Relative(0.05)) # Legend row for fig1 and fig2
+    rowsize!(fig.layout, 4, Auto())       # Bottom row of plots (fig3, fig4)
+    # rowsize!(fig.layout, 5, Relative(0.0)) # Empty row
+    rowgap!(fig.layout, 0)
+    colsize!(fig.layout, 1, Relative(0.5)) # Left column (50% of width)
+    colsize!(fig.layout, 2, Relative(0.45)) # Right column (45% of width, leaves 5% padding)
+    # Save the combined figure
+    save(joinpath(FIG_PATH,
+                  "forced_motion/convergence_panel_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl).pdf"),
+         fig)
+    save(joinpath(FIG_PATH,
+                  "forced_motion/convergence_panel_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl).svg"),
+         fig)
+    return fig
+end
+
+#### Plots for interacting particles
+
+function plot_pifield_interacting(i, sim1)
+    set_theme!(mytheme_aps())
+    # Get time points and assert equality
+    t = sim1.sol.t[i]
+
+    # Create figure and axis
+
+    L = sim1.params.L
+    x_range = (-L / 2, L / 2)
+    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    x_filtered = sim1.params.x[mask]
+
+    # Filter sim1 data (640 points)
+    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    x1_filtered = sim1.params.x[mask1]  # ~320 elements if symmetric around 0
+    y1_filtered = sim1.sol.u[i].x[1][mask1, 1]  # Matches x1_filtered length
+
+    # Compute y-limits with padding
+    y_min = minimum(y1_filtered)
+    y_max = maximum(y1_filtered)
+    padding = 0.1 * (y_max - y_min)  # Add 10% padding
+    y_limits = (y_min - padding, y_max + padding)
+
+    xp1 = sim1.sol.u[i].x[2][2]
+    xp2 = sim1.sol.u[i].x[2][5]
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"x",
+              ylabel=L"\Pi_\mathrm{r}",
+              title=L"t=%$(round(t, digits=3))",
+              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+    # Plot the data
+    lines!(ax, x_filtered, y1_filtered)
+    vlines!(ax, [xp1]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+    vlines!(ax, [xp2]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    colsize!(fig.layout, 1, Relative(0.9))
+    # Save the figure
+    save(joinpath(FIG_PATH,
+                  "interacting_particles/pifield_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl)_i=$(i).pdf"),
+         fig)
+    save(joinpath(FIG_PATH,
+                  "interacting_particles/pifield_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl)_i=$(i).svg"),
+         fig)
+    return fig
+end
+
+function plot_psifield_interacting(i, sim1)
+    set_theme!(mytheme_aps())
+    # Get time points and assert equality
+    t = sim1.sol.t[i]
+
+    # Create figure and axis
+
+    L = sim1.params.L
+    x_range = (-L / 2, L / 2)
+    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    x_filtered = sim1.params.x[mask]
+
+    # Filter sim1 data (640 points)
+    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    x1_filtered = sim1.params.x[mask1]  # ~320 elements if symmetric around 0
+    y1_filtered = sim1.sol.u[i].x[1][mask1, 2]  # Matches x1_filtered length
+
+    # Compute y-limits with padding
+    y_min = minimum(y1_filtered)
+    y_max = maximum(y1_filtered)
+    padding = 0.1 * (y_max - y_min)  # Add 10% padding
+    y_limits = (y_min - padding, y_max + padding)
+
+    xp1 = sim1.sol.u[i].x[2][2]
+    xp2 = sim1.sol.u[i].x[2][5]
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"x",
+              ylabel=L"\Psi_\mathrm{r}",
+              title=L"t=%$(round(t, digits=3))",
+              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+    # Plot the data
+    lines!(ax, x_filtered, y1_filtered)
+    vlines!(ax, [xp1]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+    vlines!(ax, [xp2]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    colsize!(fig.layout, 1, Relative(0.9))
+    # Save the figure
+    save(joinpath(FIG_PATH,
+                  "interacting_particles/psifield_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl)_i=$(i).pdf"),
+         fig)
+    save(joinpath(FIG_PATH,
+                  "interacting_particles/psifield_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl)_i=$(i).svg"),
+         fig)
+    return fig
+end
+
+function plot_particles_position(sim1; invert=true)
+    set_theme!(mytheme_aps())
+    # Get time points and assert equality
+
+    # Create figure and axis
+    L = sim1.params.L
+    x_range = (-L / 2, L / 2)
+    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    x_filtered = sim1.params.x[mask]
+
+    nt = length(sim1.sol.t)
+    xs1 = zeros(nt)
+    xs2 = zeros(nt)
+    for i in 1:nt
+        xs1[i] = sim1.sol.u[i].x[2][2]
+        xs2[i] = sim1.sol.u[i].x[2][5]
+    end
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              title=L"\textrm{Particle Position}")
+    # Plot the data
+    if invert
+        lines!(ax, xs1, sim1.sol.t; label=L"\textrm{particle 1}")
+        lines!(ax, xs2, sim1.sol.t; label=L"\textrm{particle 2} ")
+        ax.xlabel = L"z(t)"
+        ax.ylabel = L"t"
+    else
+        lines!(ax, sim1.sol.t, xs1; label=L"\textrm{particle 1}")
+        lines!(ax, sim1.sol.t, xs2; label=L"\textrm{particle 2}")
+        ax.ylabel = L"z(t)"
+        ax.xlabel = L"t"
+    end
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    rowgap!(fig.layout, 0)                 # Gap between plot and legend
+
+    # Save the figure
+    save(joinpath(FIG_PATH,
+                  "interacting_particles/particles_position_potential_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl).pdf"),
+         fig)
+    save(joinpath(FIG_PATH,
+                  "interacting_particles/particles_position_potential_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl).svg"),
+         fig)
+    return fig
+end
+
+function plot_particles_velocity(sim1)
+    set_theme!(mytheme_aps())
+    # Get time points and assert equality
+
+    # Create figure and axis
+    L = sim1.params.L
+    x_range = (-L / 2, L / 2)
+    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    x_filtered = sim1.params.x[mask]
+
+    nt = length(sim1.sol.t)
+    vs1 = zeros(nt)
+    vs2 = zeros(nt)
+
+    for i in 1:nt
+        vs1[i] = sim1.sol.u[i].x[2][3]
+        vs2[i] = sim1.sol.u[i].x[2][6]
+    end
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              title=L"\textrm{Particle velocity}",
+              limits=(0, sim1.sol.t[end], -1, 1))
+    # Plot the data
+    lines!(ax, sim1.sol.t, vs1; label=L"\mathrm{particle} 1")
+    lines!(ax, sim1.sol.t, vs2; label=L"\mathrm{particle} 2")
+    ax.ylabel = L"v(t)"
+    ax.xlabel = L"t"
+
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    rowgap!(fig.layout, 0)                 # Gap between plot and legend
+    # Save the figure
+    save(joinpath(FIG_PATH,
+                  "interacting_particles/particles_velocity_potential_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl).pdf"),
+         fig)
+    save(joinpath(FIG_PATH,
+                  "interacting_particles/particles_velocity_potential_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl).svg"),
+         fig)
+    return fig
+end
+
+###########
+#################3
+function plot_pifield_resolutions_potential(i, sim1, sim2, sim4)
+    set_theme!(mytheme_aps())
+    # Get time points and assert equality
+    t1 = sim1.sol.t[i]
+    t2 = sim2.sol.t[2i - 1]
+    t4 = sim4.sol.t[4i - 3]
+    @assert t1 == t2
+    @assert t2 == t4
+    t = t1
+
+    # Create figure and axis
+
+    L = sim1.params.L
+    x_range = (-L / 2, L / 2)
+    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    x_filtered = sim1.params.x[mask]
+
+    # Filter sim1 data (640 points)
+    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    x1_filtered = sim1.params.x[mask1]  # ~320 elements if symmetric around 0
+    y1_filtered = sim1.sol.u[i].x[1][mask1, 1]  # Matches x1_filtered length
+
+    y2_raw = mymean(sim2.sol.u[2i - 1].x[1][:, 1])  # ~640 elements
+    y2_filtered = y2_raw[mask1]           # Should reduce to ~320 elements
+
+    y4_raw = mymean(mymean(sim4.sol.u[4i - 3].x[1][:, 1]))  # ~1280 elements
+    y4_filtered = y4_raw[mask1]   # Should reduce to ~320 elements
+
+    # Compute y-limits with padding
+    y_min = minimum([minimum(y1_filtered), minimum(y2_filtered), minimum(y4_filtered)])
+    y_max = maximum([maximum(y1_filtered), maximum(y2_filtered), maximum(y4_filtered)])
+    padding = 0.1 * (y_max - y_min)  # Add 10% padding
+    y_limits = (y_min - padding, y_max + padding)
+
+    # xp, _, _ = ParticleMotion.oscillator(t, sim1.params.x0, sim1.params.A, sim1.params.ω)
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"x",
+              ylabel=L"\Pi_\mathrm{r}",
+              title=L"t=%$(round(t, digits=3))",
+              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+    # Plot the data
+    lines!(ax, x_filtered, y1_filtered; label=L"\textrm{low}")
+    lines!(ax, x_filtered, y2_filtered; label=L"\textrm{mid}")
+    lines!(ax, x_filtered, y4_filtered; label=L"\textrm{high}")
+    vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+    # Add legend at the bottom
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal,
+                 tellwidth=false, tellheight=true)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    # Save the figure
+    save(joinpath(FIG_PATH,
+                  "forced_motion/pifield_res_potential_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl)_i=$(i).pdf"),
+         fig)
+    save(joinpath(FIG_PATH,
+                  "forced_motion/pifield_res_potential_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl)_i=$(i).svg"),
+         fig)
+    return fig
+end
+
+function plot_psifield_resolutions_potential(i, sim1, sim2, sim4)
+    set_theme!(mytheme_aps())
+    # Get time points and assert equality
+    t1 = sim1.sol.t[i]
+    t2 = sim2.sol.t[2i - 1]
+    t4 = sim4.sol.t[4i - 3]
+    @show t1, t2, t4
+    @assert t1 == t2
+    @assert t2 == t4
+    t = t1
+
+    # Create figure and axis
+
+    L = sim1.params.L
+    x_range = (-L / 2, L / 2)
+    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    x_filtered = sim1.params.x[mask]
+
+    # Filter sim1 data (640 points)
+    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    x1_filtered = sim1.params.x[mask1]  # ~320 elements if symmetric around 0
+    y1_filtered = sim1.sol.u[i].x[1][mask1, 2]  # Matches x1_filtered length
+
+    y2_raw = mymean(sim2.sol.u[2i - 1].x[1][:, 2])  # ~640 elements
+    y2_filtered = y2_raw[mask1]           # Should reduce to ~320 elements
+
+    y4_raw = mymean(mymean(sim4.sol.u[4i - 3].x[1][:, 2]))  # ~1280 elements
+    y4_filtered = y4_raw[mask1]   # Should reduce to ~320 elements
+
+    # Compute y-limits with padding
+    y_min = minimum([minimum(y1_filtered), minimum(y2_filtered), minimum(y4_filtered)])
+    y_max = maximum([maximum(y1_filtered), maximum(y2_filtered), maximum(y4_filtered)])
+    padding = 0.1 * (y_max - y_min)  # Add 10% padding
+    y_limits = (y_min - padding, y_max + padding)
+
+    # xp, _, _ = ParticleMotion.oscillator(t, sim1.params.x0, sim1.params.A, sim1.params.ω)
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"x",
+              ylabel=L"\Psi_\mathrm{r}",
+              title=L"t=%$(round(t, digits=3))",
+              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+    # Plot the data
+    lines!(ax, x_filtered, y1_filtered; label=L"\textrm{low}")
+    lines!(ax, x_filtered, y2_filtered; label=L"\textrm{mid}")
+    lines!(ax, x_filtered, y4_filtered; label=L"\textrm{high}")
+    vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+    # Add legend at the bottom
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal,
+                 tellwidth=false, tellheight=true)
+
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    # Save the figure
+    save(joinpath(FIG_PATH,
+                  "potential/psifield_res_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl)_i=$(i).pdf"),
+         fig)
+    save(joinpath(FIG_PATH,
+                  "potential/psifield_res_forced_dx=$(sim1.params.dx)_cfl=$(sim1.params.cfl)_i=$(i).svg"),
+         fig)
+    return fig
+end
 
 function plot_field_resolutions(i, sim1, sim2, sim4)
     t1 = sim1.sol.t[i]
