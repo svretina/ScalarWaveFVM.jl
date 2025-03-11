@@ -285,18 +285,18 @@ function field_rhs2!(dQ, Q, params, t)
         dtΠ = @view dQ_field[:, 1]
 
         @inbounds for i in 1:N
-            # left_face = x[i] - h2
-            # right_face = x[i] + h2
-            # # subcell integration
-            # singular_term1_averaged = a1 *
-            #                           ScalarField.cell_average(left_face, right_face,
-            #                                                    q1, x1, v1, h)
-            # singular_term2_averaged = a2 *
-            #                           ScalarField.cell_average(left_face, right_face,
-            #                                                    q2, x2, v2, h)
+            left_face = x[i] - h2
+            right_face = x[i] + h2
+            # subcell integration
+            singular_term1_averaged = a1 *
+                                      ScalarField.cell_average(left_face, right_face,
+                                                               q1, x1, v1, h)
+            singular_term2_averaged = a2 *
+                                      ScalarField.cell_average(left_face, right_face,
+                                                               q2, x2, v2, h)
 
-            dtΠ[i] -= s1(x[i]) + s2(x[i])
-            # dtΠ[i] -= singular_term1_averaged + singular_term2_averaged
+            # dtΠ[i] -= s1(x[i]) + s2(x[i])
+            dtΠ[i] -= singular_term1_averaged + singular_term2_averaged
         end
     end
     return nothing
@@ -325,8 +325,6 @@ function particle_rhs!(dQ, Q, params, t)
 
     v12 = v1 * v1
     a12 = one(v1) - v12
-
-    # v∇Φ1 = Π1 + v1 * Ψ1
 
     dQ_particle[1] = -q * (Π1 + v1 * Ψ1)
     dQ_particle[2] = v1

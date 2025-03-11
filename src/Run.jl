@@ -13,16 +13,9 @@ using OrdinaryDiffEq
 using DataInterpolations
 using DiffEqCallbacks
 
-function save()
-    # SavingCallback
-
-    # save_on = false
-    # for not building the solution!
-end
-
 abstract type SimulationParameters{T} end
 
-struct SimulationParameters1{T} <: SimulationParameters{T}
+struct SimulationParametersPotential{T} <: SimulationParameters{T}
     L::Int64
     N::Int64
     dx::T
@@ -51,7 +44,7 @@ struct SimulationParametersForced <: SimulationParameters{Any}
     cfl::Any
 end
 
-struct SimulationParameters2{T} <: SimulationParameters{T}
+struct SimulationParametersInteracting{T} <: SimulationParameters{T}
     L::Int64
     N::Int64
     dx::T
@@ -67,32 +60,16 @@ struct SimulationParameters2{T} <: SimulationParameters{T}
     cfl::T
 end
 
-struct SimulationParameters3{T} <: SimulationParameters{T}
-    L::T
-    N::Int64
-    dx::T
-    x::Vector{T}
-    q1::T
-    x1::T
-    q2::T
-    x2::T
-    cfl::T
-    A::T
-    vmax::T
-    direction1::Int64
-    direction2::Int64
-end
-
 struct Simulation{T}
     params::SimulationParameters{T}
     sol::SciMLBase.ODESolution
 end
 
-function forced_motion(Nosc, dx, cfl, sf=true, muscl=true)
+function forced_motion(Nosc, dx, cfl, vmax, q, sf=true, muscl=true)
     c = 1.0
     equation = LinearScalarWaveEquation1D(c)
 
-    vmax = 0.999
+    # vmax = 0.999
     # ω = 2π
     # T = 1.0
     # A = vmax / ω
@@ -126,7 +103,7 @@ function forced_motion(Nosc, dx, cfl, sf=true, muscl=true)
     slope_limiter = Limiters.minmod
     flux_limiter = Limiters.minmod
 
-    q = +1
+    # q = +1
     x10 = 0.0
     direction = +1
 
@@ -224,7 +201,7 @@ function particle_given_interpolation(L, dx, tf, dt)
     return sol
 end
 
-function coupled_system(L, N, tf, cfl, sf=true)
+function particle_in_potential(L, N, tf, cfl, q, sf=true)
     c = 1.0
     equation = LinearScalarWaveEquation1D(c)
 
@@ -248,13 +225,13 @@ function coupled_system(L, N, tf, cfl, sf=true)
     Π = zeros(Float64, length(grid))
 
     Ψ = InitialData.dxSineWave.(0.0, x, A, λ, c)
-    Π = InitialData.dtSineWave.(0.0, x, A, λ, c)
+    # Ψ = InitialData.dxHarmonic(0.0, x, 0.005)
+    # Π = InitialData.dtSineWave.(0.0, x, A, λ, c)
 
     field_statevector = hcat(Π, Ψ)
 
     ## Particle 1
-    q = 0.001
-    # @assert abs(q1) > dt
+    # q = 0.05
     m10 = 1.0
     x10 = 0.0
     v10 = 0.0
@@ -281,9 +258,9 @@ function coupled_system(L, N, tf, cfl, sf=true)
               q=q, sf=sf,
               pifield=Π, psifield=Ψ,
               interpolation_method=interpolation_method)
-    sim = SimulationParameters1(L, N, dx, x, q,
-                                m10, x10, v10,
-                                sf, λ, cfl)
+    sim = SimulationParametersPotential(L, N, dx, x, q,
+                                        m10, x10, v10,
+                                        sf, λ, cfl)
     alg = SSPRK54()
     ode = ODEProblem{true}(ODE.coupled_rhs!, statevector, tspan,
                            params; saveat=t)
@@ -293,7 +270,7 @@ function coupled_system(L, N, tf, cfl, sf=true)
     return res
 end
 
-function interacting_coupled_system(L, N, tf, cfl, sf=true)
+function interacting_particles(L, N, tf, cfl, v0, q0, same_q=true, sf=true)
     c = 1.0
     equation = LinearScalarWaveEquation1D(c)
 
@@ -312,15 +289,19 @@ function interacting_coupled_system(L, N, tf, cfl, sf=true)
     field_statevector = hcat(Π, Ψ)
 
     ## Particle 1
-    q1 = 0.04
+    q1 = Float64(q0)
     m10 = 1.0
     x10 = -L / 4
-    v10 = 0.999
+    v10 = v0
     ## Particle 2
-    q2 = 0.04
+    if same_q
+        q2 = Float64(q0)
+    else
+        q2 = -Float64(q0)
+    end
     m20 = 1.0
     x20 = L / 4
-    v20 = -0.999
+    v20 = -v0
 
     println("Particle 1:         Particle 2:")
     println("q = $q1             q = $q2")
@@ -343,9 +324,10 @@ function interacting_coupled_system(L, N, tf, cfl, sf=true)
               dt=dt, x1=x10, x2=x20,
               q1=q1, q2=q2, sf=sf,
               interpolation_method=interpolation_method, acc=[1.0])
-    sim = SimulationParameters2(L, N, dx, x,
-                                q1, m10, x10, v10,
-                                q2, m20, x20, v20, cfl)
+
+    sim = SimulationParametersInteracting(L, N, dx, x,
+                                          q1, m10, x10, v10,
+                                          q2, m20, x20, v20, cfl)
     alg = SSPRK54()
     ode = ODEProblem{true}(ODE.interacting_coupled_rhs!, statevector, tspan,
                            params; saveat=t,

@@ -13,6 +13,10 @@ include("ODE.jl")
 include("Run.jl")
 
 include("Convergence.jl")
-include("MyPlots.jl")
+include("PlottingUtils.jl")
+include("ForcedPlots.jl")
+include("InteractingPlots.jl")
+include("ParticlePotentialPlots.jl")
+include("PreparePlots.jl")
 
 end
