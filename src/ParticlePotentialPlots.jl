@@ -2,6 +2,7 @@ module ParticlePotentialPlots
 
 using ..PlottingUtils
 using CairoMakie
+using LinearAlgebra
 
 @inline name(pre, sim, post=nothing) = name_potential(pre, sim, post)
 

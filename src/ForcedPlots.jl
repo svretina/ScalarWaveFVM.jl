@@ -2,6 +2,7 @@ module ForcedPlots
 
 using ..PlottingUtils
 using CairoMakie
+using LinearAlgebra
 
 @inline name(pre, sim, post=nothing) = name_forced(pre, sim, post)
 

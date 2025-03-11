@@ -2,6 +2,7 @@ module InteractingPlots
 
 using ..PlottingUtils
 using CairoMakie
+using LinearAlgebra
 
 @inline name(pre, sim, post=nothing) = name_interacting(pre, sim, post)
 
