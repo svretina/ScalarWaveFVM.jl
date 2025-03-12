@@ -212,7 +212,7 @@ function particle_in_potential(L, N, tf, cfl, q, sf=true)
 
     dt = cfl * dx / c
     @show dx, dt
-    t = 0.0:dt:tf
+    t = 0.0:dt:(tf + dt)
 
     # Π = zeros(Float64, length(grid))
     # Ψ = zeros(Float64, length(grid))
@@ -281,7 +281,7 @@ function interacting_particles(L, N, tf, cfl, v0, q0, same_q=true, sf=true)
 
     dt = cfl * dx / c
     @show dx, dt
-    t = 0.0:dt:tf
+    t = 0.0:dt:(tf + dt)
 
     Π = zeros(Float64, length(grid))
     Ψ = zeros(Float64, length(grid))
@@ -295,13 +295,13 @@ function interacting_particles(L, N, tf, cfl, v0, q0, same_q=true, sf=true)
     v10 = v0
     ## Particle 2
     if same_q
-        q2 = Float64(q0)
+        q2 = q0
     else
-        q2 = -Float64(q0)
+        q2 = -q0
     end
     m20 = 1.0
-    x20 = L / 4
-    v20 = -v0
+    x20 = -x10
+    v20 = -v10
 
     println("Particle 1:         Particle 2:")
     println("q = $q1             q = $q2")
@@ -323,12 +323,14 @@ function interacting_particles(L, N, tf, cfl, v0, q0, same_q=true, sf=true)
               h=dx, N=N, x=x, cfl=cfl, L=L,
               dt=dt, x1=x10, x2=x20,
               q1=q1, q2=q2, sf=sf,
-              interpolation_method=interpolation_method, acc=[1.0])
+              interpolation_method=interpolation_method)#, acc=[1.0])
 
     sim = SimulationParametersInteracting(L, N, dx, x,
                                           q1, m10, x10, v10,
                                           q2, m20, x20, v20, cfl)
     alg = SSPRK54()
+    alg = SSPRK53_2N1()
+    # alg = ImplicitEuler()
     ode = ODEProblem{true}(ODE.interacting_coupled_rhs!, statevector, tspan,
                            params; saveat=t,
                            #callback=callbacks

@@ -3,8 +3,31 @@ module InteractingPlots
 using ..PlottingUtils
 using CairoMakie
 using LinearAlgebra
+using GLMakie
+using DataInterpolations
+using ..ScalarField
 
 @inline name(pre, sim, post=nothing) = name_interacting(pre, sim, post)
+
+@inline function KineticEnergy(m, v)
+    γ = one(v) / sqrt(one(v) - v * v)
+    return m * (γ - one(γ))
+end
+
+@inline function PotentialEnergy(x, xs, Φ)
+    interpolator_Φ = QuadraticInterpolation(Φ, xs)
+    return interpolator_Φ(x)
+end
+
+@inline function TotalEnergy(m, v, x, xs, Φ)
+    return m + KineticEnergy(m, v) + PotentialEnergy(x, xs, Φ)
+end
+
+## More complicated!
+## Integrate Hamiltonian of Eq.(14)
+# @inline function FieldEnergy(Π, Ψ)
+#     return 0.5integrate(Π .^ 2 + Ψ .^ 2)
+# end
 
 function plot_pifield(i, sim1)
     set_theme!(mytheme_aps())
@@ -783,6 +806,356 @@ function plot_particle_masses_resolutions(sim1, sim2, sim4)
     save(joinpath(FIG_PATH, savename), fig)
     save(joinpath(PAPER_FIG_PATH, savename), fig)
     return fig
+end
+
+function plot_panel(sim1, ticklabelsize=20)
+    GLMakie.activate!()
+    t = sim1.sol.t
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    nt = length(sim1.sol.t)
+    xs1l = zeros(nt)
+    vs1l = zeros(nt)
+    ms1l = zeros(nt)
+
+    xs2l = zeros(nt)
+    vs2l = zeros(nt)
+    ms2l = zeros(nt)
+
+    for i in 1:nt
+        ms1l[i] = sim1.sol.u[i].x[2][1]
+        xs1l[i] = sim1.sol.u[i].x[2][2]
+        vs1l[i] = sim1.sol.u[i].x[2][3]
+
+        ms2l[i] = sim1.sol.u[i].x[2][4]
+        xs2l[i] = sim1.sol.u[i].x[2][5]
+        vs2l[i] = sim1.sol.u[i].x[2][6]
+    end
+    with_theme(mytheme) do
+        fig = Figure(; size=(6 * 253, 4 * 200))
+        supertitle_layout = fig[1, 1:2] = GridLayout()
+
+        ax11 = Axis(fig[2, 1]; title=L"\textrm{Field}",
+                    xticklabelsize=ticklabelsize,
+                    yticklabelsize=ticklabelsize)
+        ax12 = Axis(fig[2, 2]; title=L"\textrm{Positions}",
+                    xticklabelsize=ticklabelsize,
+                    yticklabelsize=ticklabelsize)
+        ax21 = Axis(fig[3, 1]; title=L"\textrm{Masses}",
+                    xticklabelsize=ticklabelsize,
+                    yticklabelsize=ticklabelsize)
+        ax22 = Axis(fig[3, 2]; title=L"\textrm{Velocities}",
+                    xticklabelsize=ticklabelsize,
+                    yticklabelsize=ticklabelsize)
+
+        axes = [ax11, ax12, ax21, ax22]
+
+        # Add slider below the plot grid
+        slider_layout = fig[4, 1:2] = GridLayout()
+        time_slider = Slider(slider_layout[1, 1];
+                             range=1:nt,
+                             startvalue=1,
+                             horizontal=true)
+        # Observable for current time
+        current_index = time_slider.value
+
+        palette = mytheme.palette
+        color1 = palette.color[][1]  # Blue-ish for Particle 1
+        color2 = palette.color[][2]  # Orange-ish for Particle 2
+        res_styles = [palette.linestyle[][1], palette.linestyle[][2],
+                      palette.linestyle[][3]]  # Solid, Dash, Dot
+
+        lines!(ax12, xs1l, t; color=color1, linestyle=res_styles[1])
+        lines!(ax12, xs2l, t; color=color2, linestyle=res_styles[1])
+        ax12.xlabel = L"x(t)"
+        ax12.ylabel = L"t"
+
+        lines!(ax21, t, ms1l; color=color1, linestyle=res_styles[1])
+        lines!(ax21, t, ms2l; color=color2, linestyle=res_styles[1])
+        ax21.xlabel = L"t"
+        ax21.ylabel = L"m(t)"
+
+        lines!(ax22, t, vs1l; color=color1, linestyle=res_styles[1])
+        lines!(ax22, t, vs2l; color=color2, linestyle=res_styles[1])
+        ax22.xlabel = L"t"
+        ax22.ylabel = L"v(t)"
+
+        point_t = lift(current_index) do i
+            return [t[i], t[i]]
+        end
+        point_x = lift(current_index) do i
+            return [xs1l[i], xs2l[i]]
+        end
+
+        point_m = lift(current_index) do i
+            return [ms1l[i], ms2l[i]]
+        end
+        point_v = lift(current_index) do i
+            return [vs1l[i], vs2l[i]]
+        end
+
+        scatter!(ax12, point_x, point_t; color=:black, markersize=15)
+        scatter!(ax21, point_t, point_m; color=:black, markersize=15)
+        scatter!(ax22, point_t, point_v; color=:black, markersize=15)
+
+        q1 = sim1.params.q1
+        q2 = sim1.params.q2
+
+        L = sim1.params.L
+        x_range = (-L / 2, L / 2)
+        mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+        x_filtered = sim1.params.x[mask]
+
+        dynamic_plot = lift(current_index) do i
+            empty!(ax11)  # Clear previous plot
+            ti = t[i]
+            x1 = sim1.sol.u[i].x[2][2]
+            v1 = sim1.sol.u[i].x[2][3]
+            x2 = sim1.sol.u[i].x[2][5]
+            v2 = sim1.sol.u[i].x[2][6]
+
+            Ψs1 = ScalarField.Ψs.(x_filtered, q1, x1, v1)
+            Ψs2 = ScalarField.Ψs.(x_filtered, q2, x2, v2)
+            y_raw = sim1.sol.u[i].x[1][:, 2]
+            Ψ_tot = y_raw[mask]
+            y1 = Ψ_tot .+ Ψs2
+            y2 = Ψ_tot .+ Ψs1
+            interpolator_y1 = QuadraticInterpolation(y1, x_filtered;
+                                                     extrapolation=ExtrapolationType.Extension)
+            interpolator_y2 = QuadraticInterpolation(y2, x_filtered;
+                                                     extrapolation=ExtrapolationType.Extension)
+
+            lines!(ax11, x_filtered, y1; color=color2)
+            lines!(ax11, x_filtered, y2; color=color1)
+            scatter!(ax11, [x1], [interpolator_y1(x1)]; color=color1, marker=:circle,
+                     markersize=15)
+            scatter!(ax11, [x2], [interpolator_y2(x2)]; color=color2, marker=:circle,
+                     markersize=15)
+            autolimits!(ax11)
+        end
+        supertitle_text = lift(current_index) do i
+            L"t=%$(t[i])"
+        end
+
+        index_label = lift(current_index) do i
+            "Index: $i"
+        end
+        Label(supertitle_layout[1, 1], supertitle_text;
+              fontsize=30,
+              halign=:center,
+              tellwidth=false,
+              tellheight=false)
+
+        Label(slider_layout[1, 2], index_label; tellwidth=false)
+
+        rowsize!(fig.layout, 1, Auto(0.1))  # Small row for supertitle
+        rowsize!(fig.layout, 2, Auto(1))    # Equal height for plot rows
+        rowsize!(fig.layout, 3, Auto(1))
+        rowsize!(fig.layout, 4, Auto(0.2))  # Small row for slider
+        colgap!(slider_layout, 10)
+        display(fig)
+    end
+    return nothing
+end
+
+function plot_panel(sim1, sim2, sim4, ticklabelsize=20)
+    GLMakie.activate!()
+    t = sim1.sol.t
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    nt = length(sim1.sol.t)
+    xs1l = zeros(nt)
+    vs1l = zeros(nt)
+    ms1l = zeros(nt)
+
+    xs1m = zeros(nt)
+    vs1m = zeros(nt)
+    ms1m = zeros(nt)
+
+    xs1h = zeros(nt)
+    vs1h = zeros(nt)
+    ms1h = zeros(nt)
+
+    xs2l = zeros(nt)
+    vs2l = zeros(nt)
+    ms2l = zeros(nt)
+
+    xs2m = zeros(nt)
+    vs2m = zeros(nt)
+    ms2m = zeros(nt)
+
+    xs2h = zeros(nt)
+    vs2h = zeros(nt)
+    ms2h = zeros(nt)
+
+    for i in 1:nt
+        ms1l[i] = sim1.sol.u[i].x[2][1]
+        xs1l[i] = sim1.sol.u[i].x[2][2]
+        vs1l[i] = sim1.sol.u[i].x[2][3]
+
+        ms2l[i] = sim1.sol.u[i].x[2][4]
+        xs2l[i] = sim1.sol.u[i].x[2][5]
+        vs2l[i] = sim1.sol.u[i].x[2][6]
+
+        ms1m[i] = sim2.sol.u[2i - 1].x[2][1]
+        xs1m[i] = sim2.sol.u[2i - 1].x[2][2]
+        vs1m[i] = sim2.sol.u[2i - 1].x[2][3]
+
+        ms2m[i] = sim2.sol.u[2i - 1].x[2][4]
+        xs2m[i] = sim2.sol.u[2i - 1].x[2][5]
+        vs2m[i] = sim2.sol.u[2i - 1].x[2][6]
+
+        ms1h[i] = sim4.sol.u[4i - 3].x[2][1]
+        xs1h[i] = sim4.sol.u[4i - 3].x[2][2]
+        vs1h[i] = sim4.sol.u[4i - 3].x[2][3]
+
+        ms2h[i] = sim4.sol.u[4i - 3].x[2][4]
+        xs2h[i] = sim4.sol.u[4i - 3].x[2][5]
+        vs2h[i] = sim4.sol.u[4i - 3].x[2][6]
+    end
+    with_theme(mytheme) do
+        fig = Figure(; size=(6 * 253, 4 * 200))
+        supertitle_layout = fig[1, 1:2] = GridLayout()
+
+        ax11 = Axis(fig[2, 1]; title=L"\textrm{Field}",
+                    xticklabelsize=ticklabelsize,
+                    yticklabelsize=ticklabelsize)
+        ax12 = Axis(fig[2, 2]; title=L"\textrm{Positions}",
+                    xticklabelsize=ticklabelsize,
+                    yticklabelsize=ticklabelsize)
+        ax21 = Axis(fig[3, 1]; title=L"\textrm{Masses}",
+                    xticklabelsize=ticklabelsize,
+                    yticklabelsize=ticklabelsize, yscale=log10)
+        ax22 = Axis(fig[3, 2]; title=L"\textrm{Velocities}",
+                    xticklabelsize=ticklabelsize,
+                    yticklabelsize=ticklabelsize)
+
+        axes = [ax11, ax12, ax21, ax22]
+
+        # Add slider below the plot grid
+        slider_layout = fig[4, 1:2] = GridLayout()
+        time_slider = Slider(slider_layout[1, 1];
+                             range=1:nt,
+                             startvalue=1,
+                             horizontal=true)
+        # Observable for current time
+        current_index = time_slider.value
+
+        palette = mytheme.palette
+        color1 = palette.color[][1]  # Blue-ish for Particle 1
+        color2 = palette.color[][2]  # Orange-ish for Particle 2
+        res_styles = [palette.linestyle[][1], palette.linestyle[][2],
+                      palette.linestyle[][3]]  # Solid, Dash, Dot
+
+        lines!(ax12, xs1l, t; color=color1, linestyle=res_styles[1])
+        lines!(ax12, xs1m, t; color=color1, linestyle=res_styles[2])
+        lines!(ax12, xs1h, t; color=color1, linestyle=res_styles[3])
+
+        lines!(ax12, xs2l, t; color=color2, linestyle=res_styles[1])
+        lines!(ax12, xs2m, t; color=color2, linestyle=res_styles[2])
+        lines!(ax12, xs2h, t; color=color2, linestyle=res_styles[3])
+        ax12.xlabel = L"x(t)"
+        ax12.ylabel = L"t"
+
+        lines!(ax21, t, ms1l; color=color1, linestyle=res_styles[1])
+        lines!(ax21, t, ms1m; color=color1, linestyle=res_styles[2])
+        lines!(ax21, t, ms1h; color=color1, linestyle=res_styles[3])
+
+        lines!(ax21, t, ms2l; color=color2, linestyle=res_styles[1])
+        lines!(ax21, t, ms2m; color=color2, linestyle=res_styles[2])
+        lines!(ax21, t, ms2h; color=color2, linestyle=res_styles[3])
+
+        ax21.xlabel = L"t"
+        ax21.ylabel = L"m(t)"
+
+        lines!(ax22, t, vs1l; color=color1, linestyle=res_styles[1])
+        lines!(ax22, t, vs1m; color=color1, linestyle=res_styles[2])
+        lines!(ax22, t, vs1h; color=color1, linestyle=res_styles[3])
+
+        lines!(ax22, t, vs2l; color=color2, linestyle=res_styles[1])
+        lines!(ax22, t, vs2m; color=color2, linestyle=res_styles[2])
+        lines!(ax22, t, vs2h; color=color2, linestyle=res_styles[3])
+        ax22.xlabel = L"t"
+        ax22.ylabel = L"v(t)"
+
+        point_t = lift(current_index) do i
+            return [t[i], t[i]]
+        end
+        point_x = lift(current_index) do i
+            return [xs1l[i], xs2l[i]]
+        end
+
+        point_m = lift(current_index) do i
+            return [ms1l[i], ms2l[i]]
+        end
+        point_v = lift(current_index) do i
+            return [vs1l[i], vs2l[i]]
+        end
+
+        scatter!(ax12, point_x, point_t; color=:black, markersize=15)
+        scatter!(ax21, point_t, point_m; color=:black, markersize=15)
+        scatter!(ax22, point_t, point_v; color=:black, markersize=15)
+
+        q1 = sim1.params.q1
+        q2 = sim1.params.q2
+
+        L = sim1.params.L
+        x_range = (-L / 2, L / 2)
+        mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+        x_filtered = sim1.params.x[mask]
+
+        dynamic_plot = lift(current_index) do i
+            empty!(ax11)  # Clear previous plot
+            ti = t[i]
+            x1 = sim1.sol.u[i].x[2][2]
+            v1 = sim1.sol.u[i].x[2][3]
+            x2 = sim1.sol.u[i].x[2][5]
+            v2 = sim1.sol.u[i].x[2][6]
+
+            Ψs1 = ScalarField.Ψs.(x_filtered, q1, x1, v1)
+            Ψs2 = ScalarField.Ψs.(x_filtered, q2, x2, v2)
+            y_raw = sim1.sol.u[i].x[1][:, 2]
+            Ψ_tot = y_raw[mask]
+            y1 = Ψ_tot .+ Ψs2
+            y2 = Ψ_tot .+ Ψs1
+            interpolator_y1 = QuadraticInterpolation(y1, x_filtered;
+                                                     extrapolation=ExtrapolationType.Extension)
+            interpolator_y2 = QuadraticInterpolation(y2, x_filtered;
+                                                     extrapolation=ExtrapolationType.Extension)
+
+            lines!(ax11, x_filtered, y1; color=color2)
+            lines!(ax11, x_filtered, y2; color=color1)
+            scatter!(ax11, [x1], [interpolator_y1(x1)]; color=color1, marker=:circle,
+                     markersize=15)
+            scatter!(ax11, [x2], [interpolator_y2(x2)]; color=color2, marker=:circle,
+                     markersize=15)
+            autolimits!(ax11)
+        end
+        supertitle_text = lift(current_index) do i
+            L"t=%$(t[i])"
+        end
+
+        index_label = lift(current_index) do i
+            "Index: $i"
+        end
+        Label(supertitle_layout[1, 1], supertitle_text;
+              fontsize=30,
+              halign=:center,
+              tellwidth=false,
+              tellheight=false)
+
+        Label(slider_layout[1, 2], index_label; tellwidth=false)
+
+        rowsize!(fig.layout, 1, Auto(0.1))  # Small row for supertitle
+        rowsize!(fig.layout, 2, Auto(1))    # Equal height for plot rows
+        rowsize!(fig.layout, 3, Auto(1))
+        rowsize!(fig.layout, 4, Auto(0.2))  # Small row for slider
+        colgap!(slider_layout, 10)
+        display(fig)
+    end
+    return nothing
 end
 
 end

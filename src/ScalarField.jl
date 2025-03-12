@@ -40,7 +40,7 @@ end
 
 @inline function between_integral(left_face, q, xp, v, h)
     xi = left_face + 0.5h
-    return q * (xp - xi) / (2exp32(one(v) - v * v))
+    return q * (xp - xi) / (exp32(one(v) - v * v))
 end
 
 @inline function between_cell_average(left_face, q, xp, v, h)

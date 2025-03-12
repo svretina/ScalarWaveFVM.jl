@@ -64,4 +64,13 @@ function prepare_potential_plots(L, N, cfl, q)
     return nothing
 end
 
+function prepare_all_plots()
+    ## forced motion case
+
+    ## interacting particles
+
+    ## particle in potential
+    return nothing
+end
+
 end # end of module

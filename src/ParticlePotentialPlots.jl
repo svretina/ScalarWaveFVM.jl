@@ -143,7 +143,7 @@ function plot_pifield_convord(sim1, sim2, sim4)
 
     mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     convfac = zeros(nt)
-    for i in 1:nt
+    for i in 2:nt
         t1 = sim1.sol.t[i]
         t2 = sim2.sol.t[2i - 1]
         t4 = sim4.sol.t[4i - 3]

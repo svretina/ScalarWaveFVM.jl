@@ -273,11 +273,11 @@ function field_rhs2!(dQ, Q, params, t)
 
     a1 = dQ_particle[3]
     x1 = Q_particle[2]
-    v1 = dQ_particle[2] ### ASK ERIK dQ or Q ?
+    v1 = Q_particle[3] ### ASK ERIK dQ or Q ?
     ###
     a2 = dQ_particle[6]
     x2 = Q_particle[5]
-    v2 = dQ_particle[5] ##  or dQ_particle[5] or Q_particle[3]??
+    v2 = Q_particle[6] ##  or dQ_particle[5] or Q_particle[3]??
     muscl!(dQ_field, Q_field, params, t)
     if sf
         @inline s1(x) = a1 * ScalarField.∂vΠ(x, q1, x1, v1)
@@ -288,15 +288,15 @@ function field_rhs2!(dQ, Q, params, t)
             left_face = x[i] - h2
             right_face = x[i] + h2
             # subcell integration
-            singular_term1_averaged = a1 *
+            singular_term1_averaged = -a1 *
                                       ScalarField.cell_average(left_face, right_face,
                                                                q1, x1, v1, h)
-            singular_term2_averaged = a2 *
+            singular_term2_averaged = -a2 *
                                       ScalarField.cell_average(left_face, right_face,
                                                                q2, x2, v2, h)
 
             # dtΠ[i] -= s1(x[i]) + s2(x[i])
-            dtΠ[i] -= singular_term1_averaged + singular_term2_averaged
+            dtΠ[i] += singular_term1_averaged + singular_term2_averaged
         end
     end
     return nothing
@@ -354,11 +354,6 @@ function interacting_particle_rhs!(dQ, Q, params, t)
 
     abs(v1) <= 1 || throw("v1=$v1 > 1, at t=$(t), a1 = $(dQ[3])")
     abs(v2) <= 1 || throw("v2=$v2 > 1, at t=$(t), a1 = $(dQ[6])")
-    # vel = 0.9
-    # v1 = max(-vel, min(vel, v1))
-    # Q_particle[3] = v1
-    # v2 = max(-vel, min(vel, v2))
-    # Q_particle[6] = v2
 
     interpolator_Ψ = interpolation_method(Ψ, x; extrapolation=ExtrapolationType.Extension)
     interpolator_Π = interpolation_method(Π, x; extrapolation=ExtrapolationType.Extension)
@@ -393,7 +388,7 @@ function interacting_particle_rhs!(dQ, Q, params, t)
     dQ_particle[4] = -q2 * (Π2 + v2 * Ψ2)
     dQ_particle[5] = v2
     dQ_particle[6] = q2 * a22 * (v2 * Π2 + Ψ2) / m2
-    params.acc[1] = max(dQ_particle[3], dQ_particle[6])
+    # params.acc[1] = max(dQ_particle[3], dQ_particle[6])
     return nothing
 end
 
