@@ -127,16 +127,16 @@ end
     return 2A * π * cos(2π * (x - c * t) / λ) / λ
 end
 
-@inline function Harmonic(t, x)
-    return 0.5x * x
+@inline function Harmonic(t, x, k)
+    return -0.5k * x * x
 end
 
-@inline function dtHarmonic(t, x)
+@inline function dtHarmonic(t, x, k)
     return zero(x)
 end
 
-@inline function dxHarmonic(t, x, a)
-    return a * x
+@inline function dxHarmonic(t, x, k)
+    return -k * x
 end
 
 end # end of module

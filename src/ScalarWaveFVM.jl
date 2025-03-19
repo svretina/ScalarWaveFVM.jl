@@ -1,5 +1,6 @@
 module ScalarWaveFVM
 
+using Base: include_callbacks
 include("Interpolations.jl")
 include("InitialData.jl")
 include("Equations.jl")
@@ -13,6 +14,7 @@ include("ODE.jl")
 include("Run.jl")
 
 include("Convergence.jl")
+include("Energies.jl")
 include("PlottingUtils.jl")
 include("ForcedPlots.jl")
 include("InteractingPlots.jl")

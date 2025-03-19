@@ -1,6 +1,7 @@
 module ForcedPlots
 
 using ..PlottingUtils
+using ..ParticleMotion
 using CairoMakie
 using LinearAlgebra
 

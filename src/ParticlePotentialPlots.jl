@@ -2,9 +2,11 @@ module ParticlePotentialPlots
 
 using ..PlottingUtils
 using CairoMakie
+# using GLMakie
 using LinearAlgebra
 
 @inline name(pre, sim, post=nothing) = name_potential(pre, sim, post)
+@inline name_analytic(pre, sim, post=nothing) = name_analytic_potential(pre, sim, post)
 
 function plot_pifield_resolutions(i, sim1, sim2, sim4)
     set_theme!(mytheme_aps())
@@ -438,6 +440,539 @@ function plot_particle_position_resolutions(sim1, sim2, sim4; invert=true)
     rowgap!(fig.layout, 2, -10)
 
     savename = name("particle_potential/particle_position_resolutions", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    return fig
+end
+
+### Particle rhs only
+###
+###
+
+function plot_particle_position_analytic(sim1; invert=true)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+
+    x0 = sim1.params.x0
+    k = sim1.params.k
+    m = sim1.params.m
+    analytic(t) = x0 * sin(sqrt(k / m) * t + 0.5pi)
+    # Create figure and axis
+    nt = length(sim1.sol.t)
+    xs1 = zeros(nt)
+    # vs1 = zeros(nt)
+    # ms1 = zeros(nt)
+    for i in 1:nt
+        xs1[i] = sim1.sol.u[i][2]
+    end
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              title=L"\textrm{Particle Position}")
+    # Plot the data
+    if invert
+        lines!(ax, xs1, sim1.sol.t; label=L"\textrm{particle 1}")
+        lines!(ax, analytic.(sim1.sol.t), sim1.sol.t; label=L"\textrm{analytic}")
+        ax.xlabel = L"z(t)"
+        ax.ylabel = L"t"
+    else
+        lines!(ax, sim1.sol.t, xs1; label=L"\textrm{particle 1}")
+        lines!(ax, sim1.sol.t, analytic.(sim1.sol.t); linestyle=:dash,
+               label=L"\textrm{analytic}")
+        ax.ylabel = L"z(t)"
+        ax.xlabel = L"t"
+    end
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    rowgap!(fig.layout, 0)                 # Gap between plot and legend
+
+    # Save the figure
+    savename = name_analytic("particle_analytic_potential/particle_position", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    return fig
+end
+
+function plot_particle_position_analytic_res(sim1, sim2, sim4; invert=true)
+    CairoMakie.activate!()
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    x0 = sim1.params.x0
+    k = sim1.params.k
+    m = sim1.params.m
+    analytic(t) = x0 * sin(sqrt(k / m) * t + 0.5pi)
+    # Create figure and axis
+    nt = length(sim1.sol.t)
+    xs1 = zeros(nt)
+    xs2 = zeros(nt)
+    xs4 = zeros(nt)
+
+    # vs1 = zeros(nt)
+    # ms1 = zeros(nt)
+    for i in 1:nt
+        xs1[i] = sim1.sol.u[i][2]
+        xs2[i] = sim2.sol.u[2i - 1][2]
+        xs4[i] = sim4.sol.u[4i - 3][2]
+    end
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              title=L"\textrm{Particle Position}")
+    palette = mytheme.palette
+    color1 = palette.color[][1]  # Blue-ish for Particle 1
+    color2 = palette.color[][2]  # Orange-ish for Particle 2
+    res_styles = [palette.linestyle[][1], palette.linestyle[][2], palette.linestyle[][3]]  # Solid, Dash, Dot
+
+    # Plot the data
+    if invert
+        lines!(ax, xs1, sim1.sol.t; label=L"\textrm{particle 1}",
+               color=color1, linestyle=res_styles[1])
+        lines!(ax, xs2, sim1.sol.t; color=color2, linestyle=res_styles[2])
+        lines!(ax, xs4, sim1.sol.t; linestyle=res_styles[3])
+        # lines!(ax, analytic.(sim1.sol.t), sim1.sol.t; label=L"\textrm{analytic}")
+        ax.xlabel = L"z(t)"
+        ax.ylabel = L"t"
+    else
+        lines!(ax, sim1.sol.t, xs1; label=L"\textrm{particle 1}",
+               color=color1, linestyle=res_styles[1])
+        lines!(ax, sim1.sol.t, xs2; color=color1, linestyle=res_styles[2])
+        lines!(ax, sim1.sol.t, xs4; color=color1, linestyle=res_styles[3])
+        lines!(ax, sim1.sol.t, analytic.(sim1.sol.t); linestyle=:dash,
+               label=L"\textrm{analytic}")
+        ax.ylabel = L"z(t)"
+        ax.xlabel = L"t"
+    end
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    rowgap!(fig.layout, 0)                 # Gap between plot and legend
+
+    # Save the figure
+    savename = name_analytic("particle_analytic_potential/particle_position_res", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    return fig
+end
+
+function plot_particle_position_analytic_diff(sim1, sim2, sim4; invert=true)
+    CairoMakie.activate!()
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    nt = length(sim1.sol.t)
+
+    err1 = zeros(nt)
+    err2 = zeros(nt)
+    for i in 1:nt
+        err1[i] = sim1.sol.u[i][2] - sim2.sol.u[2i - 1][2]
+        err2[i] = sim2.sol.u[2i - 1][2] - sim4.sol.u[4i - 3][2]
+    end
+    # convfac = @. (xs1 - xs2) / (xs2 - xs4)
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              title=L"\textrm{Particle Position}")
+    palette = mytheme.palette
+    color1 = palette.color[][1]  # Blue-ish for Particle 1
+    color2 = palette.color[][2]  # Orange-ish for Particle 2
+    res_styles = [palette.linestyle[][1], palette.linestyle[][2], palette.linestyle[][3]]  # Solid, Dash, Dot
+
+    lines!(ax, sim1.sol.t, err1; label=L"\textrm{low-mid}",
+           color=color1, linestyle=res_styles[1])
+    lines!(ax, sim1.sol.t, 2^4 * err2; label=L"\textrm{2^4\cdot(mid-high)}",
+           color=color2, linestyle=res_styles[2])
+
+    ax.xlabel = L"t"
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    rowgap!(fig.layout, 0)                 # Gap between plot and legend
+
+    # Save the figure
+    savename = name_analytic("particle_analytic_potential/particle_position_diff", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    return fig
+end
+
+function plot_particle_position_analytic_convfac(sim1, sim2, sim4; invert=true)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+
+    nt = length(sim1.sol.t)
+    xs1 = zeros(nt)
+    xs2 = zeros(nt)
+    xs4 = zeros(nt)
+    convfac = zeros(nt)
+    # vs1 = zeros(nt)
+    # ms1 = zeros(nt)
+    for i in 1:nt
+        xs1[i] = sim1.sol.u[i][2]
+        xs2[i] = sim2.sol.u[2i - 1][2]
+        xs4[i] = sim4.sol.u[4i - 3][2]
+        err1 = xs1[i] - xs2[i]
+        err2 = xs2[i] - xs4[i]
+        if err1 == err2
+            convfac[i] = 1.0
+        else
+            convfac[i] = err1 / err2
+        end
+    end
+    # convfac = @. (xs1 - xs2) / (xs2 - xs4)
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              title=L"\textrm{Particle Position Convergence Factor}")
+    # palette = mytheme.palette
+    # color1 = palette.color[][1]  # Blue-ish for Particle 1
+    # color2 = palette.color[][2]  # Orange-ish for Particle 2
+    # res_styles = [palette.linestyle[][1], palette.linestyle[][2], palette.linestyle[][3]]  # Solid, Dash, Dot
+
+    lines!(ax, sim1.sol.t, convfac)
+    ylims!(ax, 10, 40)
+    ax.xlabel = L"t"
+    # leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    colsize!(fig.layout, 1, Relative(0.9))
+    #rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    #rowgap!(fig.layout, 0)                 # Gap between plot and legend
+
+    # Save the figure
+    savename = name_analytic("particle_analytic_potential/particle_position_convfac", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    return fig
+end
+
+function plot_particle_velocity_analytic(sim1; invert=true)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+
+    x0 = sim1.params.x0
+    k = sim1.params.k
+    m = sim1.params.m
+    # analytic(t) = x0 * sin(sqrt(k / m) * t + 0.5pi)
+    analytic(t) = -x0 * sqrt(k / m) * sin(sqrt(k / m) * t)
+    # Create figure and axis
+    nt = length(sim1.sol.t)
+    # xs1 = zeros(nt)
+    vs1 = zeros(nt)
+    # ms1 = zeros(nt)
+    for i in 1:nt
+        vs1[i] = sim1.sol.u[i][3]
+    end
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              title=L"\textrm{Particle Velocity}")
+    # Plot the data
+    lines!(ax, sim1.sol.t, vs1; label=L"\textrm{particle 1}")
+    lines!(ax, sim1.sol.t, analytic.(sim1.sol.t); linestyle=:dash,
+           label=L"\textrm{analytic}")
+    ax.ylabel = L"v(t)"
+    ax.xlabel = L"t"
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    rowgap!(fig.layout, 0)                 # Gap between plot and legend
+
+    # Save the figure
+    savename = name_analytic("particle_analytic_potential/particle_velocity", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    return fig
+end
+
+function plot_particle_velocity_analytic_res(sim1, sim2, sim4; invert=true)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+
+    x0 = sim1.params.x0
+    k = sim1.params.k
+    m = sim1.params.m
+    # analytic(t) = x0 * sin(sqrt(k / m) * t + 0.5pi)
+    analytic(t) = -x0 * sqrt(k / m) * sin(sqrt(k / m) * t)
+    # Create figure and axis
+    nt = length(sim1.sol.t)
+    # xs1 = zeros(nt)
+    vs1 = zeros(nt)
+    vs2 = zeros(nt)
+    vs4 = zeros(nt)
+    # ms1 = zeros(nt)
+    for i in 1:nt
+        vs1[i] = sim1.sol.u[i][3]
+        vs2[i] = sim2.sol.u[2i - 1][3]
+        vs4[i] = sim4.sol.u[4i - 3][3]
+    end
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              title=L"\textrm{Particle Velocity}")
+    palette = mytheme.palette
+    color1 = palette.color[][1]  # Blue-ish for Particle 1
+    color2 = palette.color[][2]  # Orange-ish for Particle 2
+    res_styles = [palette.linestyle[][1], palette.linestyle[][2], palette.linestyle[][3]]  # Solid, Dash, Dot
+
+    # Plot the data
+    lines!(ax, sim1.sol.t, vs1; label=L"\textrm{particle 1}",
+           color=color1, linestyle=res_styles[1])
+    lines!(ax, sim1.sol.t, vs2; color=color1, linestyle=res_styles[2])
+    lines!(ax, sim1.sol.t, vs4; color=color1, linestyle=res_styles[3])
+    lines!(ax, sim1.sol.t, analytic.(sim1.sol.t); linestyle=:dash,
+           label=L"\textrm{analytic}")
+    ax.ylabel = L"v(t)"
+    ax.xlabel = L"t"
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    rowgap!(fig.layout, 0)                 # Gap between plot and legend
+
+    # Save the figure
+    savename = name_analytic("particle_analytic_potential/particle_velocity_res", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    return fig
+end
+
+function plot_particle_velocity_analytic_diff(sim1, sim2, sim4; invert=true)
+    CairoMakie.activate!()
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    x0 = sim1.params.x0
+    k = sim1.params.k
+    m = sim1.params.m
+    # analytic(t) = x0 * sin(sqrt(k / m) * t + 0.5pi)
+    analytic(t) = -x0 * sqrt(k / m) * sin(sqrt(k / m) * t)
+    # Create figure and axis
+    nt = length(sim1.sol.t)
+    # xs1 = zeros(nt)
+    err1 = zeros(nt)
+    err2 = zeros(nt)
+    # ms1 = zeros(nt)
+    for i in 1:nt
+        err1[i] = sim1.sol.u[i][3] - sim2.sol.u[2i - 1][3]
+        err2[i] = sim2.sol.u[2i - 1][3] - sim4.sol.u[4i - 3][3]
+    end
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              title=L"\textrm{Particle Velocity}")
+    palette = mytheme.palette
+    color1 = palette.color[][1]  # Blue-ish for Particle 1
+    color2 = palette.color[][2]  # Orange-ish for Particle 2
+    res_styles = [palette.linestyle[][1], palette.linestyle[][2], palette.linestyle[][3]]  # Solid, Dash, Dot
+
+    # Plot the data
+    lines!(ax, sim1.sol.t, err1; label=L"\textrm{low-mid}",
+           color=color1, linestyle=res_styles[1])
+    lines!(ax, sim1.sol.t, 2^4 * err2; label=L"\textrm{2^4 \cdot (mid-high)}",
+           color=color2, linestyle=res_styles[2])
+    ax.xlabel = L"t"
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    rowgap!(fig.layout, 0)                 # Gap between plot and legend
+
+    # Save the figure
+    savename = name_analytic("particle_analytic_potential/particle_velocity_diff", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    return fig
+end
+
+function plot_particle_velocity_analytic_convfac(sim1, sim2, sim4; invert=true)
+    CairoMakie.activate!()
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    x0 = sim1.params.x0
+    k = sim1.params.k
+    m = sim1.params.m
+    # analytic(t) = x0 * sin(sqrt(k / m) * t + 0.5pi)
+    analytic(t) = -x0 * sqrt(k / m) * sin(sqrt(k / m) * t)
+    # Create figure and axis
+    nt = length(sim1.sol.t)
+    # xs1 = zeros(nt)
+    convfac = zeros(nt)
+    # ms1 = zeros(nt)
+    for i in 1:nt
+        err1 = sim1.sol.u[i][3] - sim2.sol.u[2i - 1][3]
+        err2 = sim2.sol.u[2i - 1][3] - sim4.sol.u[4i - 3][3]
+        if err1 == err2
+            convfac[i] = 1.0
+        else
+            convfac[i] = err1 / err2
+        end
+    end
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              title=L"\textrm{Particle Velocity Convergence Factor}")
+    palette = mytheme.palette
+    color1 = palette.color[][1]  # Blue-ish for Particle 1
+    color2 = palette.color[][2]  # Orange-ish for Particle 2
+    res_styles = [palette.linestyle[][1], palette.linestyle[][2], palette.linestyle[][3]]  # Solid, Dash, Dot
+    ylims!(ax, 0, 40)
+    # Plot the data
+    lines!(ax, sim1.sol.t, convfac; color=color1, linestyle=res_styles[1])
+    ax.xlabel = L"t"
+    #leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    colsize!(fig.layout, 1, Relative(0.9))
+    # rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    # rowgap!(fig.layout, 0)                 # Gap between plot and legend
+
+    # Save the figure
+    savename = name_analytic("particle_analytic_potential/particle_velocity_convfac", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    return fig
+end
+
+function plot_particle_mass_analytic(sim1; invert=true)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+
+    x0 = sim1.params.x0
+    k = sim1.params.k
+    m = sim1.params.m
+    # Create figure and axis
+    nt = length(sim1.sol.t)
+    ms1 = zeros(nt)
+    for i in 1:nt
+        ms1[i] = sim1.sol.u[i][1]
+    end
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              title=L"\textrm{Particle Mass}")
+    # Plot the data
+    lines!(ax, sim1.sol.t, ms1; label=L"\textrm{particle 1}")
+    ax.ylabel = L"m(t)"
+    ax.xlabel = L"t"
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    rowgap!(fig.layout, 0)                 # Gap between plot and legend
+
+    # Save the figure
+    savename = name_analytic("particle_analytic_potential/particle_mass", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    return fig
+end
+
+function plot_particle_mass_analytic_res(sim1, sim2, sim4; invert=true)
+    CairoMakie.activate!()
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    # Create figure and axis
+    nt = length(sim1.sol.t)
+    ms1 = zeros(nt)
+    ms2 = zeros(nt)
+    ms4 = zeros(nt)
+    for i in 1:nt
+        ms1[i] = sim1.sol.u[i][1]
+        ms2[i] = sim2.sol.u[2i - 1][1]
+        ms4[i] = sim4.sol.u[4i - 3][1]
+    end
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              title=L"\textrm{Particle Mass}")
+    # Plot the data
+    palette = mytheme.palette
+    color1 = palette.color[][1]  # Blue-ish for Particle 1
+    color2 = palette.color[][2]  # Orange-ish for Particle 2
+    res_styles = [palette.linestyle[][1], palette.linestyle[][2], palette.linestyle[][3]]  # Solid, Dash, Dot
+
+    # Plot the data
+    lines!(ax, sim1.sol.t, ms1; label=L"\textrm{particle 1}",
+           color=color1, linestyle=res_styles[1])
+    lines!(ax, sim1.sol.t, ms2; color=color1, linestyle=res_styles[2])
+    lines!(ax, sim1.sol.t, ms4; color=color1, linestyle=res_styles[3])
+
+    ax.ylabel = L"m(t)"
+    ax.xlabel = L"t"
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    rowgap!(fig.layout, 0)                 # Gap between plot and legend
+
+    # Save the figure
+    savename = name_analytic("particle_analytic_potential/particle_mass_res", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    return fig
+end
+
+function plot_particle_mass_analytic_diff(sim1, sim2, sim4; invert=true)
+    CairoMakie.activate!()
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    nt = length(sim1.sol.t)
+    err1 = zeros(nt)
+    err2 = zeros(nt)
+    for i in 1:nt
+        err1[i] = sim1.sol.u[i][1] - sim2.sol.u[2i - 1][1]
+        err2[i] = sim2.sol.u[2i - 1][1] - sim4.sol.u[4i - 3][1]
+    end
+
+    fig = Figure()
+    ax = Axis(fig[1, 1];
+              title=L"\textrm{Particle Mass}")
+    # Plot the data
+    palette = mytheme.palette
+    color1 = palette.color[][1]  # Blue-ish for Particle 1
+    color2 = palette.color[][2]  # Orange-ish for Particle 2
+    res_styles = [palette.linestyle[][1], palette.linestyle[][2], palette.linestyle[][3]]  # Solid, Dash, Dot
+
+    # Plot the data
+    lines!(ax, sim1.sol.t, err1; label=L"\textrm{low-mid}",
+           color=color1, linestyle=res_styles[1])
+    lines!(ax, sim1.sol.t, 2^4 * err2; label=L"\textrm{2^4 \cdot (mid-high)}",
+           color=color2, linestyle=res_styles[2])
+
+    ax.xlabel = L"t"
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    rowgap!(fig.layout, 0)                 # Gap between plot and legend
+
+    # Save the figure
+    savename = name_analytic("particle_analytic_potential/particle_mass_diff", sim1)
     save(joinpath(FIG_PATH, savename), fig)
     save(joinpath(PAPER_FIG_PATH, savename), fig)
     return fig

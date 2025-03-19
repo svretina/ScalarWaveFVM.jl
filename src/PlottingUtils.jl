@@ -7,14 +7,14 @@ using LinearAlgebra
 using MakieCore
 using Makie
 using CairoMakie
-CairoMakie.activate!()
 
 const PROJ_PATH = pkgdir(@__MODULE__)
 const FIG_PATH = joinpath(PROJ_PATH, "figures")
 const PAPER_PATH = "/home/svretina/PhD/mypapers/ScalarSelfForcePaper"
 const PAPER_FIG_PATH = joinpath(PAPER_PATH, "figs")
 
-export mytheme_aps, mymean, name_potential, name_interacting, name_forced
+export mytheme_aps, mymean, name_potential, name_interacting, name_forced,
+       name_analytic_potential
 export FIG_PATH, PAPER_FIG_PATH
 
 function name_potential(pre, sim, post=nothing)
@@ -33,7 +33,38 @@ function name_potential(pre, sim, post=nothing)
                    "_", ".")
     else
         tmp = join([pre,
-                    "v=$(v)_q=$(q)_dx=$(dx)_cfl=$(cfl)",
+                    "v=$(v)",
+                    "q=$(q)",
+                    "dx=$(dx)",
+                    "cfl=$(cfl)",
+                    post, "pdf"],
+                   "_", ".")
+    end
+    return tmp
+end
+
+function name_analytic_potential(pre, sim, post=nothing)
+    q = sim.params.q
+    v = sim.params.v0
+    dx = sim.params.dx
+    k = sim.params.k
+    dt = sim.params.dt
+    if post === nothing
+        tmp = join([pre,
+                    "k=$(k)",
+                    "v=$(v)",
+                    "q=$(q)",
+                    "dx=$(dx)",
+                    "dt=$(dt)",
+                    "pdf"],
+                   "_", ".")
+    else
+        tmp = join([pre,
+                    "k=$(k)",
+                    "v=$(v)",
+                    "q=$(q)",
+                    "dx=$(dx)",
+                    "dt=$(dt)",
                     post, "pdf"],
                    "_", ".")
     end

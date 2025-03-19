@@ -60,6 +60,18 @@ struct SimulationParametersInteracting{T} <: SimulationParameters{T}
     cfl::T
 end
 
+struct SimulationParametersAnalyticPotential{T} <: SimulationParameters{T}
+    L::Int64
+    dx::T
+    dt::T
+    x::Vector{T}
+    q::T
+    m::T
+    x0::T
+    v0::T
+    k::T
+end
+
 struct Simulation{T}
     params::SimulationParameters{T}
     sol::SciMLBase.ODESolution
@@ -78,7 +90,7 @@ function forced_motion(Nosc, dx, cfl, vmax, q, sf=true, muscl=true)
     ω = round(vmax / A; digits=9)
     T = (2π / ω)
 
-    L = ceil(4Nosc * T / 3)
+    L = 2ceil(4Nosc * T / 3)
     @show ω
     @show A
     @show L
@@ -89,10 +101,11 @@ function forced_motion(Nosc, dx, cfl, vmax, q, sf=true, muscl=true)
     grid = UniformStaggeredGrid1D(Float64[-L, L], N)
     x = coords(grid) # cell centers
     @show length(x)
+    Φ = zeros(Float64, length(grid))
     Π = zeros(Float64, length(grid))
     Ψ = zeros(Float64, length(grid))
 
-    statevector = hcat(Π, Ψ)
+    statevector = hcat(Π, Ψ, Φ)
 
     dx = spacing(grid)
 
@@ -153,8 +166,9 @@ function particle_given_potential(tf, dt)
 
     # Ψ(tt, xx) = InitialData.dxSineWave(tt, xx, n, c, A, Lwave)
     # Π(tt, xx) = InitialData.dtSineWave(tt, xx, n, c, A, Lwave)
-    Ψ(tt, xx) = 10.0 #InitialData.dxSineWave(tt, xx, n, c, A, Lwave)
-    Π(tt, xx) = 0.0 #InitialData.dtSineWave(tt, xx, n, c, A, Lwave)
+    a = 0.25
+    Ψ(tt, xx) = InitialData.dxHarmonic(tt, xx, a)
+    Π(tt, xx) = InitialData.dtHarmonic(tt, xx, a)
     q1 = -1.0
     m10 = 1.0
     x10 = 0.0
@@ -171,34 +185,40 @@ function particle_given_potential(tf, dt)
     return sol
 end
 
-function particle_given_interpolation(L, dx, tf, dt)
+function particle_in_fixed_potential_interpolation(L, dx, dt, Nosc, k)
+    # n = 50
+    # c = 1
+    # A = 1 / (2π)
+    # λ = 10
+    # Lwave = λ * n
+
+    #     k = 1.0
+    T = 2π / sqrt(k)
+    tf = Nosc * T
     tspan = (0.0, tf)
     t = 0.0:dt:tf
-
     x = (-L):dx:L
 
-    n = 50
-    c = 1
-    A = 1 / (2π)
-    λ = 10
-    Lwave = λ * n
+    Ψ(tt, xx) = InitialData.dxHarmonic(tt, xx, k)
+    Π(tt, xx) = InitialData.dtHarmonic(tt, xx, k)
 
-    Ψ(tt, xx) = InitialData.dxSineWave(tt, xx, n, c, A, Lwave)
-    Π(tt, xx) = InitialData.dtSineWave(tt, xx, n, c, A, Lwave)
-
-    q1 = -1.0
+    q1 = 1.0
     m10 = 1.0
-    x10 = 0.0
+    x10 = 0.1
     v10 = 0.0
     interpolation_method = QuadraticInterpolation
     statevector = [m10, x10, v10] #, m20, x20, v20]
-    params = (q1=q1, pifield=Π.(0.0, x), psifield=Ψ.(0.0, x),
+    params = (q1=q1, pifield=Π, psifield=Ψ,
               interpolation_method=interpolation_method, x=x)
-    alg = SSPRK54()
+
+    alg = SSPRK54() #
     ode = ODEProblem{true}(ODE.particle_rhs_interpolation!, statevector,
                            tspan, params; saveat=t)
     sol = solve(ode, alg; adaptive=false, dt=dt)
-    return sol
+    sim = SimulationParametersAnalyticPotential(L, dx, dt, collect(x), q1, m10, x10, v10,
+                                                Float64(k))
+    res = Simulation(sim, sol)
+    return res
 end
 
 function particle_in_potential(L, N, tf, cfl, q, sf=true)
@@ -222,13 +242,13 @@ function particle_in_potential(L, N, tf, cfl, q, sf=true)
     λ = 200.0 # L / n
     @show 2A * π / λ
     @show λ
+    Φ = zeros(Float64, length(grid))
     Π = zeros(Float64, length(grid))
-
     Ψ = InitialData.dxSineWave.(0.0, x, A, λ, c)
     # Ψ = InitialData.dxHarmonic(0.0, x, 0.005)
     # Π = InitialData.dtSineWave.(0.0, x, A, λ, c)
 
-    field_statevector = hcat(Π, Ψ)
+    field_statevector = hcat(Π, Ψ, Φ)
 
     ## Particle 1
     # q = 0.05
@@ -276,22 +296,23 @@ function interacting_particles(L, N, tf, cfl, v0, q0, same_q=true, sf=true)
 
     grid = UniformStaggeredGrid1D(Float64[-L, L], N)
     x = GridFunctions.Grids.coords(grid) # cell centers
-    tspan = (0.0, tf)
+
     dx = spacing(grid)
 
     dt = cfl * dx / c
     @show dx, dt
     t = 0.0:dt:(tf + dt)
-
+    tspan = (0.0, tf)
+    Φ = zeros(Float64, length(grid))
     Π = zeros(Float64, length(grid))
     Ψ = zeros(Float64, length(grid))
 
-    field_statevector = hcat(Π, Ψ)
+    field_statevector = hcat(Π, Ψ, Φ)
 
     ## Particle 1
     q1 = Float64(q0)
     m10 = 1.0
-    x10 = -L / 4
+    x10 = -200.0
     v10 = v0
     ## Particle 2
     if same_q
@@ -316,7 +337,7 @@ function interacting_particles(L, N, tf, cfl, v0, q0, same_q=true, sf=true)
     numerical_flux = NumericalFluxes.flux_rusanov
     slope_limiter = Limiters.minmod
     flux_limiter = Limiters.minmod
-    interpolation_method = ConstantInterpolation # LinearInterpolation # QuadraticInterpolation
+    interpolation_method = PCHIPInterpolation # QuadraticInterpolation
 
     params = (equation=equation, numerical_flux=numerical_flux,
               slope_limiter=slope_limiter, flux_limiter=flux_limiter,
@@ -329,7 +350,7 @@ function interacting_particles(L, N, tf, cfl, v0, q0, same_q=true, sf=true)
                                           q1, m10, x10, v10,
                                           q2, m20, x20, v20, cfl)
     alg = SSPRK54()
-    alg = SSPRK53_2N1()
+    # alg = SSPRK53_2N1()
     # alg = ImplicitEuler()
     ode = ODEProblem{true}(ODE.interacting_coupled_rhs!, statevector, tspan,
                            params; saveat=t,

@@ -188,7 +188,8 @@ function muscl!(dQ, Q, params, t)
             Fl = numerical_flux(qll, qlr, equation)
             Fr = numerical_flux(qrl, qrr, equation)
 
-            dQ[i, :] .= -(Fr - Fl) * _h
+            dQ[i, 1:2] .= -(Fr - Fl) * _h
+            dQ[i, 3] = Π[i]
         end
     end
     return nothing
@@ -400,9 +401,9 @@ function particle_rhs_functions!(dQ, Q, params, t)
     @inbounds m1 = Q[1]
     @inbounds x1 = Q[2]
     @inbounds v1 = Q[3]
-    # abs(v1) <= 1 || throw("v1=$v1 > 1, at t=$(t), a1 = $(dQ[3])")
-    v1 = max(-1.0, min(1.0, v1))
-    Q[3] = v1
+    abs(v1) <= 1 || throw("v1=$v1 > 1, at t=$(t), a1 = $(dQ[3])")
+    # v1 = max(-1.0, min(1.0, v1))
+    # Q[3] = v1
     Π1 = Π(t, x1)
     Ψ1 = Ψ(t, x1)
 
@@ -411,7 +412,7 @@ function particle_rhs_functions!(dQ, Q, params, t)
 
     @inbounds dQ[1] = -q1 * (Π1 + v1 * Ψ1)
     @inbounds dQ[2] = v1
-    @inbounds dQ[3] = q1 * a12 * (v1 * Π1 + Ψ1) #/ m1
+    @inbounds dQ[3] = q1 * a12 * (v1 * Π1 + Ψ1) / m1
     return nothing
 end
 
@@ -424,10 +425,14 @@ function particle_rhs_interpolation!(dQ, Q, params, t)
     m1 = Q[1]
     x1 = Q[2]
     v1 = Q[3]
-    abs(v1) <= 1 || throw("v1=$v1 > 1, at t=$(t), a1 = $(dQ_particle[3])")
+    abs(v1) <= 1 || throw("v1=$v1 > 1, at t=$(t), a1 = $(dQ[3])")
+    Πvals = Π.(t, x)
+    Ψvals = Ψ.(t, x)
 
-    interpolator_Ψ = interpolation_method(Ψ, x; extrapolation=ExtrapolationType.Extension)
-    interpolator_Π = interpolation_method(Π, x; extrapolation=ExtrapolationType.Extension)
+    interpolator_Ψ = interpolation_method(Ψvals, x;
+                                          extrapolation=ExtrapolationType.Extension)
+    interpolator_Π = interpolation_method(Πvals, x;
+                                          extrapolation=ExtrapolationType.Extension)
     Π1 = interpolator_Π(x1)
     Ψ1 = interpolator_Ψ(x1)
 

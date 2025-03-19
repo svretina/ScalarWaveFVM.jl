@@ -3,9 +3,10 @@ module InteractingPlots
 using ..PlottingUtils
 using CairoMakie
 using LinearAlgebra
-using GLMakie
+# using GLMakie
 using DataInterpolations
 using ..ScalarField
+using ..Energies
 
 @inline name(pre, sim, post=nothing) = name_interacting(pre, sim, post)
 
@@ -14,17 +15,17 @@ using ..ScalarField
     return m * (γ - one(γ))
 end
 
-@inline function PotentialEnergy(x, xs, Φ)
+@inline function PotentialEnergy(xp, xs, Φ)
     interpolator_Φ = QuadraticInterpolation(Φ, xs)
-    return interpolator_Φ(x)
+    return interpolator_Φ(xp)
 end
 
-@inline function TotalEnergy(m, v, x, xs, Φ)
-    return m + KineticEnergy(m, v) + PotentialEnergy(x, xs, Φ)
+@inline function TotalEnergy(m, v, xp, xs, Φ)
+    return m + KineticEnergy(m, v) + PotentialEnergy(xp, xs, Φ)
 end
 
 ## More complicated!
-## Integrate Hamiltonian of Eq.(14)
+## Integrate Hamiltonian of
 # @inline function FieldEnergy(Π, Ψ)
 #     return 0.5integrate(Π .^ 2 + Ψ .^ 2)
 # end
@@ -124,6 +125,7 @@ function plot_psifield(i, sim1)
 end
 
 function plot_pifield_resolutions(i, sim1, sim2, sim4)
+    CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     t1 = sim1.sol.t[i]
@@ -903,8 +905,8 @@ function plot_panel(sim1, ticklabelsize=20)
         q2 = sim1.params.q2
 
         L = sim1.params.L
-        x_range = (-L / 2, L / 2)
-        mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+        x_range = (-L / 8, L / 8)
+        mask = (sim1.params.x .>= -L / 8) .& (sim1.params.x .<= L / 8)
         x_filtered = sim1.params.x[mask]
 
         dynamic_plot = lift(current_index) do i
@@ -915,12 +917,12 @@ function plot_panel(sim1, ticklabelsize=20)
             x2 = sim1.sol.u[i].x[2][5]
             v2 = sim1.sol.u[i].x[2][6]
 
-            Ψs1 = ScalarField.Ψs.(x_filtered, q1, x1, v1)
-            Ψs2 = ScalarField.Ψs.(x_filtered, q2, x2, v2)
-            y_raw = sim1.sol.u[i].x[1][:, 2]
-            Ψ_tot = y_raw[mask]
-            y1 = Ψ_tot .+ Ψs2
-            y2 = Ψ_tot .+ Ψs1
+            Φs1 = ScalarField.Φs.(x_filtered, q1, x1, v1)
+            Φs2 = ScalarField.Φs.(x_filtered, q2, x2, v2)
+            y_raw = sim1.sol.u[i].x[1][:, 3]
+            Φ_tot = y_raw[mask]
+            y1 = Φ_tot .+ Φs2
+            y2 = Φ_tot .+ Φs1
             interpolator_y1 = QuadraticInterpolation(y1, x_filtered;
                                                      extrapolation=ExtrapolationType.Extension)
             interpolator_y2 = QuadraticInterpolation(y2, x_filtered;
@@ -957,6 +959,157 @@ function plot_panel(sim1, ticklabelsize=20)
         display(fig)
     end
     return nothing
+end
+
+function plot_particle_energies(sim1, sim2, sim4, ticklabelsize=20)
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    nt = length(sim1.sol.t)
+    ke11 = zeros(nt)
+    ke12 = zeros(nt)
+    ke14 = zeros(nt)
+
+    ke21 = zeros(nt)
+    ke22 = zeros(nt)
+    ke24 = zeros(nt)
+
+    pe11 = zeros(nt)
+    pe12 = zeros(nt)
+    pe14 = zeros(nt)
+
+    pe21 = zeros(nt)
+    pe22 = zeros(nt)
+    pe24 = zeros(nt)
+
+    te11 = zeros(nt)
+    te12 = zeros(nt)
+    te14 = zeros(nt)
+    te21 = zeros(nt)
+    te22 = zeros(nt)
+    te24 = zeros(nt)
+    palette = mytheme.palette
+    color1 = palette.color[][1]  # Blue-ish for Particle 1
+    color2 = palette.color[][2]  # Orange-ish for Particle 2
+    res_styles = [palette.linestyle[][1],
+                  palette.linestyle[][2],
+                  palette.linestyle[][3]]  # Solid, Dash, Dot
+    x1 = sim1.params.x
+    x2 = sim2.params.x
+    x4 = sim4.params.x
+    q1 = sim1.params.q1
+    q2 = sim1.params.q2
+
+    for i in 1:nt
+        xp11 = sim1.sol.u[i].x[2][2]
+        xp12 = sim2.sol.u[2i - 1].x[2][2]
+        xp14 = sim4.sol.u[4i - 3].x[2][2]
+
+        xp21 = sim1.sol.u[i].x[2][5]
+        xp22 = sim2.sol.u[2i - 1].x[2][5]
+        xp24 = sim4.sol.u[4i - 3].x[2][5]
+
+        mp11 = sim1.sol.u[i].x[2][1]
+        mp12 = sim2.sol.u[2i - 1].x[2][1]
+        mp14 = sim4.sol.u[4i - 3].x[2][1]
+
+        mp21 = sim1.sol.u[i].x[2][4]
+        mp22 = sim2.sol.u[2i - 1].x[2][4]
+        mp24 = sim4.sol.u[4i - 3].x[2][4]
+
+        vp11 = sim1.sol.u[i].x[2][3]
+        vp12 = sim2.sol.u[2i - 1].x[2][3]
+        vp14 = sim4.sol.u[4i - 3].x[2][3]
+
+        vp21 = sim1.sol.u[i].x[2][6]
+        vp22 = sim2.sol.u[2i - 1].x[2][6]
+        vp24 = sim4.sol.u[4i - 3].x[2][6]
+
+        Φ1 = sim1.sol.u[i].x[1][:, 3]
+        Φ2 = sim2.sol.u[2i - 1].x[1][:, 3]
+        Φ4 = sim4.sol.u[4i - 3].x[1][:, 3]
+
+        ke11[i] = KineticEnergy(mp11, vp11)
+        ke12[i] = KineticEnergy(mp12, vp12)
+        ke14[i] = KineticEnergy(mp14, vp14)
+
+        ke21[i] = KineticEnergy(mp21, vp21)
+        ke22[i] = KineticEnergy(mp22, vp22)
+        ke24[i] = KineticEnergy(mp24, vp24)
+
+        pe11[i] = PotentialEnergy(xp11, x1, Φ1) + ScalarField.Φs(xp11, q2, xp21, vp21)
+        pe12[i] = PotentialEnergy(xp12, x2, Φ2) + ScalarField.Φs(xp12, q2, xp22, vp22)
+        pe14[i] = PotentialEnergy(xp14, x4, Φ4) + ScalarField.Φs(xp14, q2, xp24, vp24)
+
+        pe21[i] = PotentialEnergy(xp21, x1, Φ1) + ScalarField.Φs(xp21, q1, xp12, vp11)
+        pe22[i] = PotentialEnergy(xp22, x2, Φ2) + ScalarField.Φs(xp22, q1, xp12, vp12)
+        pe24[i] = PotentialEnergy(xp24, x4, Φ4) + ScalarField.Φs(xp24, q1, xp14, vp14)
+
+        te11[i] = mp11 + ke11[i] + pe11[i]
+        te12[i] = mp12 + ke12[i] + pe12[i]
+        te14[i] = mp14 + ke14[i] + pe14[i]
+
+        te21[i] = mp21 + ke21[i] + pe21[i]
+        te22[i] = mp22 + ke22[i] + pe22[i]
+        te24[i] = mp24 + ke24[i] + pe24[i]
+    end
+
+    energy1 = Energies.FieldEnergy(sim1)
+    energy2 = Energies.FieldEnergy(sim2)[1:2:end]
+    energy4 = Energies.FieldEnergy(sim4)[1:4:end]
+
+    fig = Figure(; size=(6 * 253, 4 * 200))
+    ax11 = Axis(fig[1, 1]; title=L"\textrm{Kinetic Energy}",
+                xticklabelsize=ticklabelsize,
+                yticklabelsize=ticklabelsize)
+    ax12 = Axis(fig[1, 2]; title=L"\textrm{Potential Energy}",
+                xticklabelsize=ticklabelsize,
+                yticklabelsize=ticklabelsize)
+    ax21 = Axis(fig[2, 1]; title=L"\textrm{Total Energy}",
+                xticklabelsize=ticklabelsize,
+                yticklabelsize=ticklabelsize)
+    ax22 = Axis(fig[2, 2]; title=L"\textrm{Field Energy}",
+                xticklabelsize=ticklabelsize,
+                yticklabelsize=ticklabelsize)
+
+    ax11.xlabel = L"t"
+    ax12.xlabel = L"t"
+    ax21.xlabel = L"t"
+    ax22.xlabel = L"t"
+
+    lines!(ax11, sim1.sol.t, ke11; color=color1, linestyle=res_styles[1])
+    lines!(ax11, sim1.sol.t, ke12; color=color1, linestyle=res_styles[2])
+    lines!(ax11, sim1.sol.t, ke14; color=color1, linestyle=res_styles[3])
+
+    lines!(ax11, sim1.sol.t, ke21; color=color2, linestyle=res_styles[1])
+    lines!(ax11, sim1.sol.t, ke22; color=color2, linestyle=res_styles[2])
+    lines!(ax11, sim1.sol.t, ke24; color=color2, linestyle=res_styles[3])
+
+    lines!(ax12, sim1.sol.t, pe11; color=color1, linestyle=res_styles[1])
+    lines!(ax12, sim1.sol.t, pe12; color=color1, linestyle=res_styles[2])
+    lines!(ax12, sim1.sol.t, pe14; color=color1, linestyle=res_styles[3])
+
+    lines!(ax12, sim1.sol.t, pe21; color=color2, linestyle=res_styles[1])
+    lines!(ax12, sim1.sol.t, pe22; color=color2, linestyle=res_styles[2])
+    lines!(ax12, sim1.sol.t, pe24; color=color2, linestyle=res_styles[3])
+
+    lines!(ax21, sim1.sol.t, te11; color=color1, linestyle=res_styles[1])
+    lines!(ax21, sim1.sol.t, te12; color=color1, linestyle=res_styles[2])
+    lines!(ax21, sim1.sol.t, te14; color=color1, linestyle=res_styles[3])
+
+    lines!(ax21, sim1.sol.t, te21; color=color2, linestyle=res_styles[1])
+    lines!(ax21, sim1.sol.t, te22; color=color2, linestyle=res_styles[2])
+    lines!(ax21, sim1.sol.t, te24; color=color2, linestyle=res_styles[3])
+
+    lines!(ax22, sim1.sol.t, energy1; color=color1, linestyle=res_styles[1])
+    lines!(ax22, sim1.sol.t, energy2; color=color1, linestyle=res_styles[2])
+    lines!(ax22, sim1.sol.t, energy4; color=color1, linestyle=res_styles[3])
+
+    display(fig)
+    # savename = name("interacting_particles/particle_energies_resolutions", sim1)
+    # save(joinpath(FIG_PATH, savename), fig)
+    # save(joinpath(PAPER_FIG_PATH, savename), fig)
+    return fig
 end
 
 function plot_panel(sim1, sim2, sim4, ticklabelsize=20)
@@ -1019,7 +1172,7 @@ function plot_panel(sim1, sim2, sim4, ticklabelsize=20)
         fig = Figure(; size=(6 * 253, 4 * 200))
         supertitle_layout = fig[1, 1:2] = GridLayout()
 
-        ax11 = Axis(fig[2, 1]; title=L"\textrm{Field}",
+        ax11 = Axis(fig[2, 1]; title=L"\textrm{\Phi Field}",
                     xticklabelsize=ticklabelsize,
                     yticklabelsize=ticklabelsize)
         ax12 = Axis(fig[2, 2]; title=L"\textrm{Positions}",
@@ -1027,7 +1180,7 @@ function plot_panel(sim1, sim2, sim4, ticklabelsize=20)
                     yticklabelsize=ticklabelsize)
         ax21 = Axis(fig[3, 1]; title=L"\textrm{Masses}",
                     xticklabelsize=ticklabelsize,
-                    yticklabelsize=ticklabelsize, yscale=log10)
+                    yticklabelsize=ticklabelsize)
         ax22 = Axis(fig[3, 2]; title=L"\textrm{Velocities}",
                     xticklabelsize=ticklabelsize,
                     yticklabelsize=ticklabelsize)
@@ -1102,8 +1255,8 @@ function plot_panel(sim1, sim2, sim4, ticklabelsize=20)
         q2 = sim1.params.q2
 
         L = sim1.params.L
-        x_range = (-L / 2, L / 2)
-        mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+        x_range = (-L / 8, L / 8)
+        mask = (sim1.params.x .>= -L / 8) .& (sim1.params.x .<= L / 8)
         x_filtered = sim1.params.x[mask]
 
         dynamic_plot = lift(current_index) do i
@@ -1114,12 +1267,12 @@ function plot_panel(sim1, sim2, sim4, ticklabelsize=20)
             x2 = sim1.sol.u[i].x[2][5]
             v2 = sim1.sol.u[i].x[2][6]
 
-            Ψs1 = ScalarField.Ψs.(x_filtered, q1, x1, v1)
-            Ψs2 = ScalarField.Ψs.(x_filtered, q2, x2, v2)
-            y_raw = sim1.sol.u[i].x[1][:, 2]
-            Ψ_tot = y_raw[mask]
-            y1 = Ψ_tot .+ Ψs2
-            y2 = Ψ_tot .+ Ψs1
+            Φs1 = ScalarField.Φs.(x_filtered, q1, x1, v1)
+            Φs2 = ScalarField.Φs.(x_filtered, q2, x2, v2)
+            y_raw = sim1.sol.u[i].x[1][:, 3]
+            Φ_tot = y_raw[mask]
+            y1 = Φ_tot .+ Φs2
+            y2 = Φ_tot .+ Φs1
             interpolator_y1 = QuadraticInterpolation(y1, x_filtered;
                                                      extrapolation=ExtrapolationType.Extension)
             interpolator_y2 = QuadraticInterpolation(y2, x_filtered;
