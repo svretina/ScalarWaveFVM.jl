@@ -47,53 +47,61 @@ function newton_cotes(y::Vector{T}, h::T; order::Int=1) where {T}
     return integral
 end
 
-function HamiltonianDensity(i, sim)
+function hamiltonian_density(i, sim)
     if hasproperty(sim.sol.u[1], :x)
-        Ufield = sim.sol.u[i].x[1]
-        Upart = sim.sol.u[i].x[2]
-        x = sim.params.x
-        q1 = sim.params.q1
-        q2 = sim.params.q2
-
-        xp1 = Upart[2]
-        xp2 = Upart[5]
-        vp1 = Upart[3]
-        vp2 = Upart[6]
-
-        Φs1 = ScalarField.Φs.(x, q1, xp1, vp1)
-        Πs1 = ScalarField.Πs.(x, q1, xp1, vp1)
-        Ψs1 = ScalarField.Ψs.(x, q1, xp1, vp1)
-
-        Φs2 = ScalarField.Φs.(x, q2, xp2, vp2)
-        Πs2 = ScalarField.Πs.(x, q2, xp2, vp2)
-        Ψs2 = ScalarField.Ψs.(x, q2, xp2, vp2)
-        Πr = @views Ufield[:, 1]
-        Ψr = @views Ufield[:, 2]
-        p = @. -(Πr + Πs1 + Πs2)
-        H = @. -0.5p * p - p * (Πs1 + Πs2) - 0.5Ψr * Ψr - Ψr * Ψs1 - Ψr * Ψs2 -
-               0.5Ψs1 * Ψs1 - 0.5Ψs2 * Ψs2 - Ψs1 * Ψs2
-        return H
+        return hamiltonian_density_2(i, sim)
     else
-        Ufield = sim.sol.u[i]
-        x = sim.params.x
-        q = sim.params.q
-        xp, v, _ = ParticleMotion.oscillator(sim.sol.t[i], sim.params.x0, sim.params.A,
-                                             sim.params.ω)
-        # Φs = ScalarField.Φs.(x, q, xp, v)
-        Πs = ScalarField.Πs.(x, q, xp, v)
-        Ψs = ScalarField.Ψs.(x, q, xp, v)
-
-        Πr = @views Ufield[:, 1]
-        Ψr = @views Ufield[:, 2]
-
-        p = -(Πr .+ Πs)
-        H = @. -0.5p * p - p * Πs - 0.5Ψr * Ψr - Ψr * Ψs - 0.5Ψs * Ψs
-        return H
+        return hamiltonian_density_1(i, sim)
     end
 end
 
-function Hamiltonian(i, sim)
-    H = HamiltonianDensity(i, sim)
+function hamiltonian_density_2(i, sim)
+    Ufield = sim.sol.u[i].x[1]
+    Upart = sim.sol.u[i].x[2]
+    x = sim.params.x
+    q1 = sim.params.q1
+    q2 = sim.params.q2
+
+    xp1 = Upart[2]
+    xp2 = Upart[5]
+    vp1 = Upart[3]
+    vp2 = Upart[6]
+
+    Φs1 = ScalarField.Φs.(x, q1, xp1, vp1)
+    Πs1 = ScalarField.Πs.(x, q1, xp1, vp1)
+    Ψs1 = ScalarField.Ψs.(x, q1, xp1, vp1)
+
+    Φs2 = ScalarField.Φs.(x, q2, xp2, vp2)
+    Πs2 = ScalarField.Πs.(x, q2, xp2, vp2)
+    Ψs2 = ScalarField.Ψs.(x, q2, xp2, vp2)
+    Πr = @views Ufield[:, 1]
+    Ψr = @views Ufield[:, 2]
+    p = @. -(Πr + Πs1 + Πs2)
+    H = @. -0.5p * p - p * (Πs1 + Πs2) - 0.5Ψr * Ψr - Ψr * Ψs1 - Ψr * Ψs2 -
+           0.5Ψs1 * Ψs1 - 0.5Ψs2 * Ψs2 - Ψs1 * Ψs2
+    return H
+end
+
+function hamiltonian_density_1(i, sim)
+    Ufield = sim.sol.u[i]
+    x = sim.params.x
+    q = sim.params.q
+    xp, v, _ = ParticleMotion.oscillator(sim.sol.t[i], sim.params.x0, sim.params.A,
+                                         sim.params.ω)
+    # Φs = ScalarField.Φs.(x, q, xp, v)
+    Πs = ScalarField.Πs.(x, q, xp, v)
+    Ψs = ScalarField.Ψs.(x, q, xp, v)
+
+    Πr = @views Ufield[:, 1]
+    Ψr = @views Ufield[:, 2]
+
+    p = -(Πr .+ Πs)
+    H = @. -0.5p * p - p * Πs - 0.5Ψr * Ψr - Ψr * Ψs - 0.5Ψs * Ψs
+    return H
+end
+
+function hamiltonian(i, sim)
+    H = hamiltonian_density(i, sim)
     energy = newton_cotes(H, sim.params.dx; order=1)
 
     if hasproperty(sim.sol.u[1], :x)
@@ -135,29 +143,71 @@ function Hamiltonian(i, sim)
     end
 end
 
-function FieldEnergy(sim)
+function field_energy(sim)
     nt = length(sim.sol.t)
     energy = zeros(nt)
 
     for i in 1:nt
-        energy[i] = Hamiltonian(i, sim)
+        energy[i] = hamiltonian(i, sim)
     end
 
     return energy # ./ energy[1]
 end
 
-function MomentumVector_1()
-    p = (Πr + Πs1)
-    T0x = p * (Ψr + Ψs1)
+function momentum_density(i, sim)
+    if hasproperty(sim.sol.u[1], :x)
+        return momentum_density_2(i, sim)
+    else
+        return momentum_density_1(i, sim)
+    end
 end
 
-function MomentumVector_2()
-    p = (Πr + Πs1 + Πs2)
-    T0x = p * (Ψr + Ψs1 + Ψs2)
+function momentum_density_1(i, sim)
+    Ufield = sim.sol.u[i]
+    x = sim.params.x
+    q = sim.params.q
+    xp, v, _ = ParticleMotion.oscillator(sim.sol.t[i], sim.params.x0, sim.params.A,
+                                         sim.params.ω)
+    Πs = ScalarField.Πs.(x, q, xp, v)
+    Ψs = ScalarField.Ψs.(x, q, xp, v)
+
+    Πr = @views Ufield[:, 1]
+    Ψr = @views Ufield[:, 2]
+
+    p = @. -(Πr + Πs)
+    T0x = @. p * (Ψr + Ψs)
 end
 
-function FieldMomentum_1()
-    newton_cotes(MomentumVector_1)
+function momentum_density_2(i, sim)
+    Ufield = sim.sol.u[i].x[1]
+    Upart = sim.sol.u[i].x[2]
+    x = sim.params.x
+    q1 = sim.params.q1
+    q2 = sim.params.q2
+
+    xp1 = Upart[2]
+    xp2 = Upart[5]
+    vp1 = Upart[3]
+    vp2 = Upart[6]
+
+    Φs1 = ScalarField.Φs.(x, q1, xp1, vp1)
+    Πs1 = ScalarField.Πs.(x, q1, xp1, vp1)
+    Ψs1 = ScalarField.Ψs.(x, q1, xp1, vp1)
+
+    Φs2 = ScalarField.Φs.(x, q2, xp2, vp2)
+    Πs2 = ScalarField.Πs.(x, q2, xp2, vp2)
+    Ψs2 = ScalarField.Ψs.(x, q2, xp2, vp2)
+    Πr = @views Ufield[:, 1]
+    Ψr = @views Ufield[:, 2]
+    p = @. -(Πr + Πs1 + Πs2)
+    T0x = @. p * (Ψr + Ψs1 + Ψs2)
+    return T0x
+end
+
+function field_momentum(i, sim)
+    T = momentum_density(i, sim)
+    P = newton_cotes(T, sim.params.dx; order=1)
+    return P
 end
 
 end # end of module
