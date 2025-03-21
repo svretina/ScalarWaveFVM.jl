@@ -70,7 +70,7 @@ function plot_pifield_resolutions(i, sim1, sim2, sim4)
     return fig
 end
 
-function plot_psifield_resolutions(i, sim1, sim2, sim4)
+function plot_psifield_resolutions(i, sim1, sim2, sim4, F=8)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     t1 = sim1.sol.t[i]
@@ -84,8 +84,8 @@ function plot_psifield_resolutions(i, sim1, sim2, sim4)
     # Create figure and axis
 
     L = sim1.params.L
-    x_range = (-L / 2, L / 2)
-    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    x_range = (-L / F, L / F)
+    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
     x_filtered = sim1.params.x[mask]
 
     # Filter sim1 data (640 points)
@@ -133,7 +133,7 @@ function plot_psifield_resolutions(i, sim1, sim2, sim4)
     return fig
 end
 
-function plot_pifield_diff(i, sim1, sim2, sim4)
+function plot_pifield_diff(i, sim1, sim2, sim4, F=8)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     t1 = sim1.sol.t[i]
@@ -146,8 +146,8 @@ function plot_pifield_diff(i, sim1, sim2, sim4)
     # Create figure and axis
 
     L = sim1.params.L
-    x_range = (-L / 2, L / 2)
-    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    x_range = (-L / F, L / F)
+    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
     x_filtered = sim1.params.x[mask]
 
     # Filter sim1 data (640 points)
@@ -198,7 +198,8 @@ function plot_pifield_diff(i, sim1, sim2, sim4)
     return fig
 end
 
-function plot_psifield_diff(i, sim1, sim2, sim4)
+function plot_psifield_diff(i, sim1, sim2, sim4, F=8)
+    CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     t1 = sim1.sol.t[i]
@@ -211,8 +212,8 @@ function plot_psifield_diff(i, sim1, sim2, sim4)
     # Create figure and axis
 
     L = sim1.params.L
-    x_range = (-L / 2, L / 2)
-    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    x_range = (-L / F, L / F)
+    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
     x_filtered = sim1.params.x[mask]
 
     # Filter sim1 data (640 points)
@@ -231,7 +232,7 @@ function plot_psifield_diff(i, sim1, sim2, sim4)
     # Compute y-limits with padding
     y_min = minimum([minimum(diff1), minimum(diff2)])
     y_max = maximum([maximum(diff1), maximum(diff2)])
-    padding = 0.1 * (y_max - y_min)  # Add 10% padding
+    padding = 0.3 * (y_max - y_min)  # Add 10% padding
     y_limits = (y_min - padding, y_max + padding)
 
     xp, _, _ = ParticleMotion.oscillator(t, sim1.params.x0, sim1.params.A, sim1.params.ω)
@@ -244,7 +245,7 @@ function plot_psifield_diff(i, sim1, sim2, sim4)
               limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
     # Plot the data
     lines!(ax, x_filtered, diff1; label=L"\textrm{low-mid}")
-    lines!(ax, x_filtered, diff2; label=L"\textrm{mid-high}")
+    lines!(ax, x_filtered, 2^2 * diff2; label=L"\textrm{mid-high}", linestyle=:dot)
     # lines!(ax, x_filtered, y4_filtered; label=L"\textrm{high}")
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
