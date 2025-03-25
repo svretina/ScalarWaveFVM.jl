@@ -459,4 +459,90 @@ function interacting_coupled_rhs!(dQ, Q, params, t)
     return nothing
 end
 
+function muscl_forced!(dQ, Q, params, t)
+    equation = params.equation
+    numerical_flux = params.numerical_flux
+    slope_limiter = params.slope_limiter
+    x = params.x
+    N = params.N
+    q = params.q
+    x10 = params.x1
+    A = params.A
+    ω = params.ω
+
+    h = params.h
+    half_h = 0.5h
+    _h = 1.0 / h
+
+    # Get particle motion
+    x1, v1, a1 = ParticleMotion.oscillator(t, x10, A, ω)
+
+    @fastmath @inbounds begin
+        Π = @view Q[:, 1]
+        Ψ = @view Q[:, 2]
+        dtΠ = @view dQ[:, 1]
+        h2 = 0.5h
+
+        for i in 1:N
+            # Calculating slopes for Π
+            I = i - 1
+            qi, ql, qr = get_stencil(Π, I, N)
+            σ_im1 = compute_limited_slope(qi, ql, qr, h, slope_limiter)
+
+            I = i + 1
+            qi, ql, qr = get_stencil(Π, I, N)
+            σ_ip1 = compute_limited_slope(qi, ql, qr, h, slope_limiter)
+
+            I = i
+            qi, ql, qr = get_stencil(Π, I, N)
+            σ_i = compute_limited_slope(qi, ql, qr, h, slope_limiter)
+
+            # reconstruct Π values at faces
+            πlr = qi - σ_i * half_h
+            πrl = qi + σ_i * half_h
+            πll = ql + σ_im1 * half_h
+            πrr = qr - σ_ip1 * half_h
+
+            ## Calculating slopes for Ψ
+            I = i - 1
+            qi, ql, qr = get_stencil(Ψ, I, N)
+            σ_im1 = compute_limited_slope(qi, ql, qr, h, slope_limiter)
+
+            I = i + 1
+            qi, ql, qr = get_stencil(Ψ, I, N)
+            σ_ip1 = compute_limited_slope(qi, ql, qr, h, slope_limiter)
+
+            I = i
+            qi, ql, qr = get_stencil(Ψ, I, N)
+            σ_i = compute_limited_slope(qi, ql, qr, h, slope_limiter)
+
+            # reconstruct Ψ values at faces
+            ψlr = qi - σ_i * half_h
+            ψrl = qi + σ_i * half_h
+            ψll = ql + σ_im1 * half_h
+            ψrr = qr - σ_ip1 * half_h
+
+            qll = @SVector [πll, ψll]
+            qlr = @SVector [πlr, ψlr]
+            qrl = @SVector [πrl, ψrl]
+            qrr = @SVector [πrr, ψrr]
+
+            ## Fl: flux on the left face, accounts for incoming right going flux
+            ## Fr: flux on the right face, accounts for incoming left going flux
+            Fl = numerical_flux(qll, qlr, equation)
+            Fr = numerical_flux(qrl, qrr, equation)
+
+            # Calculate MUSCL flux contribution
+            dQ[i, 1:2] .= -(Fr - Fl) * _h
+            dQ[i, 3] = Π[i]
+
+            # Add forced term contribution in the same loop
+            left_face = x[i] - h2
+            right_face = x[i] + h2
+            dtΠ[i] -= a1 * ScalarField.cell_average(left_face, right_face, q, x1, v1, h)
+        end
+    end
+    return nothing
+end
+
 end # end of module
