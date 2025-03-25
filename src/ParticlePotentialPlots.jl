@@ -449,7 +449,7 @@ end
 ###
 ###
 
-function plot_particle_position_analytic(sim1; invert=true)
+function plot_particle_position_analytic(sim1; invert=true, paper=true)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
 
@@ -493,11 +493,14 @@ function plot_particle_position_analytic(sim1; invert=true)
     # Save the figure
     savename = name_analytic("particle_analytic_potential/particle_position", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_particle_position_analytic_res(sim1, sim2, sim4; invert=true)
+function plot_particle_position_analytic_res(sim1, sim2, sim4; invert=true, paper=true)
     CairoMakie.activate!()
     mytheme = mytheme_aps()
     set_theme!(mytheme)
@@ -558,11 +561,14 @@ function plot_particle_position_analytic_res(sim1, sim2, sim4; invert=true)
     # Save the figure
     savename = name_analytic("particle_analytic_potential/particle_position_res", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_particle_position_analytic_diff(sim1, sim2, sim4; invert=true)
+function plot_particle_position_analytic_diff(sim1, sim2, sim4; invert=true, paper=true)
     CairoMakie.activate!()
     mytheme = mytheme_aps()
     set_theme!(mytheme)
@@ -600,11 +606,14 @@ function plot_particle_position_analytic_diff(sim1, sim2, sim4; invert=true)
     # Save the figure
     savename = name_analytic("particle_analytic_potential/particle_position_diff", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_particle_position_analytic_convfac(sim1, sim2, sim4; invert=true)
+function plot_particle_position_analytic_convfac(sim1, sim2, sim4; invert=true, paper=true)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
 
@@ -649,11 +658,14 @@ function plot_particle_position_analytic_convfac(sim1, sim2, sim4; invert=true)
     # Save the figure
     savename = name_analytic("particle_analytic_potential/particle_position_convfac", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_particle_velocity_analytic(sim1; invert=true)
+function plot_particle_velocity_analytic(sim1; paper=true)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
 
@@ -691,11 +703,14 @@ function plot_particle_velocity_analytic(sim1; invert=true)
     # Save the figure
     savename = name_analytic("particle_analytic_potential/particle_velocity", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+        if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_particle_velocity_analytic_res(sim1, sim2, sim4; invert=true)
+function plot_particle_velocity_analytic_res(sim1, sim2, sim4; paper=true)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
 
@@ -745,11 +760,14 @@ function plot_particle_velocity_analytic_res(sim1, sim2, sim4; invert=true)
     # Save the figure
     savename = name_analytic("particle_analytic_potential/particle_velocity_res", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_particle_velocity_analytic_diff(sim1, sim2, sim4; invert=true)
+function plot_particle_velocity_analytic_diff(sim1, sim2, sim4; paper=true)
     CairoMakie.activate!()
     mytheme = mytheme_aps()
     set_theme!(mytheme)
@@ -795,11 +813,14 @@ function plot_particle_velocity_analytic_diff(sim1, sim2, sim4; invert=true)
     # Save the figure
     savename = name_analytic("particle_analytic_potential/particle_velocity_diff", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+        if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_particle_velocity_analytic_convfac(sim1, sim2, sim4; invert=true)
+function plot_particle_velocity_analytic_convfac(sim1, sim2, sim4;  paper=true)
     CairoMakie.activate!()
     mytheme = mytheme_aps()
     set_theme!(mytheme)
@@ -846,11 +867,14 @@ function plot_particle_velocity_analytic_convfac(sim1, sim2, sim4; invert=true)
     # Save the figure
     savename = name_analytic("particle_analytic_potential/particle_velocity_convfac", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_particle_mass_analytic(sim1; invert=true)
+function plot_particle_mass_analytic(sim1;  paper=true)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
 
@@ -882,11 +906,14 @@ function plot_particle_mass_analytic(sim1; invert=true)
     # Save the figure
     savename = name_analytic("particle_analytic_potential/particle_mass", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_particle_mass_analytic_res(sim1, sim2, sim4; invert=true)
+function plot_particle_mass_analytic_res(sim1, sim2, sim4; paper=true)
     CairoMakie.activate!()
     mytheme = mytheme_aps()
     set_theme!(mytheme)
@@ -930,11 +957,13 @@ function plot_particle_mass_analytic_res(sim1, sim2, sim4; invert=true)
     # Save the figure
     savename = name_analytic("particle_analytic_potential/particle_mass_res", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
     return fig
 end
 
-function plot_particle_mass_analytic_diff(sim1, sim2, sim4; invert=true)
+function plot_particle_mass_analytic_diff(sim1, sim2, sim4; paper=true)
     CairoMakie.activate!()
     mytheme = mytheme_aps()
     set_theme!(mytheme)
@@ -947,7 +976,7 @@ function plot_particle_mass_analytic_diff(sim1, sim2, sim4; invert=true)
         err2[i] = sim2.sol.u[2i - 1][1] - sim4.sol.u[4i - 3][1]
     end
 
-    fig = Figure()
+    fig = Figure(; size=(253, 200))
     ax = Axis(fig[1, 1];
               title=L"\textrm{Particle Mass}")
     # Plot the data
@@ -974,7 +1003,9 @@ function plot_particle_mass_analytic_diff(sim1, sim2, sim4; invert=true)
     # Save the figure
     savename = name_analytic("particle_analytic_potential/particle_mass_diff", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
     return fig
 end
 

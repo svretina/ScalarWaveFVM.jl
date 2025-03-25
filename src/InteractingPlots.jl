@@ -3,7 +3,7 @@ module InteractingPlots
 using ..PlottingUtils
 using CairoMakie
 using LinearAlgebra
-using GLMakie
+# using GLMakie
 using DataInterpolations
 using ..ScalarField
 using ..Energies
@@ -30,7 +30,7 @@ end
 #     return 0.5integrate(Π .^ 2 + Ψ .^ 2)
 # end
 
-function plot_pifield(i, sim1)
+function plot_pifield(i, sim1; paper=true)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     t = sim1.sol.t[i]
@@ -73,11 +73,14 @@ function plot_pifield(i, sim1)
     # Save the figure
     savename = name("interacting_particles/pifield", sim1, "i=$(i)")
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_psifield(i, sim1)
+function plot_psifield(i, sim1; paper=true)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     t = sim1.sol.t[i]
@@ -120,11 +123,14 @@ function plot_psifield(i, sim1)
     # Save the figure
     savename = name("interacting_particles/psifield", sim1, "i=$(i)")
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_pifield_resolutions(i, sim1, sim2, sim4)
+function plot_pifield_resolutions(i, sim1, sim2, sim4, paper=true)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -186,11 +192,14 @@ function plot_pifield_resolutions(i, sim1, sim2, sim4)
     # Save the figure
     savename = name("interacting_particles/pifield_res_interacting", sim1, "i=$(i)")
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_psifield_resolutions(i, sim1, sim2, sim4)
+function plot_psifield_resolutions(i, sim1, sim2, sim4; paper=true)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     t1 = sim1.sol.t[i]
@@ -254,11 +263,14 @@ function plot_psifield_resolutions(i, sim1, sim2, sim4)
     # Save the figure
     savename = name("interacting_particles/psifield_res_interacting", sim1, "i=$(i)")
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_pifield_convord(sim1, sim2, sim4)
+function plot_pifield_convord(sim1, sim2, sim4; paper=true)
     set_theme!(mytheme_aps())
     nt = length(sim1.sol.t)
     L = sim1.params.L
@@ -307,11 +319,14 @@ function plot_pifield_convord(sim1, sim2, sim4)
 
     savename = name("interacting_particles/pifield_convord_interacting", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_psifield_convord(sim1, sim2, sim4)
+function plot_psifield_convord(sim1, sim2, sim4;paper=true)
     set_theme!(mytheme_aps())
     nt = length(sim1.sol.t)
     L = sim1.params.L
@@ -360,11 +375,14 @@ function plot_psifield_convord(sim1, sim2, sim4)
 
     savename = name("interacting_particles/psifield_convord_interacting", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_particle_positions(sim1; invert=true)
+function plot_particle_positions(sim1; invert=true, paper=true)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
 
@@ -408,11 +426,14 @@ function plot_particle_positions(sim1; invert=true)
     # Save the figure
     savename = name("interacting_particles/particle_positions", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_particle_positions_resolutions(sim1, sim2, sim4; invert=true)
+function plot_particle_positions_resolutions(sim1, sim2, sim4; invert=true, paper=true)
     mytheme = mytheme_aps()
     set_theme!(mytheme)
     # Get time points and assert equality
@@ -499,11 +520,14 @@ function plot_particle_positions_resolutions(sim1, sim2, sim4; invert=true)
 
     savename = name("interacting_particles/particle_positions_resolutions", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_position_convord_interacting(sim1, sim2, sim4)
+function plot_position_convord_interacting(sim1, sim2, sim4; paper=true)
     set_theme!(mytheme_aps())
     nt = length(sim1.sol.t)
     L = sim1.params.L
@@ -552,11 +576,14 @@ function plot_position_convord_interacting(sim1, sim2, sim4)
 
     savename = name("interacting_particles/position_convord_interacting", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_particle_velocities(sim1)
+function plot_particle_velocities(sim1;paper=true)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
 
@@ -595,11 +622,14 @@ function plot_particle_velocities(sim1)
     # Save the figure
     savename = name("interacting_particles/particle_velocities", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_particle_velocities_resolutions(sim1, sim2, sim4)
+function plot_particle_velocities_resolutions(sim1, sim2, sim4; paper=true)
     mytheme = mytheme_aps()
     set_theme!(mytheme)
     # Get time points and assert equality
@@ -679,11 +709,14 @@ function plot_particle_velocities_resolutions(sim1, sim2, sim4)
 
     savename = name("interacting_particles/particle_velocities_resolutions", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_particle_masses(sim1)
+function plot_particle_masses(sim1; paper=true)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
 
@@ -722,11 +755,14 @@ function plot_particle_masses(sim1)
     # Save the figure
     savename = name("interacting_particles/particle_masses", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
-function plot_particle_masses_resolutions(sim1, sim2, sim4)
+function plot_particle_masses_resolutions(sim1, sim2, sim4; paper=true)
     mytheme = mytheme_aps()
     set_theme!(mytheme)
     # Get time points and assert equality
@@ -806,7 +842,10 @@ function plot_particle_masses_resolutions(sim1, sim2, sim4)
 
     savename = name("interacting_particles/particle_masses_resolutions", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
     return fig
 end
 
@@ -961,7 +1000,7 @@ function plot_panel(sim1, ticklabelsize=20)
     return nothing
 end
 
-function plot_particle_energies(sim1, sim2, sim4, ticklabelsize=20)
+function plot_particle_energies(sim1, sim2, sim4, ticklabelsize=20; paper=true)
     mytheme = mytheme_aps()
     set_theme!(mytheme)
 
@@ -1108,7 +1147,10 @@ function plot_particle_energies(sim1, sim2, sim4, ticklabelsize=20)
     display(fig)
     # savename = name("interacting_particles/particle_energies_resolutions", sim1)
     # save(joinpath(FIG_PATH, savename), fig)
-    # save(joinpath(PAPER_FIG_PATH, savename), fig)
+    # if paper
+    #    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    # end
+
     return fig
 end
 

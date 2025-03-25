@@ -11,7 +11,7 @@ using GridFunctions
 using RecursiveArrayTools
 using OrdinaryDiffEq
 using DataInterpolations
-using DiffEqCallbacks
+# using DiffEqCallbacks
 
 abstract type SimulationParameters{T} end
 
@@ -109,7 +109,7 @@ function forced_motion(Nosc, dx, cfl, vmax, q, sf=true, muscl=true)
 
     dx = spacing(grid)
 
-    dt = round(cfl * dx / c; digits=8)
+    dt = cfl * dx / c
     @show dx, dt
 
     numerical_flux = NumericalFluxes.flux_rusanov

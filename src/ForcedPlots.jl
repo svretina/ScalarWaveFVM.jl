@@ -7,7 +7,7 @@ using LinearAlgebra
 
 @inline name(pre, sim, post=nothing) = name_forced(pre, sim, post)
 
-function plot_pifield_resolutions(i, sim1, sim2, sim4)
+function plot_pifield_resolutions(i, sim1, sim2, sim4, F=8, paper=false)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     t1 = sim1.sol.t[i]
@@ -20,8 +20,8 @@ function plot_pifield_resolutions(i, sim1, sim2, sim4)
     # Create figure and axis
 
     L = sim1.params.L
-    x_range = (-L / 2, L / 2)
-    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    x_range = (-L / F, L / F)
+    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
     x_filtered = sim1.params.x[mask]
 
     # Filter sim1 data (640 points)
@@ -48,15 +48,18 @@ function plot_pifield_resolutions(i, sim1, sim2, sim4)
               xlabel=L"x",
               ylabel=L"\Pi_\mathrm{r}",
               title=L"t=%$(round(t, digits=3))",
-              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]),)
     # Plot the data
     lines!(ax, x_filtered, y1_filtered; label=L"\textrm{low}")
     lines!(ax, x_filtered, y2_filtered; label=L"\textrm{mid}")
     lines!(ax, x_filtered, y4_filtered; label=L"\textrm{high}")
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
-    leg = Legend(fig[2, 1], ax; orientation=:horizontal,
-                 tellwidth=false, tellheight=true)
+    leg = Legend(fig[2, 1],
+                 ax;
+                 orientation=:horizontal,
+                 tellwidth=false,
+                 tellheight=true,)
 
     # Adjust layout to ensure proper spacing
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
@@ -66,11 +69,13 @@ function plot_pifield_resolutions(i, sim1, sim2, sim4)
     # Save the figure
     savename = name("forced_motion/pifield_res_forced", sim1, "i=$(i)")
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
     return fig
 end
 
-function plot_psifield_resolutions(i, sim1, sim2, sim4, F=8)
+function plot_psifield_resolutions(i, sim1, sim2, sim4, F=8, paper=false)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     t1 = sim1.sol.t[i]
@@ -112,15 +117,18 @@ function plot_psifield_resolutions(i, sim1, sim2, sim4, F=8)
               xlabel=L"x",
               ylabel=L"\Psi_\mathrm{r}",
               title=L"t=%$(round(t, digits=3))",
-              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]),)
     # Plot the data
     lines!(ax, x_filtered, y1_filtered; label=L"\textrm{low}")
     lines!(ax, x_filtered, y2_filtered; label=L"\textrm{mid}")
     lines!(ax, x_filtered, y4_filtered; label=L"\textrm{high}")
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
-    leg = Legend(fig[2, 1], ax; orientation=:horizontal,
-                 tellwidth=false, tellheight=true)
+    leg = Legend(fig[2, 1],
+                 ax;
+                 orientation=:horizontal,
+                 tellwidth=false,
+                 tellheight=true,)
 
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
     rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
@@ -129,11 +137,13 @@ function plot_psifield_resolutions(i, sim1, sim2, sim4, F=8)
     # Save the figure
     savename = name("forced_motion/psifield_res_forced", sim1, "i=$(i)")
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
     return fig
 end
 
-function plot_pifield_diff(i, sim1, sim2, sim4, F=8)
+function plot_pifield_diff(i, sim1, sim2, sim4, F=8, paper=false)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     t1 = sim1.sol.t[i]
@@ -147,6 +157,8 @@ function plot_pifield_diff(i, sim1, sim2, sim4, F=8)
 
     L = sim1.params.L
     x_range = (-L / F, L / F)
+    @show x_range
+
     mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
     x_filtered = sim1.params.x[mask]
 
@@ -177,28 +189,34 @@ function plot_pifield_diff(i, sim1, sim2, sim4, F=8)
               ylabel=L"\Pi_\mathrm{r}",
               title=L"t=%$(round(t, digits=3))",
               limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+
     # Plot the data
     lines!(ax, x_filtered, diff1; label=L"\textrm{low-mid}")
-    lines!(ax, x_filtered, diff2; label=L"\textrm{mid-high}")
+    lines!(ax, x_filtered, 2^2 * diff2; label=L"\textrm{2^2\cdot(mid-high)}", linestyle=:dash)
     # lines!(ax, x_filtered, y4_filtered; label=L"\textrm{high}")
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
-    leg = Legend(fig[2, 1], ax; orientation=:horizontal,
-                 tellwidth=false, tellheight=true)
+    leg = Legend(fig[2, 1],
+                 ax;
+                 orientation=:horizontal,
+                 tellwidth=false,
+                 tellheight=true,)
 
     # Adjust layout to ensure proper spacing
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
-    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 10% of height for legend
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
     savename = name("forced_motion/pifield_diff_forced", sim1, "i=$(i)")
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
     return fig
 end
 
-function plot_psifield_diff(i, sim1, sim2, sim4, F=8)
+function plot_psifield_diff(i, sim1, sim2, sim4, F=8, paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -242,15 +260,18 @@ function plot_psifield_diff(i, sim1, sim2, sim4, F=8)
               xlabel=L"x",
               ylabel=L"\Psi_\mathrm{r}",
               title=L"t=%$(round(t, digits=3))",
-              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]),)
     # Plot the data
     lines!(ax, x_filtered, diff1; label=L"\textrm{low-mid}")
-    lines!(ax, x_filtered, 2^2 * diff2; label=L"\textrm{mid-high}", linestyle=:dot)
+    lines!(ax, x_filtered, 2^2 * diff2; label=L"\textrm{2^2\cdot(mid-high)}", linestyle=:dot)
     # lines!(ax, x_filtered, y4_filtered; label=L"\textrm{high}")
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
-    leg = Legend(fig[2, 1], ax; orientation=:horizontal,
-                 tellwidth=false, tellheight=true)
+    leg = Legend(fig[2, 1],
+                 ax;
+                 orientation=:horizontal,
+                 tellwidth=false,
+                 tellheight=true,)
 
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
     rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
@@ -259,11 +280,13 @@ function plot_psifield_diff(i, sim1, sim2, sim4, F=8)
     # Save the figure
     savename = name("forced_motion/psifield_diff_forced", sim1, "i=$(i)")
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
     return fig
 end
 
-function plot_pifield_convfac(sim1, sim2, sim4)
+function plot_pifield_convfac(sim1, sim2, sim4, F=8, paper=false)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
 
@@ -271,8 +294,8 @@ function plot_pifield_convfac(sim1, sim2, sim4)
     # Create figure and axis
 
     L = sim1.params.L
-    x_range = (-L / 2, L / 2)
-    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    x_range = (-L / F, L / F)
+    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
     x_filtered = sim1.params.x[mask]
 
     # Filter sim1 data (640 points)
@@ -312,7 +335,7 @@ function plot_pifield_convfac(sim1, sim2, sim4)
               xlabel=L"t",
               # ylabel=L"",
               title=L"\textrm{Convergence Factor of \Pi_\mathrm{r} field}",
-              limits=(-1, sim1.sol.t[end], 1, 2))
+              limits=(-1, sim1.sol.t[end], 1, 2),)
     # Plot the data
     lines!(ax, sim1.sol.t[2:end], convfac[2:end]; linewidth=1)
     # scatter!(ax, sim1.sol.t[2:end], convfac[2:end]; markersize=5)
@@ -325,11 +348,13 @@ function plot_pifield_convfac(sim1, sim2, sim4)
 
     savename = name("forced_motion/pifield_convfac_forced", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
     return fig
 end
 
-function plot_psifield_convfac(sim1, sim2, sim4)
+function plot_psifield_convfac(sim1, sim2, sim4, paper=false)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
 
@@ -378,7 +403,7 @@ function plot_psifield_convfac(sim1, sim2, sim4)
               xlabel=L"t",
               # ylabel=L"",
               title=L"\textrm{Convergence Factor of \Psi_\mathrm{r} field}",
-              limits=(-1, sim1.sol.t[end], 1, 3))
+              limits=(-1, sim1.sol.t[end], 1, 3),)
     # Plot the data
     lines!(ax, sim1.sol.t[2:end], convfac[2:end]; linewidth=1)
     # scatter!(ax, sim1.sol.t[2:end], convfac[2:end]; markersize=5)
@@ -391,11 +416,13 @@ function plot_psifield_convfac(sim1, sim2, sim4)
 
     savename = name("forced_motion/psifield_convfac_forced", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
     return fig
 end
 
-function plot_pifield_convord(sim1, sim2, sim4)
+function plot_pifield_convord(sim1, sim2, sim4, paper=false)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
 
@@ -444,7 +471,7 @@ function plot_pifield_convord(sim1, sim2, sim4)
               xlabel=L"t",
               # ylabel=L"",
               title=L"\textrm{Convergence Order of \Pi_\mathrm{r} field}",
-              limits=(0, sim1.sol.t[end], 0, 4))
+              limits=(0, sim1.sol.t[end], 0, 4),)
     # Plot the data
     lines!(ax, sim1.sol.t[2:end], log2.(convfac[2:end]); linewidth=1)
     # scatter!(ax, sim1.sol.t[2:end], convfac[2:end]; markersize=5)
@@ -457,11 +484,13 @@ function plot_pifield_convord(sim1, sim2, sim4)
 
     savename = name("forced_motion/pifield_convord_forced", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
     return fig
 end
 
-function plot_psifield_convord(sim1, sim2, sim4)
+function plot_psifield_convord(sim1, sim2, sim4, paper=false)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
 
@@ -510,7 +539,7 @@ function plot_psifield_convord(sim1, sim2, sim4)
               xlabel=L"t",
               # ylabel=L"",
               title=L"\textrm{Convergence Order of \Psi_\mathrm{r} field}",
-              limits=(0, sim1.sol.t[end], 0, 4))
+              limits=(0, sim1.sol.t[end], 0, 4),)
     # Plot the data
     lines!(ax, sim1.sol.t[2:end], log2.(convfac[2:end]); linewidth=1)
     # scatter!(ax, sim1.sol.t[2:end], convfac[2:end]; markersize=5)
@@ -523,22 +552,27 @@ function plot_psifield_convord(sim1, sim2, sim4)
 
     savename = name("forced_motion/psifield_convord_forced", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
     return fig
 end
 
-function plot_convergence_panel(sim1, sim2, sim4)
+function plot_convergence_panel(sim1, sim2, sim4, paper=false)
     nt = length(sim1.sol.t)
-    fig1 = plot_pifield_resolutions_forced(nt, sim1, sim2, sim4)  # Your existing function
-    fig2 = plot_psifield_resolutions_forced(nt, sim1, sim2, sim4)  # Replace with your second function
-    fig3 = plot_pifield_convord_forced(sim1, sim2, sim4)  # Replace with your third function
-    fig4 = plot_psifield_convord_forced(sim1, sim2, sim4)  # Replace with your fourth function
+    fig1 = plot_pifield_resolutions(nt, sim1, sim2, sim4, paper)  # Your existing function
+    fig2 = plot_psifield_resolutions(nt, sim1, sim2, sim4, paper)  # Replace with your second function
+    fig3 = plot_pifield_convord(sim1, sim2, sim4, paper)  # Replace with your third function
+    fig4 = plot_psifield_convord(sim1, sim2, sim4, paper)  # Replace with your fourth function
 
     fig = Figure(; size=(600, 500))
 
     # Add supertitle
-    supertitle = Label(fig[1, 1:2], L"v_{max}=%$(sim1.params.vmax)";
-                       fontsize=20, font=:bold, halign=:center)
+    supertitle = Label(fig[1, 1:2],
+                       L"v_{max}=%$(sim1.params.vmax)";
+                       fontsize=20,
+                       font=:bold,
+                       halign=:center,)
 
     # Function to recreate Axis content
     function recreate_axis!(fig, src_fig, row, col)
@@ -549,14 +583,17 @@ function plot_convergence_panel(sim1, sim2, sim4)
                       xlabel=src_ax.xlabel[],
                       ylabel=src_ax.ylabel[],
                       title=src_ax.title[],
-                      limits=src_ax.limits[])
+                      limits=src_ax.limits[],)
 
         # Copy plot objects
         for plot in src_ax.scene.plots
             if plot isa MakieCore.Scatter
                 label = haskey(plot.attributes, :label) ? plot.label[] : nothing
-                scatter!(new_ax, plot[1][], plot[2][]; label=label,
-                         markersize=plot.markersize[])
+                scatter!(new_ax,
+                         plot[1][],
+                         plot[2][];
+                         label=label,
+                         markersize=plot.markersize[],)
             elseif plot isa MakieCore.Lines
                 data = plot[1][]  # Single Observable
                 label = haskey(plot.attributes, :label) ? plot.label[] : nothing
@@ -566,8 +603,11 @@ function plot_convergence_panel(sim1, sim2, sim4)
                     lines!(new_ax, x, y; label=label, linewidth=plot.linewidth[])
                 elseif isa(data, Vector{Float64})  # VLines misclassified as Lines
                     @show "ASDFA"
-                    vlines!(new_ax, data; color=plot.color[], linestyle=plot.linestyle[],
-                            linewidth=plot.linewidth[])
+                    vlines!(new_ax,
+                            data;
+                            color=plot.color[],
+                            linestyle=plot.linestyle[],
+                            linewidth=plot.linewidth[],)
                 end
             end
         end
@@ -575,8 +615,11 @@ function plot_convergence_panel(sim1, sim2, sim4)
         # Add Legend if it exists, place in the next row under the column
         leg_content = contents(src_fig[2, 1])
         if !isempty(leg_content)
-            Legend(fig[row + 1, col], new_ax; orientation=:horizontal, tellwidth=false,
-                   tellheight=true)
+            Legend(fig[row + 1, col],
+                   new_ax;
+                   orientation=:horizontal,
+                   tellwidth=false,
+                   tellheight=true,)
         end
     end
 
@@ -599,7 +642,9 @@ function plot_convergence_panel(sim1, sim2, sim4)
 
     savename = name("forced_motion/convergence_pane_forced", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
     return fig
 end
 

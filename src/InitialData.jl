@@ -1,6 +1,6 @@
 module InitialData
 
-using ForwardDiff
+# using ForwardDiff
 
 function triangular_pulse(x, t, L, amplitude=1.0, base_width=2.0, speed=1.0)
     # x: spatial coordinate

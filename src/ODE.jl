@@ -137,7 +137,7 @@ function muscl!(dQ, Q, params, t)
     @fastmath @inbounds begin
         Π = @view Q[:, 1]
         Ψ = @view Q[:, 2]
-        for i in 1:N
+        @batch for i in 1:N
             # Calculating slopes for Π
             I = i - 1
             qi, ql, qr = get_stencil(Π, I, N)
@@ -213,7 +213,7 @@ function field_rhs_forced!(dQ, Q, params, t)
     # @inline s2(x) = a2 * ScalarField.∂vΠ(x, q2, x2, v2)
     dtΠ = @view dQ[:, 1]
     h2 = 0.5h
-    @inbounds for i in 1:N
+    @inbounds @batch for i in 1:N
         left_face = x[i] - h2
         right_face = x[i] + h2
         dtΠ[i] -= a1 * ScalarField.cell_average(left_face, right_face, q, x1, v1, h)
@@ -249,7 +249,7 @@ function field_rhs!(dQ, Q, params, t)
         h2 = 0.5h
         # @inline s1(x) = a1 * ScalarField.∂vΠ(x, q1, x1, v1)
         dtΠ = @view dQ_field[:, 1]
-        @inbounds for i in 1:N
+        @inbounds @batch for i in 1:N
             left_face = x[i] - h2
             right_face = x[i] + h2
             dtΠ[i] -= a1 * ScalarField.cell_average(left_face, right_face, q, x1, v1, h)
@@ -285,7 +285,7 @@ function field_rhs2!(dQ, Q, params, t)
         @inline s2(x) = a2 * ScalarField.∂vΠ(x, q2, x2, v2)
         dtΠ = @view dQ_field[:, 1]
 
-        @inbounds for i in 1:N
+        @inbounds @batch for i in 1:N
             left_face = x[i] - h2
             right_face = x[i] + h2
             # subcell integration
@@ -334,62 +334,66 @@ function particle_rhs!(dQ, Q, params, t)
 end
 
 function interacting_particle_rhs!(dQ, Q, params, t)
-    Q_field = Q.x[1]
-    Q_particle = Q.x[2]
-    dQ_particle = dQ.x[2]
+    @inbounds begin
+        Q_field = Q.x[1]
+        Q_particle = Q.x[2]
+        dQ_particle = dQ.x[2]
 
-    Π = @view Q_field[:, 1]
-    Ψ = @view Q_field[:, 2]
-    x = params.x
-    interpolation_method = params.interpolation_method
-    q1 = params.q1
-    q2 = params.q2
+        Π = @view Q_field[:, 1]
+        Ψ = @view Q_field[:, 2]
+        x = params.x
+        interpolation_method = params.interpolation_method
+        q1 = params.q1
+        q2 = params.q2
 
-    m1 = Q_particle[1]
-    x1 = Q_particle[2]
-    v1 = Q_particle[3]
+        m1 = Q_particle[1]
+        x1 = Q_particle[2]
+        v1 = Q_particle[3]
 
-    m2 = Q_particle[4]
-    x2 = Q_particle[5]
-    v2 = Q_particle[6]
+        m2 = Q_particle[4]
+        x2 = Q_particle[5]
+        v2 = Q_particle[6]
 
-    abs(v1) <= 1 || throw("v1=$v1 > 1, at t=$(t), a1 = $(dQ[3])")
-    abs(v2) <= 1 || throw("v2=$v2 > 1, at t=$(t), a1 = $(dQ[6])")
+        abs(v1) <= 1 || throw("v1=$v1 > 1, at t=$(t), a1 = $(dQ[3])")
+        abs(v2) <= 1 || throw("v2=$v2 > 1, at t=$(t), a1 = $(dQ[6])")
 
-    interpolator_Ψ = interpolation_method(Ψ, x; extrapolation=ExtrapolationType.Extension)
-    interpolator_Π = interpolation_method(Π, x; extrapolation=ExtrapolationType.Extension)
-    Πr_at_1 = interpolator_Π(x1)
-    Ψr_at_1 = interpolator_Ψ(x1)
-    Πr_at_2 = interpolator_Π(x2)
-    Ψr_at_2 = interpolator_Ψ(x2)
+        interpolator_Ψ = interpolation_method(Ψ, x;
+                                              extrapolation=ExtrapolationType.Extension)
+        interpolator_Π = interpolation_method(Π, x;
+                                              extrapolation=ExtrapolationType.Extension)
+        Πr_at_1 = interpolator_Π(x1)
+        Ψr_at_1 = interpolator_Ψ(x1)
+        Πr_at_2 = interpolator_Π(x2)
+        Ψr_at_2 = interpolator_Ψ(x2)
 
-    # value of singular field of first particle
-    # evaluated at position of 2nd particle
-    Πs1_at_2 = ScalarField.Πs(x2, q1, x1, v1)
-    Ψs1_at_2 = ScalarField.Ψs(x2, q1, x1, v1)
-    # value of singular field of second particle
-    # evaluated at position of 1st particle
-    Πs2_at_1 = ScalarField.Πs(x1, q2, x2, v2)
-    Ψs2_at_1 = ScalarField.Ψs(x1, q2, x2, v2)
+        # value of singular field of first particle
+        # evaluated at position of 2nd particle
+        Πs1_at_2 = ScalarField.Πs(x2, q1, x1, v1)
+        Ψs1_at_2 = ScalarField.Ψs(x2, q1, x1, v1)
+        # value of singular field of second particle
+        # evaluated at position of 1st particle
+        Πs2_at_1 = ScalarField.Πs(x1, q2, x2, v2)
+        Ψs2_at_1 = ScalarField.Ψs(x1, q2, x2, v2)
 
-    v12 = v1 * v1
-    a12 = one(v1) - v12
-    v22 = v2 * v2
-    a22 = one(v2) - v22
+        v12 = v1 * v1
+        a12 = one(v1) - v12
+        v22 = v2 * v2
+        a22 = one(v2) - v22
 
-    Π1 = Πr_at_1 + Πs2_at_1
-    Ψ1 = Ψr_at_1 + Ψs2_at_1
-    Π2 = Πr_at_2 + Πs1_at_2
-    Ψ2 = Ψr_at_2 + Ψs1_at_2
-    # Particle 1
-    dQ_particle[1] = -q1 * (Π1 + v1 * Ψ1)
-    dQ_particle[2] = v1
-    dQ_particle[3] = q1 * a12 * (v1 * Π1 + Ψ1) / m1
-    # Particle 2
-    dQ_particle[4] = -q2 * (Π2 + v2 * Ψ2)
-    dQ_particle[5] = v2
-    dQ_particle[6] = q2 * a22 * (v2 * Π2 + Ψ2) / m2
-    # params.acc[1] = max(dQ_particle[3], dQ_particle[6])
+        Π1 = Πr_at_1 + Πs2_at_1
+        Ψ1 = Ψr_at_1 + Ψs2_at_1
+        Π2 = Πr_at_2 + Πs1_at_2
+        Ψ2 = Ψr_at_2 + Ψs1_at_2
+        # Particle 1
+        dQ_particle[1] = -q1 * (Π1 + v1 * Ψ1)
+        dQ_particle[2] = v1
+        dQ_particle[3] = q1 * a12 * (v1 * Π1 + Ψ1) / m1
+        # Particle 2
+        dQ_particle[4] = -q2 * (Π2 + v2 * Ψ2)
+        dQ_particle[5] = v2
+        dQ_particle[6] = q2 * a22 * (v2 * Π2 + Ψ2) / m2
+        # params.acc[1] = max(dQ_particle[3], dQ_particle[6])
+    end
     return nothing
 end
 
@@ -422,9 +426,9 @@ function particle_rhs_interpolation!(dQ, Q, params, t)
     q1 = params.q1
     x = params.x
     interpolation_method = params.interpolation_method
-    m1 = Q[1]
-    x1 = Q[2]
-    v1 = Q[3]
+    @inbounds m1 = Q[1]
+    @inbounds x1 = Q[2]
+    @inbounds v1 = Q[3]
     abs(v1) <= 1 || throw("v1=$v1 > 1, at t=$(t), a1 = $(dQ[3])")
     Πvals = Π.(t, x)
     Ψvals = Ψ.(t, x)
@@ -441,9 +445,9 @@ function particle_rhs_interpolation!(dQ, Q, params, t)
 
     v∇Φ1 = Π1 + v1 * Ψ1
 
-    dQ[1] = -q1 * v∇Φ1
-    dQ[2] = v1
-    dQ[3] = q1 * a12 * (v1 * Π1 + Ψ1) / m1
+    @inbounds dQ[1] = -q1 * v∇Φ1
+    @inbounds dQ[2] = v1
+    @inbounds dQ[3] = q1 * a12 * (v1 * Π1 + Ψ1) / m1
     return nothing
 end
 
