@@ -1638,4 +1638,135 @@ function plot_energy_panel(sim1, sim2, sim4; ticklabelsize=20)
     return nothing
 end
 
+function plot_field_energy(sim1, sim2, sim4; ticklabelsize=20, paper=true)
+    CairoMakie.activate!()
+    t = sim1.sol.t
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    nt = length(sim1.sol.t)
+    energy1 = zeros(nt)
+    energy2 = zeros(nt)
+    energy4 = zeros(nt)
+
+    for i in 1:nt
+        energy1[i] = Energies.hamiltonian(i, sim1)
+        energy2[i] = Energies.hamiltonian(2i - 1, sim2)
+        energy4[i] = Energies.hamiltonian(4i - 3, sim4)
+    end
+
+    fig = Figure(; size=(253, 200))
+    plt = fig[1, 1] = GridLayout()
+    leg = fig[2, 1] = GridLayout()
+
+    ax = Axis(fig[1, 1]; title=L"\textrm{Field Energy}",
+                xticklabelsize=ticklabelsize,
+                yticklabelsize=ticklabelsize)
+    
+    
+    palette = mytheme.palette
+    color1 = palette.color[][1]  # Blue-ish for Particle 1
+    color2 = palette.color[][2]  # Orange-ish for Particle 2
+    res_styles = [palette.linestyle[][1], palette.linestyle[][2],
+                  palette.linestyle[][3]]  # Solid, Dash, Dot
+    
+    lines!(ax, t, energy1; color=color1, linestyle=res_styles[1])
+    
+    lines!(ax, t, energy2; color=color1, linestyle=res_styles[2])
+    
+    lines!(ax, t, energy4; color=color1, linestyle=res_styles[3])
+    
+    ax.xlabel = L"t"
+    # ylims!(ax, 0, nothing)
+    # # 2. Resolution legend (Low, Med, High Res)
+    res_legend = Legend(leg[1, 1],
+                        [LineElement(; color=:black, linestyle=res_styles[1]),
+                         LineElement(; color=:black, linestyle=res_styles[2]),
+                         LineElement(; color=:black, linestyle=res_styles[3])],
+                        [L"\textrm{low res}", L"\textrm{med res}", L"\textrm{high res}"];
+                        halign=:center,
+                        valign=:top,
+                        tellwidth=false,
+                        tellheight=true, orientation=:horizontal)
+
+    
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    savename = name("interacting_particles/field_energy_resolutions", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+    return fig
+end
+
+
+function plot_half_field_momentum(sim1, sim2, sim4; ticklabelsize=20, paper=true)
+    CairoMakie.activate!()
+    t = sim1.sol.t
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    nt = length(sim1.sol.t)
+    momentum1 = zeros(nt)
+    momentum2 = zeros(nt)
+    momentum4 = zeros(nt)
+
+    for i in 1:nt
+        momentum1[i] = Energies.half_field_momentum(i, sim1)
+        momentum2[i] = Energies.half_field_momentum(2i - 1, sim2)
+        momentum4[i] = Energies.half_field_momentum(4i - 3, sim4)
+    end
+
+    fig = Figure(; size=(253, 200))
+    plt = fig[1, 1] = GridLayout()
+    leg = fig[2, 1] = GridLayout()
+
+    ax = Axis(fig[1, 1]; title=L"\textrm{Field Momentum}",
+                xticklabelsize=ticklabelsize,
+                yticklabelsize=ticklabelsize)
+    
+    
+    palette = mytheme.palette
+    color1 = palette.color[][1]  # Blue-ish for Particle 1
+    color2 = palette.color[][2]  # Orange-ish for Particle 2
+    color3 = palette.color[][3]
+    res_styles = [palette.linestyle[][1], palette.linestyle[][2],
+                  palette.linestyle[][3]]  # Solid, Dash, Dot
+    
+    lines!(ax, t, momentum1; color=color1, linestyle=res_styles[1])
+    
+    lines!(ax, t, momentum2; color=color2, linestyle=res_styles[2])
+    
+    lines!(ax, t, momentum4; color=color3, linestyle=res_styles[3])
+    
+    ax.xlabel = L"t"
+    # ylims!(ax, 0, nothing)
+    # # 2. Resolution legend (Low, Med, High Res)
+    res_legend = Legend(leg[1, 1],
+                        [LineElement(; color=color1, linestyle=res_styles[1]),
+                         LineElement(; color=color2, linestyle=res_styles[2]),
+                         LineElement(; color=color3, linestyle=res_styles[3])],
+                        [L"\textrm{low res}", L"\textrm{med res}", L"\textrm{high res}"];
+                        halign=:center,
+                        valign=:top,
+                        tellwidth=false,
+                        tellheight=true, orientation=:horizontal)
+
+    
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    savename = name("interacting_particles/field_momentum_resolutions", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+    return fig
+end
+
+
 end

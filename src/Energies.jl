@@ -4,7 +4,7 @@ using ..ScalarField
 using ..ParticleMotion
 using DataInterpolations
 
-function newton_cotes(y::Vector{T}, h::T; order::Int=1) where {T}
+function newton_cotes(y::AbstractVector{T}, h::T; order::Int=1) where {T}
     n = length(y) - 1  # Number of intervals
     if n < order
         error("Number of points ($(n+1)) must be at least $(order+1) for order $order Newton-Cotes.")
@@ -207,6 +207,14 @@ end
 function field_momentum(i, sim)
     T = momentum_density(i, sim)
     P = newton_cotes(T, sim.params.dx; order=1)
+    return P
+end
+
+function half_field_momentum(i, sim)
+    T = momentum_density(i, sim)
+    N = length(T)
+    t = @view T[div(N,2):end]
+    P = newton_cotes(t, sim.params.dx; order=1)
     return P
 end
 
