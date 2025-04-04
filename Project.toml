@@ -6,6 +6,7 @@ version = "1.0.0-DEV"
 [deps]
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 DataInterpolations = "82cc6244-b520-54b8-b5a6-8a565e85f1d0"
+GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
 GridFunctions = "28d702cb-9102-4da8-a82a-5023545b1c0c"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
@@ -19,6 +20,7 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [compat]
 CairoMakie = "0.13.2"
+GLMakie = "0.11.3"
 GridFunctions = "1.0.0"
 JLD2 = "0.5.12"
 Makie = "0.22.2"

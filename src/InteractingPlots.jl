@@ -3,7 +3,7 @@ module InteractingPlots
 using ..PlottingUtils
 using CairoMakie
 using LinearAlgebra
-# using GLMakie
+using GLMakie
 using DataInterpolations
 using ..ScalarField
 using ..Energies
@@ -326,7 +326,7 @@ function plot_pifield_convord(sim1, sim2, sim4; paper=true)
     return fig
 end
 
-function plot_psifield_convord(sim1, sim2, sim4;paper=true)
+function plot_psifield_convord(sim1, sim2, sim4; paper=true)
     set_theme!(mytheme_aps())
     nt = length(sim1.sol.t)
     L = sim1.params.L
@@ -583,7 +583,7 @@ function plot_position_convord_interacting(sim1, sim2, sim4; paper=true)
     return fig
 end
 
-function plot_particle_velocities(sim1;paper=true)
+function plot_particle_velocities(sim1; paper=true)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
 
