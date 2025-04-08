@@ -36,7 +36,7 @@ jobs:
       - name: Install Xvfb and OpenGL dependencies # Add this step
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb libgl1-mesa-glx
+          sudo apt-get install -y xvfb libgl1 libglx-mesa0
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
       - name: Run tests with Xvfb # Modify this step
