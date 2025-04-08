@@ -10,26 +10,6 @@ using ..Energies
 
 @inline name(pre, sim, post=nothing) = name_interacting(pre, sim, post)
 
-@inline function KineticEnergy(m, v)
-    γ = one(v) / sqrt(one(v) - v * v)
-    return m * (γ - one(γ))
-end
-
-@inline function PotentialEnergy(xp, xs, Φ)
-    interpolator_Φ = QuadraticInterpolation(Φ, xs)
-    return interpolator_Φ(xp)
-end
-
-@inline function TotalEnergy(m, v, xp, xs, Φ)
-    return m + KineticEnergy(m, v) + PotentialEnergy(xp, xs, Φ)
-end
-
-## More complicated!
-## Integrate Hamiltonian of
-# @inline function FieldEnergy(Π, Ψ)
-#     return 0.5integrate(Π .^ 2 + Ψ .^ 2)
-# end
-
 function plot_pifield(i, sim1; paper=true)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -1154,7 +1134,7 @@ function plot_particle_energies(sim1, sim2, sim4, ticklabelsize=20; paper=true)
     return fig
 end
 
-function plot_panel(sim1, sim2, sim4, ticklabelsize=20)
+function plot_particle_panel(sim1, sim2, sim4, ticklabelsize=20)
     GLMakie.activate!()
     t = sim1.sol.t
     mytheme = mytheme_aps()
@@ -1353,7 +1333,7 @@ function plot_panel(sim1, sim2, sim4, ticklabelsize=20)
     return nothing
 end
 
-function plot_energy_panel(sim1; ticklabelsize=20)
+function plot_field_panel(sim1; ticklabelsize=20)
     GLMakie.activate!()
     t = sim1.sol.t
     mytheme = mytheme_aps()
@@ -1487,18 +1467,556 @@ function plot_energy_panel(sim1, sim2, sim4; ticklabelsize=20)
     energy2 = zeros(nt)
     energy4 = zeros(nt)
 
+    regular_energy1 = zeros(nt)
+    regular_energy2 = zeros(nt)
+    regular_energy4 = zeros(nt)
+
+    interaction_energy1 = zeros(nt)
+    interaction_energy2 = zeros(nt)
+    interaction_energy4 = zeros(nt)
+
+    singular_energy1 = zeros(nt)
+    singular_energy2 = zeros(nt)
+    singular_energy4 = zeros(nt)
+
+    momentum1 = zeros(nt)
+    momentum2 = zeros(nt)
+    momentum4 = zeros(nt)
+
+    regular_momentum1 = zeros(nt)
+    regular_momentum2 = zeros(nt)
+    regular_momentum4 = zeros(nt)
+
+    interaction_momentum1 = zeros(nt)
+    interaction_momentum2 = zeros(nt)
+    interaction_momentum4 = zeros(nt)
+
+    singular_momentum1 = zeros(nt)
+    singular_momentum2 = zeros(nt)
+    singular_momentum4 = zeros(nt)
+
+    for i in 1:nt
+        energy1[i] = Energies.hamiltonian(i, sim1)
+        energy2[i] = Energies.hamiltonian(2i - 1, sim2)
+        energy4[i] = Energies.hamiltonian(4i - 3, sim4)
+
+        regular_energy1[i] = Energies.regular_hamiltonian(i, sim1)
+        regular_energy2[i] = Energies.regular_hamiltonian(2i - 1, sim2)
+        regular_energy4[i] = Energies.regular_hamiltonian(4i - 3, sim4)
+
+        interaction_energy1[i] = Energies.interaction_hamiltonian(i, sim1)
+        interaction_energy2[i] = Energies.interaction_hamiltonian(2i - 1, sim2)
+        interaction_energy4[i] = Energies.interaction_hamiltonian(4i - 3, sim4)
+
+        singular_energy1[i] = Energies.singular_hamiltonian(i, sim1)
+        singular_energy2[i] = Energies.singular_hamiltonian(2i - 1, sim2)
+        singular_energy4[i] = Energies.singular_hamiltonian(4i - 3, sim4)
+
+        momentum1[i] = Energies.half_field_momentum(i, sim1)
+        momentum2[i] = Energies.half_field_momentum(2i - 1, sim2)
+        momentum4[i] = Energies.half_field_momentum(4i - 3, sim4)
+
+        regular_momentum1[i] = Energies.half_field_regular_momentum(i, sim1)
+        regular_momentum2[i] = Energies.half_field_regular_momentum(2i - 1, sim2)
+        regular_momentum4[i] = Energies.half_field_regular_momentum(4i - 3, sim4)
+
+        interaction_momentum1[i] = Energies.half_field_interaction_momentum(i, sim1)
+        interaction_momentum2[i] = Energies.half_field_interaction_momentum(2i - 1, sim2)
+        interaction_momentum4[i] = Energies.half_field_interaction_momentum(4i - 3, sim4)
+
+        singular_momentum1[i] = Energies.half_field_singular_momentum(i, sim1)
+        singular_momentum2[i] = Energies.half_field_singular_momentum(2i - 1, sim2)
+        singular_momentum4[i] = Energies.half_field_singular_momentum(4i - 3, sim4)
+    end
+
+    with_theme(mytheme) do
+        fig = Figure(; size=(6 * 253, 4 * 200))
+        supertitle_layout = fig[1, 1:2] = GridLayout()
+
+        ax11 = Axis(fig[2, 1]; title=L"\textrm{Momentum Density}",
+                    xticklabelsize=ticklabelsize,
+                    yticklabelsize=ticklabelsize)
+        ax12 = Axis(fig[2, 2]; title=L"\textrm{Energy Density}",
+                    xticklabelsize=ticklabelsize,
+                    yticklabelsize=ticklabelsize)
+        ax21 = Axis(fig[3, 1]; title=L"\textrm{Half Field Momentum}",
+                    xticklabelsize=ticklabelsize,
+                    yticklabelsize=ticklabelsize)
+        ax22 = Axis(fig[3, 2]; title=L"\textrm{Field Energy}",
+                    xticklabelsize=ticklabelsize,
+                    yticklabelsize=ticklabelsize)
+
+        axes = [ax11, ax12, ax21, ax22]
+
+        # Add slider below the plot grid
+        slider_layout = fig[4, 1:2] = GridLayout()
+        legend = fig[5, 1:2] = GridLayout()
+        time_slider = Slider(slider_layout[1, 1];
+                             range=1:nt,
+                             startvalue=1,
+                             horizontal=true)
+        # Observable for current time
+        current_index = time_slider.value
+
+        palette = mytheme.palette
+        color1 = palette.color[][1]  # Blue-ish for Particle 1
+        color2 = palette.color[][2]  # Orange-ish for Particle 2
+        color3 = palette.color[][3]
+        color4 = palette.color[][4]
+        res_styles = [palette.linestyle[][1],
+                      palette.linestyle[][2],
+                      palette.linestyle[][3]]  # Solid, Dash, Dot
+
+        lines!(ax21, t, momentum1; color=color1, linestyle=res_styles[1])
+        lines!(ax21, t, momentum2; color=color1, linestyle=res_styles[2])
+        lines!(ax21, t, momentum4; color=color1, linestyle=res_styles[3])
+
+        lines!(ax21, t, regular_momentum1; color=color2, linestyle=res_styles[1])
+        lines!(ax21, t, regular_momentum2; color=color2, linestyle=res_styles[2])
+        lines!(ax21, t, regular_momentum4; color=color2, linestyle=res_styles[3])
+
+        lines!(ax21, t, interaction_momentum1; color=color3, linestyle=res_styles[1])
+        lines!(ax21, t, interaction_momentum2; color=color3, linestyle=res_styles[2])
+        lines!(ax21, t, interaction_momentum4; color=color3, linestyle=res_styles[3])
+
+        lines!(ax21, t, singular_momentum1; color=color4, linestyle=res_styles[1])
+        lines!(ax21, t, singular_momentum2; color=color4, linestyle=res_styles[2])
+        lines!(ax21, t, singular_momentum4; color=color4, linestyle=res_styles[3])
+
+        # lines!(ax21, t, regular_momentum1 .+ interaction_momentum1 .+ singular_momentum1;
+        #        color=:black, linestyle=res_styles[1])
+
+        lines!(ax22, t, energy1; color=color1, linestyle=res_styles[1])
+        lines!(ax22, t, energy2; color=color1, linestyle=res_styles[2])
+        lines!(ax22, t, energy4; color=color1, linestyle=res_styles[3])
+
+        lines!(ax22, t, regular_energy1; color=color2, linestyle=res_styles[1])
+        lines!(ax22, t, regular_energy2; color=color2, linestyle=res_styles[2])
+        lines!(ax22, t, regular_energy4; color=color2, linestyle=res_styles[3])
+
+        lines!(ax22, t, interaction_energy1; color=color3, linestyle=res_styles[1])
+        lines!(ax22, t, interaction_energy2; color=color3, linestyle=res_styles[2])
+        lines!(ax22, t, interaction_energy4; color=color3, linestyle=res_styles[3])
+
+        lines!(ax22, t, singular_energy1; color=color4, linestyle=res_styles[1])
+        lines!(ax22, t, singular_energy2; color=color4, linestyle=res_styles[2])
+        lines!(ax22, t, singular_energy4; color=color4, linestyle=res_styles[3])
+
+        point_t = lift(current_index) do i
+            return [t[i]]
+        end
+        point_e = lift(current_index) do i
+            return [energy1[i]]
+        end
+
+        point_m = lift(current_index) do i
+            return [momentum1[i]]
+        end
+
+        scatter!(ax21, point_t, point_m; color=:black, markersize=15)
+        scatter!(ax22, point_t, point_e; color=:black, markersize=15)
+
+        L = sim1.params.L
+        F = 8
+        x_range = (-L / F, L / F)
+        mask1 = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+        mask2 = (sim2.params.x .>= -L / F) .& (sim2.params.x .<= L / F)
+        mask4 = (sim4.params.x .>= -L / F) .& (sim4.params.x .<= L / F)
+
+        x_filtered = sim1.params.x[mask1]
+
+        dynamic_plot = lift(current_index) do i
+            empty!(ax11)  # Clear previous plot
+
+            y1_raw = Energies.momentum_density(i, sim1)
+            y1 = y1_raw[mask1]
+            y2_raw = mymean(Energies.momentum_density(2i - 1, sim2))
+            y2 = y2_raw[mask1]
+            y4_raw = mymean(mymean(Energies.momentum_density(4i - 3, sim4)))
+            y4 = y4_raw[mask1]
+
+            lines!(ax11, x_filtered, y1; color=color1, linestyle=res_styles[1])
+            lines!(ax11, x_filtered, y2; color=color1, linestyle=res_styles[2])
+            lines!(ax11, x_filtered, y4; color=color1, linestyle=res_styles[3])
+
+            y1_raw = Energies.regular_momentum_density(i, sim1)
+            y1_regular = y1_raw[mask1]
+            y2_raw = mymean(Energies.regular_momentum_density(2i - 1, sim2))
+            y2_regular = y2_raw[mask1]
+            y4_raw = mymean(mymean(Energies.regular_momentum_density(4i - 3, sim4)))
+            y4_regular = y4_raw[mask1]
+
+            lines!(ax11, x_filtered, y1_regular; color=color2, linestyle=res_styles[1])
+            lines!(ax11, x_filtered, y2_regular; color=color2, linestyle=res_styles[2])
+            lines!(ax11, x_filtered, y4_regular; color=color2, linestyle=res_styles[3])
+
+            y1_raw = Energies.interaction_momentum_density(i, sim1)
+            y1_interaction = y1_raw[mask1]
+            y2_raw = mymean(Energies.interaction_momentum_density(2i - 1, sim2))
+            y2_interaction = y2_raw[mask1]
+            y4_raw = mymean(mymean(Energies.interaction_momentum_density(4i - 3, sim4)))
+            y4_interaction = y4_raw[mask1]
+
+            lines!(ax11, x_filtered, y1_interaction; color=color3, linestyle=res_styles[1])
+            lines!(ax11, x_filtered, y2_interaction; color=color3, linestyle=res_styles[2])
+            lines!(ax11, x_filtered, y4_interaction; color=color3, linestyle=res_styles[3])
+
+            y1_raw = Energies.singular_momentum_density(i, sim1)
+            y1_singular = y1_raw[mask1]
+            y2_raw = mymean(Energies.singular_momentum_density(2i - 1, sim2))
+            y2_singular = y2_raw[mask1]
+            y4_raw = mymean(mymean(Energies.singular_momentum_density(4i - 3, sim4)))
+            y4_singular = y4_raw[mask1]
+
+            lines!(ax11, x_filtered, y1_singular; color=color4, linestyle=res_styles[1])
+            lines!(ax11, x_filtered, y2_singular; color=color4, linestyle=res_styles[2])
+            lines!(ax11, x_filtered, y4_singular; color=color4, linestyle=res_styles[3])
+
+            x1 = sim1.sol.u[i].x[2][2]
+            x2 = sim1.sol.u[i].x[2][5]
+            interpolator_y1 = ConstantInterpolation(y1, x_filtered)
+
+            scatter!(ax11, [x1], [interpolator_y1(x1)]; color=:black, marker=:circle,
+                     markersize=15)
+            scatter!(ax11, [x2], [interpolator_y1(x2)]; color=:black, marker=:circle,
+                     markersize=15)
+
+            autolimits!(ax11)
+
+            empty!(ax12)  # Clear previous plot
+            y1_raw = Energies.hamiltonian_density(i, sim1)
+            y1 = y1_raw[mask1]
+            y2_raw = mymean(Energies.hamiltonian_density(2i - 1, sim2))
+            y2 = y2_raw[mask1]
+            y4_raw = mymean(mymean(Energies.hamiltonian_density(4i - 3, sim4)))
+            y4 = y4_raw[mask1]
+
+            lines!(ax12, x_filtered, y1; color=color1, linestyle=res_styles[1])
+            lines!(ax12, x_filtered, y2; color=color1, linestyle=res_styles[2])
+            lines!(ax12, x_filtered, y4; color=color1, linestyle=res_styles[3])
+
+            y1_raw = Energies.regular_hamiltonian_density(i, sim1)
+            regular_y1 = y1_raw[mask1]
+            y2_raw = mymean(Energies.regular_hamiltonian_density(2i - 1, sim2))
+            regular_y2 = y2_raw[mask1]
+            y4_raw = mymean(mymean(Energies.regular_hamiltonian_density(4i - 3, sim4)))
+            regular_y4 = y4_raw[mask1]
+
+            lines!(ax12, x_filtered, regular_y1; color=color2, linestyle=res_styles[1])
+            lines!(ax12, x_filtered, regular_y2; color=color2, linestyle=res_styles[2])
+            lines!(ax12, x_filtered, regular_y4; color=color2, linestyle=res_styles[3])
+
+            y1_raw = Energies.interaction_hamiltonian_density(i, sim1)
+            interaction_y1 = y1_raw[mask1]
+            y2_raw = mymean(Energies.interaction_hamiltonian_density(2i - 1, sim2))
+            interaction_y2 = y2_raw[mask1]
+            y4_raw = mymean(mymean(Energies.interaction_hamiltonian_density(4i - 3, sim4)))
+            interaction_y4 = y4_raw[mask1]
+
+            lines!(ax12, x_filtered, interaction_y1; color=color3, linestyle=res_styles[1])
+            lines!(ax12, x_filtered, interaction_y2; color=color3, linestyle=res_styles[2])
+            lines!(ax12, x_filtered, interaction_y4; color=color3, linestyle=res_styles[3])
+
+            y1_raw = Energies.singular_hamiltonian_density(i, sim1)
+            singular_y1 = y1_raw[mask1]
+            y2_raw = mymean(Energies.singular_hamiltonian_density(2i - 1, sim2))
+            singular_y2 = y2_raw[mask1]
+            y4_raw = mymean(mymean(Energies.singular_hamiltonian_density(4i - 3, sim4)))
+            singular_y4 = y4_raw[mask1]
+
+            lines!(ax12, x_filtered, singular_y1; color=color4, linestyle=res_styles[1])
+            lines!(ax12, x_filtered, singular_y2; color=color4, linestyle=res_styles[2])
+            lines!(ax12, x_filtered, singular_y4; color=color4, linestyle=res_styles[3])
+
+            x1 = sim1.sol.u[i].x[2][2]
+            x2 = sim1.sol.u[i].x[2][5]
+            interpolator_y1 = ConstantInterpolation(y1, x_filtered)
+
+            scatter!(ax12, [x1], [interpolator_y1(x1)]; color=:black, marker=:circle,
+                     markersize=15)
+            scatter!(ax12, [x2], [interpolator_y1(x2)]; color=:black, marker=:circle,
+                     markersize=15)
+            autolimits!(ax12)
+        end
+        supertitle_text = lift(current_index) do i
+            L"t=%$(t[i])"
+        end
+
+        index_label = lift(current_index) do i
+            "Index: $i"
+        end
+        Label(supertitle_layout[1, 1], supertitle_text;
+              fontsize=30,
+              halign=:center,
+              tellwidth=false,
+              tellheight=false)
+
+        Label(slider_layout[1, 2], index_label; tellwidth=false)
+        res_legend = Legend(legend[1, 1:2],
+                            [LineElement(; color=color1, linestyle=res_styles[1]),
+                             LineElement(; color=color2, linestyle=res_styles[1]),
+                             LineElement(; color=color3, linestyle=res_styles[1]),
+                             LineElement(; color=color4, linestyle=res_styles[1])],
+                            [L"\textrm{total}", L"\textrm{regular}",
+                             L"\textrm{interaction}",
+                             L"\textrm{singular}"];
+                            halign=:center,
+                            valign=:top,
+                            tellwidth=false,
+                            tellheight=true, orientation=:horizontal,
+                            labelsize=20, markersize=20)
+        rowsize!(fig.layout, 1, Auto(0.1))  # Small row for supertitle
+        rowsize!(fig.layout, 2, Auto(1))    # Equal height for plot rows
+        rowsize!(fig.layout, 3, Auto(1))
+        rowsize!(fig.layout, 4, Auto(0.2))  # Small row for slider
+        colgap!(slider_layout, 10)
+        display(fig)
+    end
+    return nothing
+end
+
+function plot_field_energy(sim1, sim2, sim4; ticklabelsize=20, paper=true)
+    CairoMakie.activate!()
+    t = sim1.sol.t
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    nt = length(sim1.sol.t)
+    energy1 = zeros(nt)
+    energy2 = zeros(nt)
+    energy4 = zeros(nt)
+
+    regular_energy1 = zeros(nt)
+    regular_energy2 = zeros(nt)
+    regular_energy4 = zeros(nt)
+
+    interaction_energy1 = zeros(nt)
+    interaction_energy2 = zeros(nt)
+    interaction_energy4 = zeros(nt)
+
+    singular_energy1 = zeros(nt)
+    singular_energy2 = zeros(nt)
+    singular_energy4 = zeros(nt)
+
+    for i in 1:nt
+        energy1[i] = Energies.hamiltonian(i, sim1)
+        energy2[i] = Energies.hamiltonian(2i - 1, sim2)
+        energy4[i] = Energies.hamiltonian(4i - 3, sim4)
+
+        regular_energy1[i] = Energies.regular_hamiltonian(i, sim1)
+        regular_energy2[i] = Energies.regular_hamiltonian(2i - 1, sim2)
+        regular_energy4[i] = Energies.regular_hamiltonian(4i - 3, sim4)
+
+        interaction_energy1[i] = Energies.interaction_hamiltonian(i, sim1)
+        interaction_energy2[i] = Energies.interaction_hamiltonian(2i - 1, sim2)
+        interaction_energy4[i] = Energies.interaction_hamiltonian(4i - 3, sim4)
+
+        singular_energy1[i] = Energies.singular_hamiltonian(i, sim1)
+        singular_energy2[i] = Energies.singular_hamiltonian(2i - 1, sim2)
+        singular_energy4[i] = Energies.singular_hamiltonian(4i - 3, sim4)
+    end
+
+    fig = Figure(; size=(253, 200))
+    plt = fig[1, 1] = GridLayout()
+    leg = fig[2, 1] = GridLayout()
+
+    ax = Axis(fig[1, 1]; title=L"\textrm{Field Energy}",
+              xticklabelsize=ticklabelsize,
+              yticklabelsize=ticklabelsize)
+
+    palette = mytheme.palette
+    color1 = palette.color[][1]  # Blue-ish for Particle 1
+    color2 = palette.color[][2]  # Orange-ish for Particle 2
+    color3 = palette.color[][3]
+    color4 = palette.color[][4]
+
+    res_styles = [palette.linestyle[][1], palette.linestyle[][2],
+                  palette.linestyle[][3]]  # Solid, Dash, Dot
+
+    lines!(ax, t, energy1; color=color1, linestyle=res_styles[1])
+
+    lines!(ax, t, energy2; color=color1, linestyle=res_styles[2])
+
+    lines!(ax, t, energy4; color=color1, linestyle=res_styles[3])
+    ###
+    lines!(ax, t, regular_energy1; color=color2, linestyle=res_styles[1])
+
+    lines!(ax, t, regular_energy2; color=color2, linestyle=res_styles[2])
+
+    lines!(ax, t, regular_energy4; color=color2, linestyle=res_styles[3])
+    ###
+    lines!(ax, t, interaction_energy1; color=color3, linestyle=res_styles[1])
+
+    lines!(ax, t, interaction_energy2; color=color3, linestyle=res_styles[2])
+
+    lines!(ax, t, interaction_energy4; color=color3, linestyle=res_styles[3])
+    ###
+    lines!(ax, t, singular_energy1; color=color4, linestyle=res_styles[1])
+
+    lines!(ax, t, singular_energy2; color=color4, linestyle=res_styles[2])
+
+    lines!(ax, t, singular_energy4; color=color4, linestyle=res_styles[3])
+
+    ax.xlabel = L"t"
+    # ylims!(ax, 0, nothing)
+    # # 2. Resolution legend (Low, Med, High Res)
+    res_legend = Legend(leg[1, 1],
+                        [LineElement(; color=color1, linestyle=res_styles[1]),
+                         LineElement(; color=color2, linestyle=res_styles[1]),
+                         LineElement(; color=color3, linestyle=res_styles[1]),
+                         LineElement(; color=color4, linestyle=res_styles[1])],
+                        [L"\textrm{total}", L"\textrm{regular}", L"\textrm{interaction}",
+                         L"\textrm{singular}"];
+                        halign=:center,
+                        valign=:top,
+                        tellwidth=false,
+                        tellheight=true, orientation=:horizontal)
+
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    savename = name("interacting_particles/field_energy_resolutions", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+    return fig
+end
+
+function plot_half_field_momentum(sim1, sim2, sim4; ticklabelsize=20, paper=true)
+    CairoMakie.activate!()
+    t = sim1.sol.t
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    nt = length(sim1.sol.t)
+    momentum1 = zeros(nt)
+    momentum2 = zeros(nt)
+    momentum4 = zeros(nt)
+
+    regular_momentum1 = zeros(nt)
+    regular_momentum2 = zeros(nt)
+    regular_momentum4 = zeros(nt)
+
+    interaction_momentum1 = zeros(nt)
+    interaction_momentum2 = zeros(nt)
+    interaction_momentum4 = zeros(nt)
+
+    singular_momentum1 = zeros(nt)
+    singular_momentum2 = zeros(nt)
+    singular_momentum4 = zeros(nt)
+
+    for i in 1:nt
+        momentum1[i] = Energies.half_field_momentum(i, sim1)
+        momentum2[i] = Energies.half_field_momentum(2i - 1, sim2)
+        momentum4[i] = Energies.half_field_momentum(4i - 3, sim4)
+
+        regular_momentum1[i] = Energies.half_field_regular_momentum(i, sim1)
+        regular_momentum2[i] = Energies.half_field_regular_momentum(2i - 1, sim2)
+        regular_momentum4[i] = Energies.half_field_regular_momentum(4i - 3, sim4)
+
+        interaction_momentum1[i] = Energies.half_field_interaction_momentum(i, sim1)
+        interaction_momentum2[i] = Energies.half_field_interaction_momentum(2i - 1, sim2)
+        interaction_momentum4[i] = Energies.half_field_interaction_momentum(4i - 3, sim4)
+
+        singular_momentum1[i] = Energies.half_field_singular_momentum(i, sim1)
+        singular_momentum2[i] = Energies.half_field_singular_momentum(2i - 1, sim2)
+        singular_momentum4[i] = Energies.half_field_singular_momentum(4i - 3, sim4)
+    end
+
+    fig = Figure(; size=(253, 200))
+    plt = fig[1, 1] = GridLayout()
+    leg = fig[2, 1] = GridLayout()
+
+    ax = Axis(fig[1, 1]; title=L"\textrm{Field Momentum}",
+              xticklabelsize=ticklabelsize,
+              yticklabelsize=ticklabelsize)
+
+    palette = mytheme.palette
+    color1 = palette.color[][1]  # Blue-ish for Particle 1
+    color2 = palette.color[][2]  # Orange-ish for Particle 2
+    color3 = palette.color[][3]
+    color4 = palette.color[][4]
+    res_styles = [palette.linestyle[][1], palette.linestyle[][2],
+                  palette.linestyle[][3]]  # Solid, Dash, Dot
+
+    lines!(ax, t, momentum1; color=color1, linestyle=res_styles[1])
+
+    lines!(ax, t, momentum2; color=color1, linestyle=res_styles[2])
+
+    lines!(ax, t, momentum4; color=color1, linestyle=res_styles[3])
+    ###
+    lines!(ax, t, regular_momentum1; color=color2, linestyle=res_styles[1])
+
+    lines!(ax, t, regular_momentum2; color=color2, linestyle=res_styles[2])
+
+    lines!(ax, t, regular_momentum4; color=color2, linestyle=res_styles[3])
+    ####
+    lines!(ax, t, interaction_momentum1; color=color3, linestyle=res_styles[1])
+
+    lines!(ax, t, interaction_momentum2; color=color3, linestyle=res_styles[2])
+
+    lines!(ax, t, interaction_momentum4; color=color3, linestyle=res_styles[3])
+    ###
+    lines!(ax, t, singular_momentum1; color=color4, linestyle=res_styles[1])
+
+    lines!(ax, t, singular_momentum2; color=color4, linestyle=res_styles[2])
+
+    lines!(ax, t, singular_momentum4; color=color4, linestyle=res_styles[3])
+
+    # lines!(ax, t, regular_momentum1 .+ interaction_momentum1 .+ singular_momentum1;
+    #       color=:black, linestyle=res_styles[1])
+    ax.xlabel = L"t"
+    # ylims!(ax, 0, nothing)
+    # # 2. Resolution legend (Low, Med, High Res)
+    res_legend = Legend(leg[1, 1],
+                        [LineElement(; color=color1, linestyle=res_styles[1]),
+                         LineElement(; color=color2, linestyle=res_styles[1]),
+                         LineElement(; color=color3, linestyle=res_styles[1]),
+                         LineElement(; color=color4, linestyle=res_styles[1])],
+                        [L"\textrm{total}", L"\textrm{regular}", L"\textrm{interaction}",
+                         L"\textrm{singular}"];
+                        halign=:center,
+                        valign=:top,
+                        tellwidth=false,
+                        tellheight=true, orientation=:horizontal)
+
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    savename = name("interacting_particles/field_momentum_resolutions", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+    return fig
+end
+
+function plot_energy_panel22(sim1, sim2, sim4; ticklabelsize=20)
+    GLMakie.activate!()
+    t = sim1.sol.t
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    nt = length(sim1.sol.t)
+    energy1 = zeros(nt)
+    energy2 = zeros(nt)
+    energy4 = zeros(nt)
+
     momentum1 = zeros(nt)
     momentum2 = zeros(nt)
     momentum4 = zeros(nt)
 
     for i in 1:nt
-        energy1[i] = Energies.hamiltonian(i, sim1)
-        momentum1[i] = Energies.field_momentum(i, sim1)
+        energy1[i] = Energies.hamiltonian22(i, sim1, false)
+        momentum1[i] = Energies.hamiltonian22(i, sim1, true)
 
-        energy2[i] = Energies.hamiltonian(2i - 1, sim2)
-        momentum2[i] = Energies.field_momentum(2i - 1, sim2)
-        energy4[i] = Energies.hamiltonian(4i - 3, sim4)
-        momentum4[i] = Energies.field_momentum(4i - 3, sim4)
+        energy2[i] = Energies.hamiltonian22(2i - 1, sim2, false)
+        momentum2[i] = Energies.hamiltonian22(2i - 1, sim2, true)
+        energy4[i] = Energies.hamiltonian22(4i - 3, sim4, false)
+        momentum4[i] = Energies.hamiltonian22(4i - 3, sim4, true)
     end
 
     with_theme(mytheme) do
@@ -1558,6 +2076,12 @@ function plot_energy_panel(sim1, sim2, sim4; ticklabelsize=20)
         scatter!(ax21, point_t, point_m; color=:black, markersize=15)
         scatter!(ax22, point_t, point_e; color=:black, markersize=15)
 
+        # lines!(ax11, t, energy1 .- momentum1; color=color1, linestyle=res_styles[1])
+
+        # lines!(ax11, t, energy2 .- momentum2; color=color1, linestyle=res_styles[2])
+
+        # lines!(ax11, t, energy4 .- momentum4; color=color1, linestyle=res_styles[3])
+
         L = sim1.params.L
         F = 8
         x_range = (-L / F, L / F)
@@ -1569,12 +2093,11 @@ function plot_energy_panel(sim1, sim2, sim4; ticklabelsize=20)
 
         dynamic_plot = lift(current_index) do i
             empty!(ax11)  # Clear previous plot
-            y1_raw = Energies.momentum_density(i, sim1)
+            y1_raw = Energies.hamiltonian_density_22(i, sim1)
             y1 = y1_raw[mask1]
-
-            y2_raw = mymean(Energies.momentum_density(2i - 1, sim2))
+            y2_raw = mymean(Energies.hamiltonian_density_22(2i - 1, sim2))
             y2 = y2_raw[mask1]
-            y4_raw = mymean(mymean(Energies.momentum_density(4i - 3, sim4)))
+            y4_raw = mymean(mymean(Energies.hamiltonian_density_22(4i - 3, sim4)))
             y4 = y4_raw[mask1]
 
             x1 = sim1.sol.u[i].x[2][2]
@@ -1592,11 +2115,11 @@ function plot_energy_panel(sim1, sim2, sim4; ticklabelsize=20)
             autolimits!(ax11)
 
             empty!(ax12)  # Clear previous plot
-            y1_raw = Energies.hamiltonian_density(i, sim1)
+            y1_raw = Energies.hamiltonian_density_2(i, sim1)
             y1 = y1_raw[mask1]
-            y2_raw = mymean(Energies.hamiltonian_density(2i - 1, sim2))
+            y2_raw = mymean(Energies.hamiltonian_density_2(2i - 1, sim2))
             y2 = y2_raw[mask1]
-            y4_raw = mymean(mymean(Energies.hamiltonian_density(4i - 3, sim4)))
+            y4_raw = mymean(mymean(Energies.hamiltonian_density_2(4i - 3, sim4)))
             y4 = y4_raw[mask1]
 
             x1 = sim1.sol.u[i].x[2][2]
@@ -1637,136 +2160,5 @@ function plot_energy_panel(sim1, sim2, sim4; ticklabelsize=20)
     end
     return nothing
 end
-
-function plot_field_energy(sim1, sim2, sim4; ticklabelsize=20, paper=true)
-    CairoMakie.activate!()
-    t = sim1.sol.t
-    mytheme = mytheme_aps()
-    set_theme!(mytheme)
-
-    nt = length(sim1.sol.t)
-    energy1 = zeros(nt)
-    energy2 = zeros(nt)
-    energy4 = zeros(nt)
-
-    for i in 1:nt
-        energy1[i] = Energies.hamiltonian(i, sim1)
-        energy2[i] = Energies.hamiltonian(2i - 1, sim2)
-        energy4[i] = Energies.hamiltonian(4i - 3, sim4)
-    end
-
-    fig = Figure(; size=(253, 200))
-    plt = fig[1, 1] = GridLayout()
-    leg = fig[2, 1] = GridLayout()
-
-    ax = Axis(fig[1, 1]; title=L"\textrm{Field Energy}",
-                xticklabelsize=ticklabelsize,
-                yticklabelsize=ticklabelsize)
-    
-    
-    palette = mytheme.palette
-    color1 = palette.color[][1]  # Blue-ish for Particle 1
-    color2 = palette.color[][2]  # Orange-ish for Particle 2
-    res_styles = [palette.linestyle[][1], palette.linestyle[][2],
-                  palette.linestyle[][3]]  # Solid, Dash, Dot
-    
-    lines!(ax, t, energy1; color=color1, linestyle=res_styles[1])
-    
-    lines!(ax, t, energy2; color=color1, linestyle=res_styles[2])
-    
-    lines!(ax, t, energy4; color=color1, linestyle=res_styles[3])
-    
-    ax.xlabel = L"t"
-    # ylims!(ax, 0, nothing)
-    # # 2. Resolution legend (Low, Med, High Res)
-    res_legend = Legend(leg[1, 1],
-                        [LineElement(; color=:black, linestyle=res_styles[1]),
-                         LineElement(; color=:black, linestyle=res_styles[2]),
-                         LineElement(; color=:black, linestyle=res_styles[3])],
-                        [L"\textrm{low res}", L"\textrm{med res}", L"\textrm{high res}"];
-                        halign=:center,
-                        valign=:top,
-                        tellwidth=false,
-                        tellheight=true, orientation=:horizontal)
-
-    
-    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
-    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
-    rowgap!(fig.layout, 0)  # Small gap between plot and legend
-    colsize!(fig.layout, 1, Relative(0.9))
-    savename = name("interacting_particles/field_energy_resolutions", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
-    if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
-    end
-    return fig
-end
-
-
-function plot_half_field_momentum(sim1, sim2, sim4; ticklabelsize=20, paper=true)
-    CairoMakie.activate!()
-    t = sim1.sol.t
-    mytheme = mytheme_aps()
-    set_theme!(mytheme)
-
-    nt = length(sim1.sol.t)
-    momentum1 = zeros(nt)
-    momentum2 = zeros(nt)
-    momentum4 = zeros(nt)
-
-    for i in 1:nt
-        momentum1[i] = Energies.half_field_momentum(i, sim1)
-        momentum2[i] = Energies.half_field_momentum(2i - 1, sim2)
-        momentum4[i] = Energies.half_field_momentum(4i - 3, sim4)
-    end
-
-    fig = Figure(; size=(253, 200))
-    plt = fig[1, 1] = GridLayout()
-    leg = fig[2, 1] = GridLayout()
-
-    ax = Axis(fig[1, 1]; title=L"\textrm{Field Momentum}",
-                xticklabelsize=ticklabelsize,
-                yticklabelsize=ticklabelsize)
-    
-    
-    palette = mytheme.palette
-    color1 = palette.color[][1]  # Blue-ish for Particle 1
-    color2 = palette.color[][2]  # Orange-ish for Particle 2
-    color3 = palette.color[][3]
-    res_styles = [palette.linestyle[][1], palette.linestyle[][2],
-                  palette.linestyle[][3]]  # Solid, Dash, Dot
-    
-    lines!(ax, t, momentum1; color=color1, linestyle=res_styles[1])
-    
-    lines!(ax, t, momentum2; color=color2, linestyle=res_styles[2])
-    
-    lines!(ax, t, momentum4; color=color3, linestyle=res_styles[3])
-    
-    ax.xlabel = L"t"
-    # ylims!(ax, 0, nothing)
-    # # 2. Resolution legend (Low, Med, High Res)
-    res_legend = Legend(leg[1, 1],
-                        [LineElement(; color=color1, linestyle=res_styles[1]),
-                         LineElement(; color=color2, linestyle=res_styles[2]),
-                         LineElement(; color=color3, linestyle=res_styles[3])],
-                        [L"\textrm{low res}", L"\textrm{med res}", L"\textrm{high res}"];
-                        halign=:center,
-                        valign=:top,
-                        tellwidth=false,
-                        tellheight=true, orientation=:horizontal)
-
-    
-    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
-    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
-    rowgap!(fig.layout, 0)  # Small gap between plot and legend
-    colsize!(fig.layout, 1, Relative(0.9))
-    savename = name("interacting_particles/field_momentum_resolutions", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
-    if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
-    end
-    return fig
-end
-
 
 end
