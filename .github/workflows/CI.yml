@@ -21,7 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         version:
-          - '1.10'
+          - '1.11'
           - 'nightly'
         os:
           - ubuntu-latest
@@ -38,6 +38,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb libgl1 libglx-mesa0
       - uses: julia-actions/cache@v2
+      - name: Instantiate dependencies # Add this step
+        run: |
+          julia --project -e 'using Pkg; Pkg.instantiate()'
       - uses: julia-actions/julia-buildpkg@v1
       - name: Run tests with Xvfb # Modify this step
         uses: julia-actions/julia-runtest@v1
