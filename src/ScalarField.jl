@@ -7,15 +7,15 @@ end
 # boost with +v
 
 @inline function Φs(x, q, xp, v)
-    return (q * abs(-x + xp)) / (2sqrt(1 - v^2))
+    return (q * abs(-x + xp)) / (2sqrt(1 - v * v))
 end
 
 @inline function Πs(x, q, xp, v)
-    return -q * v * sign(x - xp) / (2sqrt(one(v) - v * v))
+    return q * v * sign(-x + xp) / (2sqrt(one(v) - v * v))
 end
 
 @inline function Ψs(x, q, xp, v)
-    return q * sign(x - xp) / (2sqrt(one(v) - v * v))
+    return -q * sign(-x + xp) / (2sqrt(one(v) - v * v))
 end
 
 @inline function ∂vΠ(x, q, xp, v)
@@ -26,6 +26,7 @@ end
     return v * q * sign(x - xp) / (2exp32(one(v) - v * v))
 end
 
+## integrals and averages of ∂vΠ
 @inline function left_integral(q, xp, v, h)
     return h * q / (2exp32(one(v) - v * v))
 end

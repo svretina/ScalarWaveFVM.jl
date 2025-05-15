@@ -47,41 +47,6 @@ function newton_cotes(y::AbstractVector{T}, h::T; order::Int=1) where {T}
     return integral
 end
 
-# function hamiltonian_density(i, sim)
-#     if hasproperty(sim.sol.u[1], :x)
-#         return hamiltonian_density_2(i, sim)
-#     else
-#         return hamiltonian_density_1(i, sim)
-#     end
-# end
-
-# function hamiltonian_density_2(i, sim)
-#     Ufield = sim.sol.u[i].x[1]
-#     Upart = sim.sol.u[i].x[2]
-#     x = sim.params.x
-#     q1 = sim.params.q1
-#     q2 = sim.params.q2
-
-#     xp1 = Upart[2]
-#     xp2 = Upart[5]
-#     vp1 = Upart[3]
-#     vp2 = Upart[6]
-
-#     Φs1 = ScalarField.Φs.(x, q1, xp1, vp1)
-#     Πs1 = ScalarField.Πs.(x, q1, xp1, vp1)
-#     Ψs1 = ScalarField.Ψs.(x, q1, xp1, vp1)
-
-#     Φs2 = ScalarField.Φs.(x, q2, xp2, vp2)
-#     Πs2 = ScalarField.Πs.(x, q2, xp2, vp2)
-#     Ψs2 = ScalarField.Ψs.(x, q2, xp2, vp2)
-#     Πr = @views Ufield[:, 1]
-#     Ψr = @views Ufield[:, 2]
-#     p = @. -(Πr + Πs1 + Πs2)
-#     H = @. -0.5p * p - p * (Πs1 + Πs2) - 0.5Ψr * Ψr - Ψr * Ψs1 - Ψr * Ψs2 -
-#            0.5Ψs1 * Ψs1 - 0.5Ψs2 * Ψs2 - Ψs1 * Ψs2
-#     return H
-# end
-
 function regular_hamiltonian_density(i, sim)
     Ufield = sim.sol.u[i].x[1]
     Upart = sim.sol.u[i].x[2]
@@ -104,7 +69,7 @@ function regular_hamiltonian_density(i, sim)
     Πr = @views Ufield[:, 1]
     Ψr = @views Ufield[:, 2]
 
-    Hr = @. -0.5Πr * Πr - 0.5Ψr * Ψr
+    Hr = @. 0.5 * (Πr * Πr + Ψr * Ψr)
     return Hr
 end
 
@@ -129,13 +94,16 @@ function interaction_hamiltonian_density(i, sim)
     Ψs2 = ScalarField.Ψs.(x, q2, xp2, vp2)
     Πr = @views Ufield[:, 1]
     Ψr = @views Ufield[:, 2]
-    Hi = @. -Ψr * (Ψs1 + Ψs2)
+
+    # Hi = @. -Ψr * (Ψs1 + Ψs2)
+    Hi = @. Ψr * (Ψs1 + Ψs2) + Πr * (Πs1 + Πs2)
     return Hi
 end
 
 function singular_hamiltonian_density(i, sim)
     Ufield = sim.sol.u[i].x[1]
     Upart = sim.sol.u[i].x[2]
+
     x = sim.params.x
     q1 = sim.params.q1
     q2 = sim.params.q2
@@ -145,24 +113,21 @@ function singular_hamiltonian_density(i, sim)
     vp1 = Upart[3]
     vp2 = Upart[6]
 
-    Φs1 = ScalarField.Φs.(x, q1, xp1, vp1)
     Πs1 = ScalarField.Πs.(x, q1, xp1, vp1)
     Ψs1 = ScalarField.Ψs.(x, q1, xp1, vp1)
 
-    Φs2 = ScalarField.Φs.(x, q2, xp2, vp2)
     Πs2 = ScalarField.Πs.(x, q2, xp2, vp2)
     Ψs2 = ScalarField.Ψs.(x, q2, xp2, vp2)
-    Πr = @views Ufield[:, 1]
-    Ψr = @views Ufield[:, 2]
-    Hs = @. 0.5(Πs1 + Πs2)^2 - 0.5(Ψs1 + Ψs2)^2
+
+    Hs = @. 0.5(Πs1 + Πs2)^2 + 0.5(Ψs1 + Ψs2)^2
     return Hs
 end
 
 function hamiltonian_density(i, sim)
     Hr = regular_hamiltonian_density(i, sim)
     Hi = interaction_hamiltonian_density(i, sim)
-    Hs = singular_hamiltonian_density(i, sim)
-    H = Hr + Hi + Hs
+    # Hs = singular_hamiltonian_density(i, sim)
+    H = Hr + Hi #+ Hs
     return H
 end
 
@@ -204,11 +169,12 @@ function regular_hamiltonian(i, sim)
     Φs1_at_2 = ScalarField.Φs.(xp2, q1, xp1, vp1)
     Φs2_at_1 = ScalarField.Φs.(xp1, q2, xp2, vp2)
 
-    interpolator_Φr = QuadraticInterpolation(Φr, x)
+    interpolator_Φr = PCHIPInterpolation(Φr, x)
     Φrz1 = interpolator_Φr(xp1)
     Φrz2 = interpolator_Φr(xp2)
-
-    energy += -q1 * Φrz1 - q2 * Φrz2 - q1 * Φs2_at_1 - q2 * Φs1_at_2
+    tmp = -q1 * Φrz1 - q2 * Φrz2 - q1 * Φs2_at_1 - q2 * Φs1_at_2
+    # @show tmp
+    # energy -= -q1 * Φrz1 - q2 * Φrz2 - q1 * Φs2_at_1 - q2 * Φs1_at_2
     return energy
 end
 
@@ -233,59 +199,16 @@ function singular_hamiltonian(i, sim)
 
     Φs1_at_2 = ScalarField.Φs.(xp2, q1, xp1, vp1)
     Φs2_at_1 = ScalarField.Φs.(xp1, q2, xp2, vp2)
-    energy += -q1 * Φs2_at_1 - q2 * Φs1_at_2
+    # energy += -q1 * Φs2_at_1 - q2 * Φs1_at_2
     return energy
 end
 
 function hamiltonian(i, sim)
     Hr = regular_hamiltonian(i, sim)
     Hi = interaction_hamiltonian(i, sim)
-    Hs = singular_hamiltonian(i, sim)
-    return Hr + Hi + Hs
+    # Hs = singular_hamiltonian(i, sim)
+    return Hr + Hi # + Hs
 end
-
-# function hamiltonian(i, sim)
-#     H = hamiltonian_density(i, sim)
-#     energy = newton_cotes(H, sim.params.dx; order=1)
-
-#     if hasproperty(sim.sol.u[1], :x)
-#         Ufield = sim.sol.u[i].x[1]
-#         Upart = sim.sol.u[i].x[2]
-#         x = sim.params.x
-#         Φr = @views Ufield[:, 3]
-
-#         q1 = sim.params.q1
-#         q2 = sim.params.q2
-
-#         xp1 = Upart[2]
-#         xp2 = Upart[5]
-#         vp1 = Upart[3]
-#         vp2 = Upart[6]
-
-#         Φs1_at_2 = ScalarField.Φs.(xp2, q1, xp1, vp1)
-#         Φs2_at_1 = ScalarField.Φs.(xp1, q2, xp2, vp2)
-
-#         interpolator_Φr = QuadraticInterpolation(Φr, x)
-#         Φrz1 = interpolator_Φr(xp1)
-#         Φrz2 = interpolator_Φr(xp2)
-
-#         energy += -q1 * Φrz1 - q2 * Φrz2 - q1 * Φs2_at_1 - q2 * Φs1_at_2
-#         return energy
-#     else
-#         Ufield = sim.sol.u[i]
-#         x = sim.params.x
-#         Φr = @views Ufield[:, 3]
-#         q = sim.params.q
-#         xp1, vp1, _ = ParticleMotion.oscillator(sim.sol.t[i], sim.params.x0,
-#                                                 sim.params.A, sim.params.ω)
-
-#         interpolator_Φr = QuadraticInterpolation(Φr, x)
-#         Φrz1 = interpolator_Φr(xp1)
-
-#         energy += -q * Φrz1
-#         return energy
-#     end
-# end
 
 function field_energy(sim)
     nt = length(sim.sol.t)
@@ -297,56 +220,6 @@ function field_energy(sim)
 
     return energy # ./ energy[1]
 end
-
-# function momentum_density(i, sim)
-#     if hasproperty(sim.sol.u[1], :x)
-#         return momentum_density_2(i, sim)
-#     else
-#         return momentum_density_1(i, sim)
-#     end
-# end
-
-# function momentum_density_1(i, sim)
-#     Ufield = sim.sol.u[i]
-#     x = sim.params.x
-#     q = sim.params.q
-#     xp, v, _ = ParticleMotion.oscillator(sim.sol.t[i], sim.params.x0, sim.params.A,
-#                                          sim.params.ω)
-#     Πs = ScalarField.Πs.(x, q, xp, v)
-#     Ψs = ScalarField.Ψs.(x, q, xp, v)
-
-#     Πr = @views Ufield[:, 1]
-#     Ψr = @views Ufield[:, 2]
-
-#     p = @. -(Πr + Πs)
-#     T0x = @. p * (Ψr + Ψs)
-# end
-
-# function momentum_density_2(i, sim)
-#     Ufield = sim.sol.u[i].x[1]
-#     Upart = sim.sol.u[i].x[2]
-#     x = sim.params.x
-#     q1 = sim.params.q1
-#     q2 = sim.params.q2
-
-#     xp1 = Upart[2]
-#     xp2 = Upart[5]
-#     vp1 = Upart[3]
-#     vp2 = Upart[6]
-
-#     Φs1 = ScalarField.Φs.(x, q1, xp1, vp1)
-#     Πs1 = ScalarField.Πs.(x, q1, xp1, vp1)
-#     Ψs1 = ScalarField.Ψs.(x, q1, xp1, vp1)
-
-#     Φs2 = ScalarField.Φs.(x, q2, xp2, vp2)
-#     Πs2 = ScalarField.Πs.(x, q2, xp2, vp2)
-#     Ψs2 = ScalarField.Ψs.(x, q2, xp2, vp2)
-#     Πr = @views Ufield[:, 1]
-#     Ψr = @views Ufield[:, 2]
-#     p = @. -(Πr + Πs1 + Πs2)
-#     T0x = @. p * (Ψr + Ψs1 + Ψs2)
-#     return T0x
-# end
 
 function regular_momentum_density(i, sim)
     Ufield = sim.sol.u[i].x[1]
@@ -451,6 +324,60 @@ function half_field_singular_momentum(i, sim)
     return P
 end
 
+function total_hamiltonian_density(i, sim)
+    Ufield = sim.sol.u[i].x[1]
+    Upart = sim.sol.u[i].x[2]
+    x = sim.params.x
+
+    Πr = @views Ufield[:, 1]
+    Ψr = @views Ufield[:, 2]
+    Φr = @views Ufield[:, 3]
+
+    q1 = sim.params.q1
+    q2 = sim.params.q2
+
+    mp1 = Upart[1]
+    xp1 = Upart[2]
+    vp1 = Upart[3]
+
+    mp2 = Upart[4]
+    xp2 = Upart[5]
+    vp2 = Upart[6]
+
+    Φs1(x) = ScalarField.Φs(x, q1, xp1, vp1)
+    Φs2(x) = ScalarField.Φs(x, q2, xp2, vp2)
+    Φs(x) = Φs1(x) + Φs2(x)
+
+    Πs1(x) = ScalarField.Πs(x, q1, xp1, vp1)
+    Πs2(x) = ScalarField.Πs(x, q2, xp2, vp2)
+    Πs(x) = Πs1(x) + Πs2(x)
+
+    Ψs1(x) = ScalarField.Ψs(x, q1, xp1, vp1)
+    Ψs2(x) = ScalarField.Ψs(x, q2, xp2, vp2)
+    Ψs(x) = Ψs1(x) + Ψs2(x)
+
+    Πs1v1(x) = ScalarField.∂vΠ(x, q1, xp1, vp1)
+    Πs2v2(x) = ScalarField.∂vΠ(x, q2, xp2, vp2)
+
+    Ψs1v1(x) = ScalarField.∂vΨ(x, q1, xp1, vp1)
+    Ψs2v2(x) = ScalarField.∂vΨ(x, q2, xp2, vp2)
+
+    # Φs1_at_2 = ScalarField.Φs.(xp2, q1, xp1, vp1)
+    # Φs2_at_1 = ScalarField.Φs.(xp1, q2, xp2, vp2)
+
+    # interpolator_Φr = PCHIPInterpolation(Φr, x)
+    # Φrz1 = interpolator_Φr(xp1)
+    # Φrz2 = interpolator_Φr(xp2)
+
+    Hfr = @. 0.5 * (Πr * Πr + Ψr * Ψr)
+    Hfi = @. Πr * Πs.(x) + Ψr * Ψs.(x)
+    Hfs = @. 0.5 * (Πs.(x) * Πs.(x) + Ψs.(x) * Ψs.(x))
+
+    Hp1 = @. (Πr + Πs.(x)) * vp1 * Πs1v1.(x) - (Ψr + Ψs.(x)) * vp1 * Ψs1v1.(x)
+    Hp2 = @. (Πr + Πs.(x)) * vp2 * Πs2v2.(x) - (Ψr + Ψs.(x)) * vp2 * Ψs2v2.(x)
+    return Hfr, Hfi, Hfs, Hp1, Hp2
+end
+
 ### Particle
 ###
 
@@ -460,7 +387,7 @@ end
 end
 
 @inline function PotentialEnergy(xp, xs, Φ)
-    interpolator_Φ = QuadraticInterpolation(Φ, xs)
+    interpolator_Φ = PCHIPInterpolation(Φ, xs)
     return interpolator_Φ(xp)
 end
 

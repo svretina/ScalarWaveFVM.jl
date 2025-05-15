@@ -6,6 +6,7 @@ using ..InitialData
 using ..Reconstructions
 using ..NumericalFluxes
 using ..Limiters
+using ..ScalarField
 
 using GridFunctions
 using RecursiveArrayTools
@@ -25,7 +26,7 @@ struct SimulationParametersPotential{T} <: SimulationParameters{T}
     x0::T
     v0::T
     sf::Bool
-    λ::T
+    xpot::T
     cfl::T
 end
 
@@ -70,6 +71,8 @@ struct SimulationParametersAnalyticPotential{T} <: SimulationParameters{T}
     x0::T
     v0::T
     k::T
+    sf::Bool
+    cfl::T
 end
 
 struct Simulation{T}
@@ -221,39 +224,33 @@ function particle_in_fixed_potential_interpolation(L, dx, dt, Nosc, k)
     return res
 end
 
-function particle_in_potential(L, N, tf, cfl, q, sf=true)
+function particle_in_potential(L, dx, dt, Nosc, k, sf=true)
     c = 1.0
     equation = LinearScalarWaveEquation1D(c)
 
-    grid = UniformStaggeredGrid1D(Float64[-L, L], N)
-    x = GridFunctions.Grids.coords(grid) # cell centers
+    T = 2π / sqrt(abs(k))
+    tf = Nosc * T
     tspan = (0.0, tf)
-    dx = spacing(grid)
+    t = 0.0:dt:tf
+    x = collect((-L):dx:L)
+    N = length(x)
+    cfl = dt / dx
 
-    dt = cfl * dx / c
-    @show dx, dt
-    t = 0.0:dt:(tf + dt)
+    Φ = zeros(Float64, length(x))
+    Π = zeros(Float64, length(x))
+    Ψ = zeros(Float64, length(x))
 
-    # Π = zeros(Float64, length(grid))
-    # Ψ = zeros(Float64, length(grid))
+    # V(x) = ScalarField.Φs(x, -q, xpot, 0.0)
+    # dxV(x) = ScalarField.Ψs(x, -q, xpot, 0.0)
 
-    #n = 5
-    A = 1 / (2π)
-    λ = 200.0 # L / n
-    @show 2A * π / λ
-    @show λ
-    Φ = zeros(Float64, length(grid))
-    Π = zeros(Float64, length(grid))
-    Ψ = InitialData.dxSineWave.(0.0, x, A, λ, c)
-    # Ψ = InitialData.dxHarmonic(0.0, x, 0.005)
-    # Π = InitialData.dtSineWave.(0.0, x, A, λ, c)
-
+    V(x) = InitialData.Harmonic(0.0, x, k)
+    dxV(x) = InitialData.dxHarmonic(0.0, x, k)
     field_statevector = hcat(Π, Ψ, Φ)
 
     ## Particle 1
-    # q = 0.05
+    q = 0.1
     m10 = 1.0
-    x10 = 0.0
+    x10 = 1.0
     v10 = 0.0
 
     println("Particle:")
@@ -276,13 +273,16 @@ function particle_in_potential(L, N, tf, cfl, q, sf=true)
               h=dx, N=N, x=x, cfl=cfl, L=L,
               dt=dt, x1=x10,
               q=q, sf=sf,
-              pifield=Π, psifield=Ψ,
+              Potential=V,
+              dxPotential=dxV,
               interpolation_method=interpolation_method)
-    sim = SimulationParametersPotential(L, N, dx, x, q,
-                                        m10, x10, v10,
-                                        sf, λ, cfl)
-    alg = SSPRK54()
-    ode = ODEProblem{true}(ODE.coupled_rhs!, statevector, tspan,
+    sim = SimulationParametersAnalyticPotential(L, dx, dt, x, q,
+                                                m10, x10, v10,
+                                                k, sf, cfl)
+
+    # alg = ImplicitMidpoint()
+    alg = Tsit5()
+    ode = ODEProblem{true}(ODE.particle_in_potential_rhs!, statevector, tspan,
                            params; saveat=t)
 
     sol = solve(ode, alg; dt=dt)#, callback=cb)
@@ -353,6 +353,78 @@ function interacting_particles(L, N, tf, cfl, v0, q0, same_q=true, sf=true)
     # alg = SSPRK53_2N1()
     # alg = ImplicitEuler()
     ode = ODEProblem{true}(ODE.interacting_coupled_rhs!, statevector, tspan,
+                           params; saveat=t,
+                           #callback=callbacks
+                           )
+
+    sol = solve(ode, alg; dt=dt)#, callback=cb)
+    res = Simulation(sim, sol)
+    return res
+end
+
+function interacting_particles_no_regular(L, N, tf, cfl, v0, q0, same_q=true, sf=true)
+    c = 1.0
+    equation = LinearScalarWaveEquation1D(c)
+
+    grid = UniformStaggeredGrid1D(Float64[-L, L], N)
+    x = GridFunctions.Grids.coords(grid) # cell centers
+
+    dx = spacing(grid)
+
+    dt = cfl * dx / c
+    @show dx, dt
+    t = 0.0:dt:(tf + dt)
+    tspan = (0.0, tf)
+    Φ = zeros(Float64, length(grid))
+    Π = zeros(Float64, length(grid))
+    Ψ = zeros(Float64, length(grid))
+
+    field_statevector = hcat(Π, Ψ, Φ)
+
+    ## Particle 1
+    q1 = Float64(q0)
+    m10 = 1.0
+    x10 = -200.0
+    v10 = v0
+    ## Particle 2
+    if same_q
+        q2 = q0
+    else
+        q2 = -q0
+    end
+    m20 = 1.0
+    x20 = -x10
+    v20 = -v10
+
+    println("Particle 1:         Particle 2:")
+    println("q = $q1             q = $q2")
+    println("m = $m10            m = $m20")
+    println("x = $x10            x = $x20")
+    println("v = $v10            v = $v20")
+
+    particle_statevector = [m10, x10, v10, m20, x20, v20]
+    statevector = ArrayPartition(field_statevector,
+                                 particle_statevector)
+
+    numerical_flux = NumericalFluxes.flux_rusanov
+    slope_limiter = Limiters.minmod
+    flux_limiter = Limiters.minmod
+    interpolation_method = PCHIPInterpolation # QuadraticInterpolation
+
+    params = (equation=equation, numerical_flux=numerical_flux,
+              slope_limiter=slope_limiter, flux_limiter=flux_limiter,
+              h=dx, N=N, x=x, cfl=cfl, L=L,
+              dt=dt, x1=x10, x2=x20,
+              q1=q1, q2=q2, sf=sf,
+              interpolation_method=interpolation_method)#, acc=[1.0])
+
+    sim = SimulationParametersInteracting(L, N, dx, x,
+                                          q1, m10, x10, v10,
+                                          q2, m20, x20, v20, cfl)
+    alg = Tsit5()
+    # alg = SSPRK53_2N1()
+    # alg = ImplicitEuler()
+    ode = ODEProblem{true}(ODE.interacting_particle_rhs22!, statevector, tspan,
                            params; saveat=t,
                            #callback=callbacks
                            )

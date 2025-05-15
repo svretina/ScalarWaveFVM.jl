@@ -235,7 +235,7 @@ function field_rhs!(dQ, Q, params, t)
 
     a1 = dQ_particle[3]
     x1 = Q_particle[2]
-    v1 = dQ_particle[2] ### ASK ERIK dQ or Q ?
+    v1 = Q_particle[3] ### ASK ERIK dQ or Q ?
     ###
     # a2 = dQ_particle[6]
     # x2 = Q_particle[5]
@@ -274,15 +274,15 @@ function field_rhs2!(dQ, Q, params, t)
 
     a1 = dQ_particle[3]
     x1 = Q_particle[2]
-    v1 = Q_particle[3] ### ASK ERIK dQ or Q ?
+    v1 = Q_particle[3]
     ###
     a2 = dQ_particle[6]
     x2 = Q_particle[5]
-    v2 = Q_particle[6] ##  or dQ_particle[5] or Q_particle[3]??
+    v2 = Q_particle[6]
     muscl!(dQ_field, Q_field, params, t)
     if sf
-        @inline s1(x) = a1 * ScalarField.∂vΠ(x, q1, x1, v1)
-        @inline s2(x) = a2 * ScalarField.∂vΠ(x, q2, x2, v2)
+        # @inline s1(x) = a1 * ScalarField.∂vΠ(x, q1, x1, v1)
+        # @inline s2(x) = a2 * ScalarField.∂vΠ(x, q2, x2, v2)
         dtΠ = @view dQ_field[:, 1]
 
         @inbounds @batch for i in 1:N
@@ -354,8 +354,9 @@ function interacting_particle_rhs!(dQ, Q, params, t)
         x2 = Q_particle[5]
         v2 = Q_particle[6]
 
-        abs(v1) <= 1 || throw("v1=$v1 > 1, at t=$(t), a1 = $(dQ[3])")
-        abs(v2) <= 1 || throw("v2=$v2 > 1, at t=$(t), a1 = $(dQ[6])")
+        vel = 0.5
+        abs(v1) <= vel || throw("v1=$v1 > $(vel), at t=$(t), a1 = $(dQ[3])")
+        abs(v2) <= vel || throw("v2=$v2 > $(vel), at t=$(t), a1 = $(dQ[6])")
 
         interpolator_Ψ = interpolation_method(Ψ, x;
                                               extrapolation=ExtrapolationType.Extension)
@@ -406,8 +407,7 @@ function particle_rhs_functions!(dQ, Q, params, t)
     @inbounds x1 = Q[2]
     @inbounds v1 = Q[3]
     abs(v1) <= 1 || throw("v1=$v1 > 1, at t=$(t), a1 = $(dQ[3])")
-    # v1 = max(-1.0, min(1.0, v1))
-    # Q[3] = v1
+
     Π1 = Π(t, x1)
     Ψ1 = Ψ(t, x1)
 
@@ -460,6 +460,74 @@ end
 function interacting_coupled_rhs!(dQ, Q, params, t)
     interacting_particle_rhs!(dQ, Q, params, t)
     field_rhs2!(dQ, Q, params, t)
+    return nothing
+end
+
+function particle_in_potential_rhs!(dQ, Q, params, t)
+    particle_with_potential_rhs!(dQ, Q, params, t)
+    sf = params.sf
+    if sf
+        field_rhs!(dQ, Q, params, t)
+    end
+    return nothing
+end
+
+function particle_with_potential_rhs!(dQ, Q, params, t)
+    Q_field = Q.x[1]
+    Q_particle = Q.x[2]
+    dQ_particle = dQ.x[2]
+
+    q = params.q
+    xs = params.x
+    dxV = params.dxPotential
+    V = params.Potential
+    sf = params.sf
+    interpolation_method = params.interpolation_method
+
+    m = Q_particle[1]
+    z = Q_particle[2]
+    v = Q_particle[3]
+
+    vel = 0.99
+    abs(v) <= vel || throw("v=$v > $(vel), at t=$(t), a1 = $(dQ_particle[3])")
+
+    v2 = v * v
+    a2 = one(v) - v2
+
+    # v∇Φ1 = Πr + v * Ψr
+    if sf
+        Π = @view Q_field[:, 1]
+        Ψ = @view Q_field[:, 2]
+        interpolator_Ψ = interpolation_method(Ψ, xs;
+                                              extrapolation=ExtrapolationType.Extension)
+        interpolator_Π = interpolation_method(Π, xs;
+                                              extrapolation=ExtrapolationType.Extension)
+        Πr = interpolator_Π(z)
+        Ψr = interpolator_Ψ(z)
+
+        @inbounds dQ_particle[1] = -q * (Πr + v * (Ψr + dxV(z)))
+        @inbounds dQ_particle[2] = v
+        @inbounds dQ_particle[3] = q * a2 * (v * Πr + Ψr + dxV(z)) / m
+
+        # Φ = @view Q_field[:, 3]
+        # interpolator_Φ = interpolation_method(Φ, xs;
+        #                                      extrapolation=ExtrapolationType.Extension)
+
+        # Φr = interpolator_Φ(z)
+        # @inbounds dQ_particle[1] = 0.0
+        # @inbounds dQ_particle[2] = v
+        # @inbounds dQ_particle[3] = q * a2 * (v * Πr + Ψr + dxV(z)) / (m - q * (Φr + V(z)))
+    else
+        # @inbounds dQ_particle[1] = 0.0
+        # @inbounds dQ_particle[2] = v
+        # @inbounds dQ_particle[3] = q * a2 * dxV(z) / (m - q * V(z))
+
+        ## in this case the conserved energy is simply
+        ## E = γ*m(t)
+        @inbounds dQ_particle[1] = -q * v * dxV(z)
+        @inbounds dQ_particle[2] = v
+        @inbounds dQ_particle[3] = q * a2 * dxV(z) / m
+    end
     return nothing
 end
 
@@ -545,6 +613,159 @@ function muscl_forced!(dQ, Q, params, t)
             right_face = x[i] + h2
             dtΠ[i] -= a1 * ScalarField.cell_average(left_face, right_face, q, x1, v1, h)
         end
+    end
+    return nothing
+end
+
+function interacting_particle_harmonic_rhs!(dQ, Q, params, t)
+    @inbounds begin
+        Q_field = Q.x[1]
+        Q_particle = Q.x[2]
+        dQ_particle = dQ.x[2]
+
+        x = params.x
+        q1 = params.q1
+        q2 = params.q2
+
+        m1 = Q_particle[1]
+        x1 = Q_particle[2]
+        v1 = Q_particle[3]
+
+        m2 = Q_particle[4]
+        x2 = Q_particle[5]
+        v2 = Q_particle[6]
+
+        vel = 0.5
+        abs(v1) <= vel || throw("v1=$v1 > $(vel), at t=$(t), a1 = $(dQ[3])")
+        abs(v2) <= vel || throw("v2=$v2 > $(vel), at t=$(t), a1 = $(dQ[6])")
+
+        Πs1(x) = ScalarField.Πs(x, q1, x1, v1)
+        Ψs1(x) = ScalarField.Ψs(x, q1, x1, v1)
+
+        Πs2(x) = ScalarField.Πs(x, q2, x2, v2)
+        Ψs2(x) = ScalarField.Ψs(x, q2, x2, v2)
+
+        v12 = v1 * v1
+        a12 = one(v1) - v12
+        v22 = v2 * v2
+        a22 = one(v2) - v22
+        γ1 = 1 / sqrt(a12)
+        γ2 = 1 / sqrt(a22)
+        k = 1.8e-5
+        b = 1e-5
+        # Particle 1
+        dQ_particle[1] = 0#-q1 * (Π1 + v1 * Ψ1)
+        dQ_particle[2] = v1
+        dQ_particle[3] = -(k * (x1 - x2) + b * (v1 + v2)^2) /
+                         (m1 * (γ1 + v1^2 / a12^(3 / 2)))
+        # Particle 2
+        dQ_particle[4] = 0#-q2 * (Π2 + v2 * Ψ2)
+        dQ_particle[5] = v2
+        dQ_particle[6] = (k * (x1 - x2) + b * (v1 + v2)^2) /
+                         (m2 * (γ2 + v2^2 / a22^(3 / 2)))
+    end
+    return nothing
+end
+
+function interacting_particle_rhs2!(dQ, Q, params, t)
+    @inbounds begin
+        Q_field = Q.x[1]
+        Q_particle = Q.x[2]
+        dQ_particle = dQ.x[2]
+
+        x = params.x
+        q1 = params.q1
+        q2 = params.q2
+
+        m1 = Q_particle[1]
+        x1 = Q_particle[2]
+        v1 = Q_particle[3]
+
+        m2 = Q_particle[4]
+        x2 = Q_particle[5]
+        v2 = Q_particle[6]
+
+        vel = 0.5
+        abs(v1) <= vel || throw("v1=$v1 > $(vel), at t=$(t), a1 = $(dQ[3])")
+        abs(v2) <= vel || throw("v2=$v2 > $(vel), at t=$(t), a1 = $(dQ[6])")
+
+        Πs1(x) = 0#ScalarField.Πs(x, q1, x1, 0)
+        Ψs1(x) = ScalarField.Ψs(x, q1, x1, 0)
+
+        Πs2(x) = 0#ScalarField.Πs(x, q2, x2, 0)
+        Ψs2(x) = ScalarField.Ψs(x, q2, x2, 0)
+
+        v12 = v1 * v1
+        a12 = one(v1) - v12
+        v22 = v2 * v2
+        a22 = one(v2) - v22
+        γ1 = 1 / sqrt(a12)
+        γ2 = 1 / sqrt(a22)
+
+        # Particle 1
+        dQ_particle[1] = 0# -q1 * (Πs2(x1) + v1 * Ψs2(x1))
+        dQ_particle[2] = v1
+        dQ_particle[3] = -(q1 + q2) * sign(x1 - x2) * a12^(3 / 2) / m1
+        # Particle 2
+        dQ_particle[4] = 0#-q2 * (Πs1(x2) + v2 * Ψs1(x2))
+        dQ_particle[5] = v2
+        dQ_particle[6] = (q1 + q2) * sign(x1 - x2) * a22^(3 / 2) / m2
+    end
+    return nothing
+end
+
+function interacting_particle_rhs22!(dQ, Q, params, t)
+    @inbounds begin
+        Q_field = Q.x[1]
+        Q_particle = Q.x[2]
+        dQ_particle = dQ.x[2]
+
+        x = params.x
+        q1 = params.q1
+        q2 = params.q2
+
+        m1 = Q_particle[1]
+        x1 = Q_particle[2]
+        v1 = Q_particle[3]
+
+        m2 = Q_particle[4]
+        x2 = Q_particle[5]
+        v2 = Q_particle[6]
+
+        vel = 0.5
+        abs(v1) <= vel || throw("v1=$v1 > $(vel), at t=$(t), a1 = $(dQ[3])")
+        abs(v2) <= vel || throw("v2=$v2 > $(vel), at t=$(t), a1 = $(dQ[6])")
+
+        # Πs1(x) = 0#ScalarField.Πs(x, q1, x1, 0)
+        # Ψs1(x) = ScalarField.Ψs(x, q1, x1, 0)
+
+        # Πs2(x) = 0#ScalarField.Πs(x, q2, x2, 0)
+        # Ψs2(x) = ScalarField.Ψs(x, q2, x2, 0)
+
+        v12 = v1 * v1
+        a12 = one(v1) - v12
+        v22 = v2 * v2
+        a22 = one(v2) - v22
+        γ1 = 1 / sqrt(a12)
+        γ2 = 1 / sqrt(a22)
+
+        # Particle 1
+        dQ_particle[1] = 0
+        dQ_particle[2] = v1
+        # Particle 2
+        dQ_particle[4] = 0
+        dQ_particle[5] = v2
+
+        nom1 = (x1 - x2) * (-1 + v1^2) *
+               (q1 / γ1 + q2 / γ2 + q2 * v1 * v2 / γ2 - v1^2 * (q1 / γ1 + 2q2 / γ2))
+        denom1 = abs(x1 - x2) * (2m1 * (-1 + v1^2) + abs(x1 - x2) * (q2 + 2q2 * v1^2)) / γ2
+
+        nom2 = (x1 - x2) * (-1 + v2^2) *
+               (q1 / γ1 + q2 / γ2 + q1 * v1 * v2 / γ1 - v2^2 * (2q1 / γ1 + q2 / γ2))
+        denom2 = abs(x1 - x2) * (2m2 * (-1 + v2^2) + abs(x1 - x2) * (q1 + 2q1 * v2^2)) / γ1
+
+        dQ_particle[3] = -nom1 / denom1
+        dQ_particle[6] = nom2 / denom2
     end
     return nothing
 end

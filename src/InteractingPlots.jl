@@ -1,5 +1,6 @@
 module InteractingPlots
 
+using CairoMakie: linewidth
 using ..PlottingUtils
 using CairoMakie
 using LinearAlgebra
@@ -10,7 +11,8 @@ using ..Energies
 
 @inline name(pre, sim, post=nothing) = name_interacting(pre, sim, post)
 
-function plot_pifield(i, sim1; paper=true)
+function plot_pifield(i, sim1; paper=false)
+    CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     t = sim1.sol.t[i]
@@ -51,7 +53,12 @@ function plot_pifield(i, sim1; paper=true)
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    savename = name("interacting_particles/pifield", sim1, "i=$(i)")
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
+    savename = name("$(folder)/pifield", sim1, "i=$(i)")
     save(joinpath(FIG_PATH, savename), fig)
     if paper
         save(joinpath(PAPER_FIG_PATH, savename), fig)
@@ -60,7 +67,8 @@ function plot_pifield(i, sim1; paper=true)
     return fig
 end
 
-function plot_psifield(i, sim1; paper=true)
+function plot_psifield(i, sim1; paper=false)
+    CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     t = sim1.sol.t[i]
@@ -82,7 +90,7 @@ function plot_psifield(i, sim1; paper=true)
     y_max = maximum(y1_filtered)
     padding = 0.1 * (y_max - y_min)  # Add 10% padding
     y_limits = (y_min - padding, y_max + padding)
-
+    
     xp1 = sim1.sol.u[i].x[2][2]
     xp2 = sim1.sol.u[i].x[2][5]
 
@@ -101,7 +109,12 @@ function plot_psifield(i, sim1; paper=true)
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    savename = name("interacting_particles/psifield", sim1, "i=$(i)")
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
+    savename = name("$(folder)/psifield", sim1, "i=$(i)")
     save(joinpath(FIG_PATH, savename), fig)
     if paper
         save(joinpath(PAPER_FIG_PATH, savename), fig)
@@ -110,7 +123,7 @@ function plot_psifield(i, sim1; paper=true)
     return fig
 end
 
-function plot_pifield_resolutions(i, sim1, sim2, sim4, paper=true)
+function plot_pifield_resolutions(i, sim1, sim2, sim4; paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -170,7 +183,12 @@ function plot_pifield_resolutions(i, sim1, sim2, sim4, paper=true)
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    savename = name("interacting_particles/pifield_res_interacting", sim1, "i=$(i)")
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
+    savename = name("$(folder)/pifield_res_interacting", sim1, "i=$(i)")
     save(joinpath(FIG_PATH, savename), fig)
     if paper
         save(joinpath(PAPER_FIG_PATH, savename), fig)
@@ -179,7 +197,7 @@ function plot_pifield_resolutions(i, sim1, sim2, sim4, paper=true)
     return fig
 end
 
-function plot_psifield_resolutions(i, sim1, sim2, sim4; paper=true)
+function plot_psifield_resolutions(i, sim1, sim2, sim4; paper=false)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     t1 = sim1.sol.t[i]
@@ -241,7 +259,12 @@ function plot_psifield_resolutions(i, sim1, sim2, sim4; paper=true)
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    savename = name("interacting_particles/psifield_res_interacting", sim1, "i=$(i)")
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
+    savename = name("$(folder)/psifield_res_interacting", sim1, "i=$(i)")
     save(joinpath(FIG_PATH, savename), fig)
     if paper
         save(joinpath(PAPER_FIG_PATH, savename), fig)
@@ -250,7 +273,7 @@ function plot_psifield_resolutions(i, sim1, sim2, sim4; paper=true)
     return fig
 end
 
-function plot_pifield_convord(sim1, sim2, sim4; paper=true)
+function plot_pifield_convord(sim1, sim2, sim4; paper=false)
     set_theme!(mytheme_aps())
     nt = length(sim1.sol.t)
     L = sim1.params.L
@@ -297,7 +320,12 @@ function plot_pifield_convord(sim1, sim2, sim4; paper=true)
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
 
-    savename = name("interacting_particles/pifield_convord_interacting", sim1)
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
+    savename = name("$(folder)/pifield_convord_interacting", sim1)
     save(joinpath(FIG_PATH, savename), fig)
     if paper
         save(joinpath(PAPER_FIG_PATH, savename), fig)
@@ -306,7 +334,7 @@ function plot_pifield_convord(sim1, sim2, sim4; paper=true)
     return fig
 end
 
-function plot_psifield_convord(sim1, sim2, sim4; paper=true)
+function plot_psifield_convord(sim1, sim2, sim4; paper=false)
     set_theme!(mytheme_aps())
     nt = length(sim1.sol.t)
     L = sim1.params.L
@@ -353,7 +381,12 @@ function plot_psifield_convord(sim1, sim2, sim4; paper=true)
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
 
-    savename = name("interacting_particles/psifield_convord_interacting", sim1)
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
+    savename = name("$(folder)/psifield_convord_interacting", sim1)
     save(joinpath(FIG_PATH, savename), fig)
     if paper
         save(joinpath(PAPER_FIG_PATH, savename), fig)
@@ -362,7 +395,7 @@ function plot_psifield_convord(sim1, sim2, sim4; paper=true)
     return fig
 end
 
-function plot_particle_positions(sim1; invert=true, paper=true)
+function plot_particle_positions(sim1; invert=true, paper=false)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
 
@@ -396,7 +429,7 @@ function plot_particle_positions(sim1; invert=true, paper=true)
         ax.xlabel = L"t"
     end
     leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
-
+    ax.xlabelpadding = 40
     # Adjust layout to ensure proper spacing
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
     colsize!(fig.layout, 1, Relative(0.9))
@@ -404,7 +437,12 @@ function plot_particle_positions(sim1; invert=true, paper=true)
     rowgap!(fig.layout, 0)                 # Gap between plot and legend
 
     # Save the figure
-    savename = name("interacting_particles/particle_positions", sim1)
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
+    savename = name("$(folder)/particle_positions", sim1)
     save(joinpath(FIG_PATH, savename), fig)
     if paper
         save(joinpath(PAPER_FIG_PATH, savename), fig)
@@ -413,7 +451,7 @@ function plot_particle_positions(sim1; invert=true, paper=true)
     return fig
 end
 
-function plot_particle_positions_resolutions(sim1, sim2, sim4; invert=true, paper=true)
+function plot_particle_positions_resolutions(sim1, sim2, sim4; invert=true, paper=false)
     mytheme = mytheme_aps()
     set_theme!(mytheme)
     # Get time points and assert equality
@@ -497,8 +535,15 @@ function plot_particle_positions_resolutions(sim1, sim2, sim4; invert=true, pape
     # Place legends below the axis
     rowgap!(fig.layout, 1, 0)
     rowgap!(fig.layout, 2, -10)
+    ax.xlabelpadding = 0.5
 
-    savename = name("interacting_particles/particle_positions_resolutions", sim1)
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
+
+    savename = name("$(folder)/particle_positions_resolutions", sim1)
     save(joinpath(FIG_PATH, savename), fig)
     if paper
         save(joinpath(PAPER_FIG_PATH, savename), fig)
@@ -507,7 +552,7 @@ function plot_particle_positions_resolutions(sim1, sim2, sim4; invert=true, pape
     return fig
 end
 
-function plot_position_convord_interacting(sim1, sim2, sim4; paper=true)
+function plot_position_convord_interacting(sim1, sim2, sim4; paper=false)
     set_theme!(mytheme_aps())
     nt = length(sim1.sol.t)
     L = sim1.params.L
@@ -553,8 +598,13 @@ function plot_position_convord_interacting(sim1, sim2, sim4; paper=true)
     # rowgap!(fig.layout, 2)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
 
-    savename = name("interacting_particles/position_convord_interacting", sim1)
+    savename = name("$(folder)/position_convord_interacting", sim1)
     save(joinpath(FIG_PATH, savename), fig)
     if paper
         save(joinpath(PAPER_FIG_PATH, savename), fig)
@@ -563,7 +613,7 @@ function plot_position_convord_interacting(sim1, sim2, sim4; paper=true)
     return fig
 end
 
-function plot_particle_velocities(sim1; paper=true)
+function plot_particle_velocities(sim1; paper=false)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
 
@@ -600,7 +650,12 @@ function plot_particle_velocities(sim1; paper=true)
     rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
     rowgap!(fig.layout, 0)                 # Gap between plot and legend
     # Save the figure
-    savename = name("interacting_particles/particle_velocities", sim1)
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
+    savename = name("$(folder)/particle_velocities", sim1)
     save(joinpath(FIG_PATH, savename), fig)
     if paper
         save(joinpath(PAPER_FIG_PATH, savename), fig)
@@ -609,7 +664,7 @@ function plot_particle_velocities(sim1; paper=true)
     return fig
 end
 
-function plot_particle_velocities_resolutions(sim1, sim2, sim4; paper=true)
+function plot_particle_velocities_resolutions(sim1, sim2, sim4; paper=false)
     mytheme = mytheme_aps()
     set_theme!(mytheme)
     # Get time points and assert equality
@@ -686,8 +741,13 @@ function plot_particle_velocities_resolutions(sim1, sim2, sim4; paper=true)
     # Place legends below the axis
     rowgap!(fig.layout, 1, -5)
     rowgap!(fig.layout, 2, -10)
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
 
-    savename = name("interacting_particles/particle_velocities_resolutions", sim1)
+    savename = name("$(folder)/particle_velocities_resolutions", sim1)
     save(joinpath(FIG_PATH, savename), fig)
     if paper
         save(joinpath(PAPER_FIG_PATH, savename), fig)
@@ -696,7 +756,7 @@ function plot_particle_velocities_resolutions(sim1, sim2, sim4; paper=true)
     return fig
 end
 
-function plot_particle_masses(sim1; paper=true)
+function plot_particle_masses(sim1; paper=false)
     set_theme!(mytheme_aps())
     # Get time points and assert equality
 
@@ -717,8 +777,9 @@ function plot_particle_masses(sim1; paper=true)
 
     fig = Figure(; size=(253, 200))
     ax = Axis(fig[1, 1];
-              title=L"\textrm{Particle Mass}",
-              limits=(0, sim1.sol.t[end], -1, 1))
+              title=L"\textrm{Particle Mass}")
+    #,
+    # limits=(0, sim1.sol.t[end], -1, 1))
     # Plot the data
     lines!(ax, sim1.sol.t, vs1; label=L"\mathrm{particle} 1")
     lines!(ax, sim1.sol.t, vs2; label=L"\mathrm{particle} 2")
@@ -733,7 +794,12 @@ function plot_particle_masses(sim1; paper=true)
     rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
     rowgap!(fig.layout, 0)                 # Gap between plot and legend
     # Save the figure
-    savename = name("interacting_particles/particle_masses", sim1)
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
+    savename = name("$(folder)/particle_masses", sim1)
     save(joinpath(FIG_PATH, savename), fig)
     if paper
         save(joinpath(PAPER_FIG_PATH, savename), fig)
@@ -742,7 +808,7 @@ function plot_particle_masses(sim1; paper=true)
     return fig
 end
 
-function plot_particle_masses_resolutions(sim1, sim2, sim4; paper=true)
+function plot_particle_masses_resolutions(sim1, sim2, sim4; paper=false)
     mytheme = mytheme_aps()
     set_theme!(mytheme)
     # Get time points and assert equality
@@ -820,7 +886,12 @@ function plot_particle_masses_resolutions(sim1, sim2, sim4; paper=true)
     rowgap!(fig.layout, 1, -5)
     rowgap!(fig.layout, 2, -10)
 
-    savename = name("interacting_particles/particle_masses_resolutions", sim1)
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
+    savename = name("$(folder)/particle_masses_resolutions", sim1)
     save(joinpath(FIG_PATH, savename), fig)
     if paper
         save(joinpath(PAPER_FIG_PATH, savename), fig)
@@ -980,7 +1051,7 @@ function plot_panel(sim1, ticklabelsize=20)
     return nothing
 end
 
-function plot_particle_energies(sim1, sim2, sim4, ticklabelsize=20; paper=true)
+function plot_particle_energies(sim1, sim2, sim4; ticklabelsize=20, paper=false)
     mytheme = mytheme_aps()
     set_theme!(mytheme)
 
@@ -1048,21 +1119,27 @@ function plot_particle_energies(sim1, sim2, sim4, ticklabelsize=20; paper=true)
         Φ2 = sim2.sol.u[2i - 1].x[1][:, 3]
         Φ4 = sim4.sol.u[4i - 3].x[1][:, 3]
 
-        ke11[i] = KineticEnergy(mp11, vp11)
-        ke12[i] = KineticEnergy(mp12, vp12)
-        ke14[i] = KineticEnergy(mp14, vp14)
+        ke11[i] = Energies.KineticEnergy(mp11, vp11)
+        ke12[i] = Energies.KineticEnergy(mp12, vp12)
+        ke14[i] = Energies.KineticEnergy(mp14, vp14)
 
-        ke21[i] = KineticEnergy(mp21, vp21)
-        ke22[i] = KineticEnergy(mp22, vp22)
-        ke24[i] = KineticEnergy(mp24, vp24)
+        ke21[i] = Energies.KineticEnergy(mp21, vp21)
+        ke22[i] = Energies.KineticEnergy(mp22, vp22)
+        ke24[i] = Energies.KineticEnergy(mp24, vp24)
 
-        pe11[i] = PotentialEnergy(xp11, x1, Φ1) + ScalarField.Φs(xp11, q2, xp21, vp21)
-        pe12[i] = PotentialEnergy(xp12, x2, Φ2) + ScalarField.Φs(xp12, q2, xp22, vp22)
-        pe14[i] = PotentialEnergy(xp14, x4, Φ4) + ScalarField.Φs(xp14, q2, xp24, vp24)
+        pe11[i] = Energies.PotentialEnergy(xp11, x1, Φ1) +
+                  ScalarField.Φs(xp11, q2, xp21, vp21)
+        pe12[i] = Energies.PotentialEnergy(xp12, x2, Φ2) +
+                  ScalarField.Φs(xp12, q2, xp22, vp22)
+        pe14[i] = Energies.PotentialEnergy(xp14, x4, Φ4) +
+                  ScalarField.Φs(xp14, q2, xp24, vp24)
 
-        pe21[i] = PotentialEnergy(xp21, x1, Φ1) + ScalarField.Φs(xp21, q1, xp12, vp11)
-        pe22[i] = PotentialEnergy(xp22, x2, Φ2) + ScalarField.Φs(xp22, q1, xp12, vp12)
-        pe24[i] = PotentialEnergy(xp24, x4, Φ4) + ScalarField.Φs(xp24, q1, xp14, vp14)
+        pe21[i] = Energies.PotentialEnergy(xp21, x1, Φ1) +
+                  ScalarField.Φs(xp21, q1, xp12, vp11)
+        pe22[i] = Energies.PotentialEnergy(xp22, x2, Φ2) +
+                  ScalarField.Φs(xp22, q1, xp12, vp12)
+        pe24[i] = Energies.PotentialEnergy(xp24, x4, Φ4) +
+                  ScalarField.Φs(xp24, q1, xp14, vp14)
 
         te11[i] = mp11 + ke11[i] + pe11[i]
         te12[i] = mp12 + ke12[i] + pe12[i]
@@ -1073,9 +1150,9 @@ function plot_particle_energies(sim1, sim2, sim4, ticklabelsize=20; paper=true)
         te24[i] = mp24 + ke24[i] + pe24[i]
     end
 
-    energy1 = Energies.FieldEnergy(sim1)
-    energy2 = Energies.FieldEnergy(sim2)[1:2:end]
-    energy4 = Energies.FieldEnergy(sim4)[1:4:end]
+    energy1 = Energies.field_energy(sim1)
+    energy2 = Energies.field_energy(sim2)[1:2:end]
+    energy4 = Energies.field_energy(sim4)[1:4:end]
 
     fig = Figure(; size=(6 * 253, 4 * 200))
     ax11 = Axis(fig[1, 1]; title=L"\textrm{Kinetic Energy}",
@@ -1130,6 +1207,311 @@ function plot_particle_energies(sim1, sim2, sim4, ticklabelsize=20; paper=true)
     # if paper
     #    save(joinpath(PAPER_FIG_PATH, savename), fig)
     # end
+
+    return fig
+end
+
+function plot_particle_kinetic_energy(sim1, sim2, sim4; ticklabelsize=20, paper=false)
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    nt = length(sim1.sol.t)
+    ke11 = zeros(nt)
+    ke12 = zeros(nt)
+    ke14 = zeros(nt)
+
+    ke21 = zeros(nt)
+    ke22 = zeros(nt)
+    ke24 = zeros(nt)
+
+    palette = mytheme.palette
+    color1 = palette.color[][1]  # Blue-ish for Particle 1
+    color2 = palette.color[][2]  # Orange-ish for Particle 2
+    res_styles = [palette.linestyle[][1],
+                  palette.linestyle[][2],
+                  palette.linestyle[][3]]  # Solid, Dash, Dot
+    q1 = sim1.params.q1
+    q2 = sim1.params.q2
+
+    for i in 1:nt
+        mp11 = sim1.sol.u[i].x[2][1]
+        mp12 = sim2.sol.u[2i - 1].x[2][1]
+        mp14 = sim4.sol.u[4i - 3].x[2][1]
+
+        mp21 = sim1.sol.u[i].x[2][4]
+        mp22 = sim2.sol.u[2i - 1].x[2][4]
+        mp24 = sim4.sol.u[4i - 3].x[2][4]
+
+        vp11 = sim1.sol.u[i].x[2][3]
+        vp12 = sim2.sol.u[2i - 1].x[2][3]
+        vp14 = sim4.sol.u[4i - 3].x[2][3]
+
+        vp21 = sim1.sol.u[i].x[2][6]
+        vp22 = sim2.sol.u[2i - 1].x[2][6]
+        vp24 = sim4.sol.u[4i - 3].x[2][6]
+
+        ke11[i] = Energies.KineticEnergy(mp11, vp11)
+        ke12[i] = Energies.KineticEnergy(mp12, vp12)
+        ke14[i] = Energies.KineticEnergy(mp14, vp14)
+
+        ke21[i] = Energies.KineticEnergy(mp21, vp21)
+        ke22[i] = Energies.KineticEnergy(mp22, vp22)
+        ke24[i] = Energies.KineticEnergy(mp24, vp24)
+    end
+
+    fig = Figure(; size=(253, 200))
+    ax11 = Axis(fig[1, 1]; title=L"\textrm{Kinetic Energy}")
+    ax11.xlabel = L"t"
+
+    lines!(ax11, sim1.sol.t, ke11; color=color1, linestyle=res_styles[1])
+    lines!(ax11, sim1.sol.t, ke12; color=color1, linestyle=res_styles[2])
+    lines!(ax11, sim1.sol.t, ke14; color=color1, linestyle=res_styles[3])
+
+    lines!(ax11, sim1.sol.t, ke21; color=color2, linestyle=res_styles[1])
+    lines!(ax11, sim1.sol.t, ke22; color=color2, linestyle=res_styles[2])
+    lines!(ax11, sim1.sol.t, ke24; color=color2, linestyle=res_styles[3])
+
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
+    savename = name("$(folder)/particle_kinetic_energy", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+    return fig
+end
+
+function plot_particle_potential_energy(sim1; ticklabelsize=20, paper=false)
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    nt = length(sim1.sol.t)
+
+    pe11 = zeros(nt)
+    # pe12 = zeros(nt)
+    # pe14 = zeros(nt)
+
+    pe21 = zeros(nt)
+    # pe22 = zeros(nt)
+    # pe24 = zeros(nt)
+
+    palette = mytheme.palette
+    color1 = palette.color[][1]  # Blue-ish for Particle 1
+    color2 = palette.color[][2]  # Orange-ish for Particle 2
+    res_styles = [palette.linestyle[][1],
+                  palette.linestyle[][2],
+                  palette.linestyle[][3]]  # Solid, Dash, Dot
+    x1 = sim1.params.x
+    # x2 = sim2.params.x
+    # x4 = sim4.params.x
+    q1 = sim1.params.q1
+    q2 = sim1.params.q2
+
+    for i in 1:nt
+        xp11 = sim1.sol.u[i].x[2][2]
+        # xp12 = sim2.sol.u[2i - 1].x[2][2]
+        # xp14 = sim4.sol.u[4i - 3].x[2][2]
+
+        xp21 = sim1.sol.u[i].x[2][5]
+        # xp22 = sim2.sol.u[2i - 1].x[2][5]
+        # xp24 = sim4.sol.u[4i - 3].x[2][5]
+
+        vp11 = sim1.sol.u[i].x[2][3]
+        # vp12 = sim2.sol.u[2i - 1].x[2][3]
+        # vp14 = sim4.sol.u[4i - 3].x[2][3]
+
+        vp21 = sim1.sol.u[i].x[2][6]
+        # vp22 = sim2.sol.u[2i - 1].x[2][6]
+        # vp24 = sim4.sol.u[4i - 3].x[2][6]
+
+        Φ1 = sim1.sol.u[i].x[1][:, 3]
+        # Φ2 = sim2.sol.u[2i - 1].x[1][:, 3]
+        # Φ4 = sim4.sol.u[4i - 3].x[1][:, 3]
+
+        pe11[i] = q1 * (Energies.PotentialEnergy(xp11, x1, Φ1) +
+                        ScalarField.Φs(xp11, q2, xp21, vp21))
+        # pe12[i] = q1 * (Energies.PotentialEnergy(xp12, x2, Φ2) +
+        #                 ScalarField.Φs(xp12, q2, xp22, vp22))
+        # pe14[i] = q1 * (Energies.PotentialEnergy(xp14, x4, Φ4) +
+        #                 ScalarField.Φs(xp14, q2, xp24, vp24))
+
+        pe21[i] = q2 * (Energies.PotentialEnergy(xp21, x1, Φ1) +
+                        ScalarField.Φs(xp21, q1, xp11, vp11))
+        # pe22[i] = q2 * (Energies.PotentialEnergy(xp22, x2, Φ2) +
+        #                 ScalarField.Φs(xp22, q1, xp12, vp12))
+        # pe24[i] = q2 * (Energies.PotentialEnergy(xp24, x4, Φ4) +
+        #                 ScalarField.Φs(xp24, q1, xp14, vp14))
+    end
+
+    fig = Figure(; size=(253, 200))
+    ax1 = Axis(fig[1, 1]; title=L"\textrm{Potential Energy}")
+    # ax1 = Axis(fig[1, 1]; title=L"\textrm{Potential Energy}", yticklabelcolor=color1,
+    #            yticksmirrored=false)
+
+    # ax2 = Axis(fig[1, 1]; yticklabelcolor=color2, yaxisposition=:right,
+    #            yticksmirrored=false)
+
+    # hidespines!(ax2)
+    # hidexdecorations!(ax2)
+
+    ax1.xlabel = L"t"
+
+    lines!(ax1, sim1.sol.t, pe11; color=color1, linestyle=res_styles[1])
+    # lines!(ax1, sim1.sol.t, pe12; color=color1, linestyle=res_styles[2])
+    # lines!(ax1, sim1.sol.t, pe14; color=color1, linestyle=res_styles[3])
+
+    lines!(ax1, sim1.sol.t, pe21; color=color2, linestyle=res_styles[1])
+    # lines!(ax1, sim1.sol.t, pe22; color=color2, linestyle=res_styles[2])
+    # lines!(ax1, sim1.sol.t, pe24; color=color2, linestyle=res_styles[3])
+
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
+    savename = name("$(folder)/particle_potential_energy", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+
+    return fig
+end
+
+function plot_particle_total_energy(sim1, sim2, sim4; ticklabelsize=20, paper=false)
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    nt = length(sim1.sol.t)
+    ke11 = zeros(nt)
+    ke12 = zeros(nt)
+    ke14 = zeros(nt)
+
+    ke21 = zeros(nt)
+    ke22 = zeros(nt)
+    ke24 = zeros(nt)
+
+    pe11 = zeros(nt)
+    pe12 = zeros(nt)
+    pe14 = zeros(nt)
+
+    pe21 = zeros(nt)
+    pe22 = zeros(nt)
+    pe24 = zeros(nt)
+
+    te11 = zeros(nt)
+    te12 = zeros(nt)
+    te14 = zeros(nt)
+    te21 = zeros(nt)
+    te22 = zeros(nt)
+    te24 = zeros(nt)
+    palette = mytheme.palette
+    color1 = palette.color[][1]  # Blue-ish for Particle 1
+    color2 = palette.color[][2]  # Orange-ish for Particle 2
+    res_styles = [palette.linestyle[][1],
+                  palette.linestyle[][2],
+                  palette.linestyle[][3]]  # Solid, Dash, Dot
+    x1 = sim1.params.x
+    x2 = sim2.params.x
+    x4 = sim4.params.x
+    q1 = sim1.params.q1
+    q2 = sim1.params.q2
+
+    for i in 1:nt
+        xp11 = sim1.sol.u[i].x[2][2]
+        xp12 = sim2.sol.u[2i - 1].x[2][2]
+        xp14 = sim4.sol.u[4i - 3].x[2][2]
+
+        xp21 = sim1.sol.u[i].x[2][5]
+        xp22 = sim2.sol.u[2i - 1].x[2][5]
+        xp24 = sim4.sol.u[4i - 3].x[2][5]
+
+        mp11 = sim1.sol.u[i].x[2][1]
+        mp12 = sim2.sol.u[2i - 1].x[2][1]
+        mp14 = sim4.sol.u[4i - 3].x[2][1]
+
+        mp21 = sim1.sol.u[i].x[2][4]
+        mp22 = sim2.sol.u[2i - 1].x[2][4]
+        mp24 = sim4.sol.u[4i - 3].x[2][4]
+
+        vp11 = sim1.sol.u[i].x[2][3]
+        vp12 = sim2.sol.u[2i - 1].x[2][3]
+        vp14 = sim4.sol.u[4i - 3].x[2][3]
+
+        vp21 = sim1.sol.u[i].x[2][6]
+        vp22 = sim2.sol.u[2i - 1].x[2][6]
+        vp24 = sim4.sol.u[4i - 3].x[2][6]
+
+        Φ1 = sim1.sol.u[i].x[1][:, 3]
+        Φ2 = sim2.sol.u[2i - 1].x[1][:, 3]
+        Φ4 = sim4.sol.u[4i - 3].x[1][:, 3]
+
+        ke11[i] = Energies.KineticEnergy(mp11, vp11)
+        ke12[i] = Energies.KineticEnergy(mp12, vp12)
+        ke14[i] = Energies.KineticEnergy(mp14, vp14)
+
+        ke21[i] = Energies.KineticEnergy(mp21, vp21)
+        ke22[i] = Energies.KineticEnergy(mp22, vp22)
+        ke24[i] = Energies.KineticEnergy(mp24, vp24)
+
+        pe11[i] = q1 * (Energies.PotentialEnergy(xp11, x1, Φ1) +
+                        ScalarField.Φs(xp11, q2, xp21, vp21))
+        pe12[i] = q1 * (Energies.PotentialEnergy(xp12, x2, Φ2) +
+                        ScalarField.Φs(xp12, q2, xp22, vp22))
+        pe14[i] = q1 * (Energies.PotentialEnergy(xp14, x4, Φ4) +
+                        ScalarField.Φs(xp14, q2, xp24, vp24))
+
+        pe21[i] = q2 * (Energies.PotentialEnergy(xp21, x1, Φ1) +
+                        ScalarField.Φs(xp21, q1, xp11, vp11))
+        pe22[i] = q2 * (Energies.PotentialEnergy(xp22, x2, Φ2) +
+                        ScalarField.Φs(xp22, q1, xp12, vp12))
+        pe24[i] = q2 * (Energies.PotentialEnergy(xp24, x4, Φ4) +
+                        ScalarField.Φs(xp24, q1, xp14, vp14))
+
+        te11[i] = mp11 + ke11[i] + pe11[i]
+        te12[i] = mp12 + ke12[i] + pe12[i]
+        te14[i] = mp14 + ke14[i] + pe14[i]
+
+        te21[i] = mp21 + ke21[i] + pe21[i]
+        te22[i] = mp22 + ke22[i] + pe22[i]
+        te24[i] = mp24 + ke24[i] + pe24[i]
+    end
+
+    fig = Figure(; size=(253, 200))
+    ax1 = Axis(fig[1, 1]; title=L"\textrm{Total Particle Energy}")
+    # ax1 = Axis(fig[1, 1]; title=L"\textrm{Potential Energy}", yticklabelcolor=color1,
+    #            yticksmirrored=false)
+
+    # ax2 = Axis(fig[1, 1]; yticklabelcolor=color2, yaxisposition=:right,
+    #            yticksmirrored=false)
+
+    # hidespines!(ax2)
+    # hidexdecorations!(ax2)
+
+    ax1.xlabel = L"t"
+
+    lines!(ax1, sim1.sol.t, te11; color=color1, linestyle=res_styles[1])
+    lines!(ax1, sim1.sol.t, te12; color=color1, linestyle=res_styles[2])
+    lines!(ax1, sim1.sol.t, te14; color=color1, linestyle=res_styles[3])
+
+    lines!(ax1, sim1.sol.t, te21; color=color2, linestyle=res_styles[1])
+    lines!(ax1, sim1.sol.t, te22; color=color2, linestyle=res_styles[2])
+    lines!(ax1, sim1.sol.t, te24; color=color2, linestyle=res_styles[3])
+
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
+    # savename = name("$(folder)/particle_potential_energy", sim1)
+    savename = name("$(folder)/particle_total_energy", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
 
     return fig
 end
@@ -1546,7 +1928,7 @@ function plot_energy_panel(sim1, sim2, sim4; ticklabelsize=20)
                     xticklabelsize=ticklabelsize,
                     yticklabelsize=ticklabelsize)
 
-        axes = [ax11, ax12, ax21, ax22]
+        # axes = [ax11, ax12, ax21, ax22]
 
         # Add slider below the plot grid
         slider_layout = fig[4, 1:2] = GridLayout()
@@ -1775,7 +2157,108 @@ function plot_energy_panel(sim1, sim2, sim4; ticklabelsize=20)
     return nothing
 end
 
-function plot_field_energy(sim1, sim2, sim4; ticklabelsize=20, paper=true)
+function plot_total_energy(sim1; ticklabelsize=10, paper=false)
+    CairoMakie.activate!()
+    t = sim1.sol.t
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    nt = length(sim1.sol.t)
+
+    regular_energy = zeros(nt)
+
+    interaction_energy = zeros(nt)
+
+    ke1 = zeros(nt)
+    ke2 = zeros(nt)
+
+    for i in 1:nt
+        regular_energy[i] = Energies.regular_hamiltonian(i, sim1)
+
+        interaction_energy[i] = Energies.interaction_hamiltonian(i, sim1)
+
+        mp11 = sim1.sol.u[i].x[2][1]
+
+        mp21 = sim1.sol.u[i].x[2][4]
+
+        vp11 = sim1.sol.u[i].x[2][3]
+
+        vp21 = sim1.sol.u[i].x[2][6]
+
+        ke1[i] = Energies.KineticEnergy(mp11, vp11)
+
+        ke2[i] = Energies.KineticEnergy(mp21, vp21)
+    end
+
+    fig = Figure(; size=(253, 200))
+    plt = fig[1, 1] = GridLayout()
+    leg = fig[2, 1] = GridLayout()
+
+    ax = Axis(fig[1, 1]; title=L"\textrm{Energies}")
+    # xticklabelsize=ticklabelsize,
+    # yticklabelsize=ticklabelsize)
+
+    palette = mytheme.palette
+    color1 = palette.color[][1]  # Blue-ish for Particle 1
+    color2 = palette.color[][2]  # Orange-ish for Particle 2
+    color3 = palette.color[][3]
+    color4 = palette.color[][4]
+
+    res_styles = [palette.linestyle[][1], palette.linestyle[][2],
+                  palette.linestyle[][3]]  # Solid, Dash, Dot
+
+    lines!(ax, t, regular_energy .+ interaction_energy; color=color1,
+           linestyle=res_styles[1])
+    ###
+    lines!(ax, t, regular_energy; color=color2, linestyle=res_styles[1])
+    ###
+    lines!(ax, t, interaction_energy; color=color3, linestyle=res_styles[1])
+    ###
+    lines!(ax, t, ke1; color=color4, linestyle=res_styles[1])
+    lines!(ax, t, ke2; color=color4, linestyle=res_styles[2])
+    lines!(ax, t, regular_energy .+ interaction_energy .+ ke1 .+ ke2; color=:black)
+    # lines!(ax, t, singular_energy1; color=color4, linestyle=res_styles[1])
+
+    # lines!(ax, t, singular_energy2; color=color4, linestyle=res_styles[2])
+
+    # lines!(ax, t, singular_energy4; color=color4, linestyle=res_styles[3])
+
+    ax.xlabel = L"t"
+    # ylims!(ax, 0, nothing)
+    # # 2. Resolution legend (Low, Med, High Res)
+    res_legend = Legend(leg[1, 1:2],
+                        [LineElement(; color=color1, linestyle=res_styles[1]),
+                         LineElement(; color=color2, linestyle=res_styles[1]),
+                         LineElement(; color=color3, linestyle=res_styles[1]),
+                         LineElement(; color=color4, linestyle=res_styles[1]),
+                         LineElement(; color=color4, linestyle=res_styles[2]),
+                         LineElement(; color=:black, linestyle=res_styles[1])],
+                        [L"\textrm{total field}", L"\textrm{regular}",
+                         L"\textrm{interaction}",
+                         L"\textrm{KE1}", L"\textrm{KE2}", L"\textrm{total}"];
+                        halign=:center,
+                        valign=:top,
+                        tellwidth=false,
+                        tellheight=true, orientation=:horizontal, nbanks=2)
+
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
+    savename = name("$(folder)/total_energy", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+    return fig
+end
+
+function plot_field_energy(sim1, sim2, sim4; ticklabelsize=10, paper=false)
     CairoMakie.activate!()
     t = sim1.sol.t
     mytheme = mytheme_aps()
@@ -1794,9 +2277,9 @@ function plot_field_energy(sim1, sim2, sim4; ticklabelsize=20, paper=true)
     interaction_energy2 = zeros(nt)
     interaction_energy4 = zeros(nt)
 
-    singular_energy1 = zeros(nt)
-    singular_energy2 = zeros(nt)
-    singular_energy4 = zeros(nt)
+    # singular_energy1 = zeros(nt)
+    # singular_energy2 = zeros(nt)
+    # singular_energy4 = zeros(nt)
 
     for i in 1:nt
         energy1[i] = Energies.hamiltonian(i, sim1)
@@ -1811,18 +2294,18 @@ function plot_field_energy(sim1, sim2, sim4; ticklabelsize=20, paper=true)
         interaction_energy2[i] = Energies.interaction_hamiltonian(2i - 1, sim2)
         interaction_energy4[i] = Energies.interaction_hamiltonian(4i - 3, sim4)
 
-        singular_energy1[i] = Energies.singular_hamiltonian(i, sim1)
-        singular_energy2[i] = Energies.singular_hamiltonian(2i - 1, sim2)
-        singular_energy4[i] = Energies.singular_hamiltonian(4i - 3, sim4)
+        # singular_energy1[i] = Energies.singular_hamiltonian(i, sim1)
+        # singular_energy2[i] = Energies.singular_hamiltonian(2i - 1, sim2)
+        # singular_energy4[i] = Energies.singular_hamiltonian(4i - 3, sim4)
     end
 
     fig = Figure(; size=(253, 200))
     plt = fig[1, 1] = GridLayout()
     leg = fig[2, 1] = GridLayout()
 
-    ax = Axis(fig[1, 1]; title=L"\textrm{Field Energy}",
-              xticklabelsize=ticklabelsize,
-              yticklabelsize=ticklabelsize)
+    ax = Axis(fig[1, 1]; title=L"\textrm{Field Energy}")
+    # xticklabelsize=ticklabelsize,
+    # yticklabelsize=ticklabelsize)
 
     palette = mytheme.palette
     color1 = palette.color[][1]  # Blue-ish for Particle 1
@@ -1851,11 +2334,11 @@ function plot_field_energy(sim1, sim2, sim4; ticklabelsize=20, paper=true)
 
     lines!(ax, t, interaction_energy4; color=color3, linestyle=res_styles[3])
     ###
-    lines!(ax, t, singular_energy1; color=color4, linestyle=res_styles[1])
+    # lines!(ax, t, singular_energy1; color=color4, linestyle=res_styles[1])
 
-    lines!(ax, t, singular_energy2; color=color4, linestyle=res_styles[2])
+    # lines!(ax, t, singular_energy2; color=color4, linestyle=res_styles[2])
 
-    lines!(ax, t, singular_energy4; color=color4, linestyle=res_styles[3])
+    # lines!(ax, t, singular_energy4; color=color4, linestyle=res_styles[3])
 
     ax.xlabel = L"t"
     # ylims!(ax, 0, nothing)
@@ -1863,10 +2346,13 @@ function plot_field_energy(sim1, sim2, sim4; ticklabelsize=20, paper=true)
     res_legend = Legend(leg[1, 1],
                         [LineElement(; color=color1, linestyle=res_styles[1]),
                          LineElement(; color=color2, linestyle=res_styles[1]),
-                         LineElement(; color=color3, linestyle=res_styles[1]),
-                         LineElement(; color=color4, linestyle=res_styles[1])],
-                        [L"\textrm{total}", L"\textrm{regular}", L"\textrm{interaction}",
-                         L"\textrm{singular}"];
+                         LineElement(; color=color3, linestyle=res_styles[1])
+                         # LineElement(; color=color4, linestyle=res_styles[1])
+                         ],
+                        [L"\textrm{total}", L"\textrm{regular}", L"\textrm{interaction}"
+                         # ,
+                         # L"\textrm{singular}"
+                         ];
                         halign=:center,
                         valign=:top,
                         tellwidth=false,
@@ -1876,7 +2362,12 @@ function plot_field_energy(sim1, sim2, sim4; ticklabelsize=20, paper=true)
     rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
-    savename = name("interacting_particles/field_energy_resolutions", sim1)
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
+    savename = name("$(folder)/field_energy_resolutions", sim1)
     save(joinpath(FIG_PATH, savename), fig)
     if paper
         save(joinpath(PAPER_FIG_PATH, savename), fig)
@@ -1884,7 +2375,7 @@ function plot_field_energy(sim1, sim2, sim4; ticklabelsize=20, paper=true)
     return fig
 end
 
-function plot_half_field_momentum(sim1, sim2, sim4; ticklabelsize=20, paper=true)
+function plot_half_field_momentum(sim1, sim2, sim4; ticklabelsize=20, paper=false)
     CairoMakie.activate!()
     t = sim1.sol.t
     mytheme = mytheme_aps()
@@ -1929,9 +2420,9 @@ function plot_half_field_momentum(sim1, sim2, sim4; ticklabelsize=20, paper=true
     plt = fig[1, 1] = GridLayout()
     leg = fig[2, 1] = GridLayout()
 
-    ax = Axis(fig[1, 1]; title=L"\textrm{Field Momentum}",
-              xticklabelsize=ticklabelsize,
-              yticklabelsize=ticklabelsize)
+    ax = Axis(fig[1, 1]; title=L"\textrm{Half Field Momentum}")
+    # xticklabelsize=ticklabelsize,
+    # yticklabelsize=ticklabelsize)
 
     palette = mytheme.palette
     color1 = palette.color[][1]  # Blue-ish for Particle 1
@@ -1986,7 +2477,12 @@ function plot_half_field_momentum(sim1, sim2, sim4; ticklabelsize=20, paper=true
     rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
-    savename = name("interacting_particles/field_momentum_resolutions", sim1)
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
+    savename = name("$(folder)/field_momentum_resolutions", sim1)
     save(joinpath(FIG_PATH, savename), fig)
     if paper
         save(joinpath(PAPER_FIG_PATH, savename), fig)
@@ -1994,147 +2490,120 @@ function plot_half_field_momentum(sim1, sim2, sim4; ticklabelsize=20, paper=true
     return fig
 end
 
-function plot_energy_panel22(sim1, sim2, sim4; ticklabelsize=20)
+function plot_energy_densities(sim1; ticklabelsize=20)
     GLMakie.activate!()
     t = sim1.sol.t
     mytheme = mytheme_aps()
     set_theme!(mytheme)
 
     nt = length(sim1.sol.t)
-    energy1 = zeros(nt)
-    energy2 = zeros(nt)
-    energy4 = zeros(nt)
 
-    momentum1 = zeros(nt)
-    momentum2 = zeros(nt)
-    momentum4 = zeros(nt)
+    # energy1 = zeros(nt)
 
-    for i in 1:nt
-        energy1[i] = Energies.hamiltonian22(i, sim1, false)
-        momentum1[i] = Energies.hamiltonian22(i, sim1, true)
-
-        energy2[i] = Energies.hamiltonian22(2i - 1, sim2, false)
-        momentum2[i] = Energies.hamiltonian22(2i - 1, sim2, true)
-        energy4[i] = Energies.hamiltonian22(4i - 3, sim4, false)
-        momentum4[i] = Energies.hamiltonian22(4i - 3, sim4, true)
-    end
+    # for i in 1:nt
+    #     energy1[i] = Energies.hamiltonian22(i, sim1, false)
+    # end
 
     with_theme(mytheme) do
         fig = Figure(; size=(6 * 253, 4 * 200))
         supertitle_layout = fig[1, 1:2] = GridLayout()
 
-        ax11 = Axis(fig[2, 1]; title=L"\textrm{Momentum Density}",
-                    xticklabelsize=ticklabelsize,
-                    yticklabelsize=ticklabelsize)
-        ax12 = Axis(fig[2, 2]; title=L"\textrm{Energy Density}",
-                    xticklabelsize=ticklabelsize,
-                    yticklabelsize=ticklabelsize)
-        ax21 = Axis(fig[3, 1]; title=L"\textrm{Field Momentum}",
-                    xticklabelsize=ticklabelsize,
-                    yticklabelsize=ticklabelsize)
-        ax22 = Axis(fig[3, 2]; title=L"\textrm{Field Energy}",
+        ax11 = Axis(fig[2, 1:2]; title=L"\textrm{Hamiltonian Density Components}",
                     xticklabelsize=ticklabelsize,
                     yticklabelsize=ticklabelsize)
 
-        axes = [ax11, ax12, ax21, ax22]
-
-        # Add slider below the plot grid
-        slider_layout = fig[4, 1:2] = GridLayout()
+        slider_layout = fig[3, 1:2] = GridLayout()
+        legend = fig[4, 1:2] = GridLayout()
         time_slider = Slider(slider_layout[1, 1];
                              range=1:nt,
                              startvalue=1,
                              horizontal=true)
         # Observable for current time
         current_index = time_slider.value
+        L = sim1.params.L
+        F = 4
+        x_range = (-L / F, L / F)
+        mask1 = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+        x_filtered = sim1.params.x[mask1]
 
         palette = mytheme.palette
         color1 = palette.color[][1]  # Blue-ish for Particle 1
         color2 = palette.color[][2]  # Orange-ish for Particle 2
-        res_styles = [palette.linestyle[][1], palette.linestyle[][2],
-                      palette.linestyle[][3]]  # Solid, Dash, Dot
-
-        lines!(ax21, t, momentum1; color=color1, linestyle=res_styles[1])
-        lines!(ax22, t, energy1; color=color1, linestyle=res_styles[1])
-
-        lines!(ax21, t, momentum2; color=color1, linestyle=res_styles[2])
-        lines!(ax22, t, energy2; color=color1, linestyle=res_styles[2])
-
-        lines!(ax21, t, momentum4; color=color1, linestyle=res_styles[3])
-        lines!(ax22, t, energy4; color=color1, linestyle=res_styles[3])
-
-        point_t = lift(current_index) do i
-            return [t[i]]
-        end
-        point_e = lift(current_index) do i
-            return [energy1[i]]
-        end
-
-        point_m = lift(current_index) do i
-            return [momentum1[i]]
-        end
-
-        scatter!(ax21, point_t, point_m; color=:black, markersize=15)
-        scatter!(ax22, point_t, point_e; color=:black, markersize=15)
-
-        # lines!(ax11, t, energy1 .- momentum1; color=color1, linestyle=res_styles[1])
-
-        # lines!(ax11, t, energy2 .- momentum2; color=color1, linestyle=res_styles[2])
-
-        # lines!(ax11, t, energy4 .- momentum4; color=color1, linestyle=res_styles[3])
-
-        L = sim1.params.L
-        F = 8
-        x_range = (-L / F, L / F)
-        mask1 = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
-        mask2 = (sim2.params.x .>= -L / F) .& (sim2.params.x .<= L / F)
-        mask4 = (sim4.params.x .>= -L / F) .& (sim4.params.x .<= L / F)
-
-        x_filtered = sim1.params.x[mask1]
+        color3 = palette.color[][3]
+        color4 = palette.color[][4]
+        color5 = palette.color[][5]
+        color6 = palette.color[][6]
 
         dynamic_plot = lift(current_index) do i
             empty!(ax11)  # Clear previous plot
-            y1_raw = Energies.hamiltonian_density_22(i, sim1)
-            y1 = y1_raw[mask1]
-            y2_raw = mymean(Energies.hamiltonian_density_22(2i - 1, sim2))
-            y2 = y2_raw[mask1]
-            y4_raw = mymean(mymean(Energies.hamiltonian_density_22(4i - 3, sim4)))
-            y4 = y4_raw[mask1]
+            Ufield = sim1.sol.u[i].x[1]
+            Upart = sim1.sol.u[i].x[2]
 
-            x1 = sim1.sol.u[i].x[2][2]
-            x2 = sim1.sol.u[i].x[2][5]
+            q1 = sim1.params.q1
+            q2 = sim1.params.q2
 
-            interpolator_y1 = ConstantInterpolation(y1, x_filtered)
-            lines!(ax11, x_filtered, y1; color=color1, linestyle=res_styles[1])
-            lines!(ax11, x_filtered, y2; color=color1, linestyle=res_styles[2])
-            lines!(ax11, x_filtered, y4; color=color1, linestyle=res_styles[3])
+            xp1 = Upart[2]
+            xp2 = Upart[5]
+            vp1 = Upart[3]
+            vp2 = Upart[6]
+            Φr = @views Ufield[mask1, 3]
+            Πs1 = ScalarField.Πs.(x_filtered, q1, xp1, vp1)
+            Ψs1 = ScalarField.Ψs.(x_filtered, q1, xp1, vp1)
 
-            scatter!(ax11, [x1], [interpolator_y1(x1)]; color=:black, marker=:circle,
-                     markersize=15)
-            scatter!(ax11, [x2], [interpolator_y1(x2)]; color=:black, marker=:circle,
-                     markersize=15)
+            Πs2 = ScalarField.Πs.(x_filtered, q2, xp2, vp2)
+            Ψs2 = ScalarField.Ψs.(x_filtered, q2, xp2, vp2)
+
+            Φs1_at_2 = ScalarField.Φs.(xp2, q1, xp1, vp1)
+            Φs2_at_1 = ScalarField.Φs.(xp1, q2, xp2, vp2)
+
+            interpolator_Φr = QuadraticInterpolation(Φr, x_filtered)
+            Φrz1 = interpolator_Φr(xp1)
+            Φrz2 = interpolator_Φr(xp2)
+
+            Πr = @views Ufield[mask1, 1]
+            Ψr = @views Ufield[mask1, 2]
+
+            Hr = @. 0.5 * (Πr^2 + Ψr^2)
+            Hi = @. Ψr * (Ψs1 + Ψs2) + Πr * (Πs1 + Πs2)
+            Hs = @. 0.5(Πs1 + Πs2)^2 + 0.5(Ψs1 + Ψs2)^2
+
+            γ1 = 1.0 / sqrt(1.0 - vp1^2)
+            γ2 = 1.0 / sqrt(1.0 - vp2^2)
+            tmp = -q1 * Φrz1 - q2 * Φrz2 - q1 * Φs2_at_1 - q2 * Φs1_at_2
+            @show q1 * Φrz1 / γ1
+            @show q2 * Φrz2 / γ2
+            @show q1 * Φrz1 / γ1 + q2 * Φrz2 / γ2
+            @show q1 * Φs2_at_1 / γ1
+            @show q2 * Φs1_at_2 / γ2
+            @show Hs[1]
+
+            lines!(ax11, x_filtered, Hr; label=L"H_r", color=color1)
+            lines!(ax11, x_filtered, Hi; label=L"H_i", color=color2)
+            lines!(ax11, x_filtered, Hs; label=L"H_s", color=color3)
+            lines!(ax11, x_filtered, Hr .+ Hi; label=L"H_r + H_i", color=color4,
+                   linestyle=:dash)
+            lines!(ax11, x_filtered, Hr .+ Hi .+ Hs; label=L"H_r + H_i + H_s", color=color5,
+                   linestyle=:dash)
+
+            # lines!(ax11, x_filtered, Hrs1; label=L"-\Psi_r \Psi_{s_1}", color=color2,
+            #        linewidth=4)
+            # lines!(ax11, x_filtered, Hrs2; label=L"-\Psi_r \Psi_{s_2}",
+            #        color=color3, linestyle=:dash, linewidth=2)
+            # lines!(ax11, x_filtered, Hs1; label=L"0.5(\Pi_{s_1}^2-\Psi_{s_1}^2)",
+            #        color=color4)
+            # lines!(ax11, x_filtered, Hs2; label=L"0.5(\Pi_{s_2}^2-\Psi_{s_2}^2)",
+            #        color=color5)
+            # lines!(ax11, x_filtered, Hs1s2;
+            #        label=L"\Pi_{s_1}\Pi_{s_2}-\Psi_{s_1} \Psi_{s_2}",
+            #        color=color6)
+
+            # lines!(ax11, x_filtered, Hrs1 .+ Hrs2; label=L"Hrs1+Hrs2", linestyle=:dash,
+            #        color=:black)
+            # lines!(ax11, x_filtered, @. Hr + Hrs1 + Hrs2 + Hs1 + Hs2 + Hs1s2;
+            #        label=L"Total", linestyle=:dash,
+            #        color=:purple, linewidth=8)
+            #
             autolimits!(ax11)
-
-            empty!(ax12)  # Clear previous plot
-            y1_raw = Energies.hamiltonian_density_2(i, sim1)
-            y1 = y1_raw[mask1]
-            y2_raw = mymean(Energies.hamiltonian_density_2(2i - 1, sim2))
-            y2 = y2_raw[mask1]
-            y4_raw = mymean(mymean(Energies.hamiltonian_density_2(4i - 3, sim4)))
-            y4 = y4_raw[mask1]
-
-            x1 = sim1.sol.u[i].x[2][2]
-            x2 = sim1.sol.u[i].x[2][5]
-            interpolator_y1 = ConstantInterpolation(y1, x_filtered)
-
-            lines!(ax12, x_filtered, y1; color=color1, linestyle=res_styles[1])
-            lines!(ax12, x_filtered, y2; color=color1, linestyle=res_styles[2])
-            lines!(ax12, x_filtered, y4; color=color1, linestyle=res_styles[3])
-
-            scatter!(ax12, [x1], [interpolator_y1(x1)]; color=:black, marker=:circle,
-                     markersize=15)
-            scatter!(ax12, [x2], [interpolator_y1(x2)]; color=:black, marker=:circle,
-                     markersize=15)
-            autolimits!(ax12)
         end
         supertitle_text = lift(current_index) do i
             L"t=%$(t[i])"
@@ -2143,6 +2612,7 @@ function plot_energy_panel22(sim1, sim2, sim4; ticklabelsize=20)
         index_label = lift(current_index) do i
             "Index: $i"
         end
+
         Label(supertitle_layout[1, 1], supertitle_text;
               fontsize=30,
               halign=:center,
@@ -2150,6 +2620,8 @@ function plot_energy_panel22(sim1, sim2, sim4; ticklabelsize=20)
               tellheight=false)
 
         Label(slider_layout[1, 2], index_label; tellwidth=false)
+
+        Legend(legend[1, 1], ax11; orientation=:horizontal, labelsize=30)
 
         rowsize!(fig.layout, 1, Auto(0.1))  # Small row for supertitle
         rowsize!(fig.layout, 2, Auto(1))    # Equal height for plot rows
@@ -2160,5 +2632,349 @@ function plot_energy_panel22(sim1, sim2, sim4; ticklabelsize=20)
     end
     return nothing
 end
+
+function plot_energy_panel2(sim1; ticklabelsize=20)
+    GLMakie.activate!()
+    t = sim1.sol.t
+
+    nt = length(sim1.sol.t)
+    fig = Figure(; size=(6 * 253, 4 * 200))
+    supertitle_layout = fig[1, 1:2] = GridLayout()
+
+    ax11 = Axis(fig[2, 1]; title=L"\textrm{Regular Field}",
+                xticklabelsize=ticklabelsize,
+                yticklabelsize=ticklabelsize)
+    ax12 = Axis(fig[2, 2]; title=L"\textrm{Interaction Field}",
+                xticklabelsize=ticklabelsize,
+                yticklabelsize=ticklabelsize)
+    ax21 = Axis(fig[3, 1]; title=L"\textrm{Singular Field}",
+                xticklabelsize=ticklabelsize,
+                yticklabelsize=ticklabelsize)
+    ax22 = Axis(fig[3, 2]; title=L"\textrm{Particles}",
+                xticklabelsize=ticklabelsize,
+                yticklabelsize=ticklabelsize)
+
+    # Add slider below the plot grid
+    slider_layout = fig[4, 1:2] = GridLayout()
+    # legend = fig[4, 1:2] = GridLayout()
+    time_slider = Slider(slider_layout[1, 1];
+                         range=1:nt,
+                         startvalue=1,
+                         horizontal=true)
+    # Observable for current time
+    current_index = time_slider.value
+
+    L = sim1.params.L
+    F = 4
+    x_range = (-L / F, L / F)
+    mask1 = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+    x_filtered = sim1.params.x[mask1]
+
+    dynamic_plot = lift(current_index) do i
+        Hfr, Hfi, Hfs, Hp1, Hp2 = Energies.total_hamiltonian_density(i, sim1)
+
+        empty!(ax11)  # Clear previous plot
+        scatter!(ax11, x_filtered, Hfr[mask1]; color=:black)
+        autolimits!(ax11)
+
+        empty!(ax12)  # Clear previous plot
+        scatter!(ax12, x_filtered, Hfi[mask1]; color=:black)
+        autolimits!(ax12)
+
+        empty!(ax21)  # Clear previous plot
+        scatter!(ax21, x_filtered, Hfs[mask1]; color=:black)
+        scatter!(ax21, x_filtered, Hp1[mask1] .+ Hp2[mask1] .+ Hfs[mask1];
+                 color=:red)
+        autolimits!(ax21)
+
+        empty!(ax22)  # Clear previous plot
+        scatter!(ax22, x_filtered, Hp1[mask1]; label="particle 1", color=:blue)
+        scatter!(ax22, x_filtered, Hp2[mask1]; label="particle 2", color=:red)
+        scatter!(ax22, x_filtered, Hp1[mask1] .+ Hp2[mask1]; label="particle 1+2",
+                 color=:black)
+        autolimits!(ax22)
+    end
+    supertitle_text = lift(current_index) do i
+        L"t=%$(t[i])"
+    end
+
+    index_label = lift(current_index) do i
+        "Index: $i"
+    end
+    Label(supertitle_layout[1, 1], supertitle_text;
+          fontsize=30,
+          halign=:center,
+          tellwidth=false,
+          tellheight=false)
+
+    Label(slider_layout[1, 2], index_label; tellwidth=false)
+
+    rowsize!(fig.layout, 1, Auto(0.1))  # Small row for supertitle
+    # rowsize!(fig.layout, 2, Auto(0.9))
+    # rowsize!(fig.layout, 3, Auto(0.2))  # Small row for slider
+    # colgap!(slider_layout, 10)
+    display(fig)
+    return nothing
+end
+
+function plot_total_energy2(sim1; ticklabelsize=10, paper=false)
+    CairoMakie.activate!()
+    t = sim1.sol.t
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    nt = length(sim1.sol.t)
+
+    energy = zeros(nt)
+
+    regular_energy = zeros(nt)
+
+    interaction_energy = zeros(nt)
+
+    particle1 = zeros(nt)
+    particle2 = zeros(nt)
+
+    pe1 = zeros(nt)
+    pe2 = zeros(nt)
+
+    ke1 = zeros(nt)
+    ke2 = zeros(nt)
+    dx = sim1.params.dx
+    q1 = sim1.params.q1
+    q2 = sim1.params.q2
+    L = sim1.params.L
+    F = 2                  
+    x_range = (-L / F, L / F)
+    mask1 = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+    x_filtered = sim1.params.x[mask1]
+    for i in 1:nt
+        Upart = sim1.sol.u[i].x[2]
+        xp1 = Upart[2]
+        xp2 = Upart[5]
+        mp1 = Upart[1]
+        vp1 = Upart[3]
+        mp2 = Upart[4]
+        vp2 = Upart[6]
+
+        Ufield = sim1.sol.u[i].x[1]
+        Φr = @views Ufield[:, 3]
+        interpolator_Φr = PCHIPInterpolation(Φr[mask1], x_filtered)
+        Φrz1 = interpolator_Φr(xp1)
+        Φrz2 = interpolator_Φr(xp2)
+
+        Φs1(x) = ScalarField.Φs(x, q1, xp1, vp1)
+        Φs2(x) = ScalarField.Φs(x, q2, xp2, vp2)
+
+        Hfr, Hfi, Hfs, Hp1, Hp2 = Energies.total_hamiltonian_density(i, sim1)
+        regular_energy[i] = Energies.newton_cotes(Hfr[mask1], dx; order=1)
+        interaction_energy[i] = Energies.newton_cotes(Hfi[mask1], dx; order=1)
+        particle1[i] = Energies.newton_cotes(Hp1[mask1], dx; order=1)
+        particle2[i] = Energies.newton_cotes(Hp2[mask1], dx; order=1)
+
+        γ1 = 1.0 / sqrt(1.0 - vp1^2)
+        γ2 = 1.0 / sqrt(1.0 - vp2^2)
+
+        ke1[i] = mp1 * (γ1-1)
+        ke2[i] = mp2 * (γ2-1)
+
+        pe1[i] = -q1 * (Φrz1) * γ1
+        pe2[i] = -q2 * (Φrz2) * γ2
+
+        energy[i] = regular_energy[i] + interaction_energy[i]
+        #+ particle1[i] + particle2[i]
+        + ke1[i] + ke2[i] + pe1[i] + pe2[i]
+    end
+
+    fig = Figure(; size=(253, 200))
+    plt = fig[1, 1] = GridLayout()
+    leg = fig[2, 1] = GridLayout()
+
+    ax = Axis(fig[1, 1]; title=L"\textrm{Total Energy}")
+    # xticklabelsize=ticklabelsize,
+    # yticklabelsize=ticklabelsize)
+
+    palette = mytheme.palette
+    color1 = palette.color[][1]  # Blue-ish for Particle 1
+    color2 = palette.color[][2]  # Orange-ish for Particle 2
+    color3 = palette.color[][3]
+    color4 = palette.color[][4]
+
+    res_styles = [palette.linestyle[][1], palette.linestyle[][2],
+                  palette.linestyle[][3]]  # Solid, Dash, Dot
+
+    lines!(ax, t, energy; color=color1, linestyle=res_styles[1])
+    ###
+    lines!(ax, t, regular_energy; color=color2, linestyle=res_styles[1])
+    ###
+    lines!(ax, t, interaction_energy; color=color3, linestyle=res_styles[1])
+    # ###
+    lines!(ax, t, pe1; color=color4, linestyle=res_styles[1])
+    lines!(ax, t, pe2; color=color4, linestyle=res_styles[2])
+
+    lines!(ax, t, ke1; color=:black, linestyle=res_styles[2])
+    lines!(ax, t, ke2; color=:black, linestyle=res_styles[3])
+
+    ax.xlabel = L"t"
+    # ylims!(ax, 0, nothing)
+    # # 2. Resolution legend (Low, Med, High Res)
+    res_legend = Legend(leg[1, 1],
+                        [LineElement(; color=color1, linestyle=res_styles[1]),
+                         LineElement(; color=color2, linestyle=res_styles[1]),
+                         LineElement(; color=color3, linestyle=res_styles[1]),
+                         LineElement(; color=color4, linestyle=res_styles[1]),
+                         LineElement(; color=color4, linestyle=res_styles[2]),
+                         LineElement(; color=:black, linestyle=res_styles[2]),
+                         LineElement(; color=:black, linestyle=res_styles[3])],
+                        [L"\textrm{total}", L"\textrm{regular}",
+                         L"\textrm{interaction}",
+                         L"\textrm{pe1}", L"\textrm{pe2}",
+                         L"ke1", L"ke2"];
+                        halign=:center,
+                        valign=:top,
+                        tellwidth=false,
+                        tellheight=true, orientation=:horizontal, nbanks=2)
+
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
+    savename = name("$(folder)/total_energy", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+    return fig
+end
+
+
+function plot_total_energy22(sim1; ticklabelsize=10, paper=false)
+    CairoMakie.activate!()
+    t = sim1.sol.t
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    nt = length(sim1.sol.t)
+
+    energy = zeros(nt)
+
+    pe1 = zeros(nt)
+    pe2 = zeros(nt)
+
+    ke1 = zeros(nt)
+    ke2 = zeros(nt)
+
+    dx = sim1.params.dx
+    q1 = sim1.params.q1
+    q2 = sim1.params.q2
+    
+    for i in 1:nt
+        Upart = sim1.sol.u[i].x[2]
+        xp1 = Upart[2]
+        xp2 = Upart[5]
+        mp1 = Upart[1]
+        vp1 = Upart[3]
+        mp2 = Upart[4]
+        vp2 = Upart[6]
+
+        Φs1(x) = ScalarField.Φs(x, q1, xp1, vp1)
+        Φs2(x) = ScalarField.Φs(x, q2, xp2, vp2)
+
+        γ1 = 1.0 / sqrt(1.0 - vp1^2)
+        γ2 = 1.0 / sqrt(1.0 - vp2^2)
+
+        # p1 = γ1*vp1*(mp1 - q1 *Φs2(xp1))
+        # p2 = γ2*vp2*(mp2 - q2 *Φs1(xp2))
+        
+        ke1[i] = mp1 * γ1 
+        ke2[i] = mp2 * γ2 
+        ##
+        ## the first term is the usual potential energy
+        ## V = q Φ(x=z)
+        ## the 2nd term is
+        ## v ∂Φ/∂v
+        ## which comes from the conjugate momenta!
+        pe1[i] = 0.5 * abs(xp2-xp1)*(q1*γ2 - q1*vp2^2*γ2^3)
+        pe2[i] = 0.5 * abs(xp2-xp1)*(q2*γ1 - q2*vp1^2*γ1^3)
+
+        energy[i] = ke1[i] + ke2[i] + pe1[i] + pe2[i]
+    end
+
+    fig = Figure(; size=(253, 200))
+    plt = fig[1, 1] = GridLayout()
+    leg = fig[2, 1] = GridLayout()
+
+    ax = Axis(fig[1, 1]; title=L"\textrm{Total Energy}")
+    # xticklabelsize=ticklabelsize,
+    # yticklabelsize=ticklabelsize)
+
+    palette = mytheme.palette
+    color1 = palette.color[][1]  # Blue-ish for Particle 1
+    color2 = palette.color[][2]  # Orange-ish for Particle 2
+    color3 = palette.color[][3]
+    color4 = palette.color[][4]
+
+    res_styles = [palette.linestyle[][1], palette.linestyle[][2],
+                  palette.linestyle[][3]]  # Solid, Dash, Dot
+
+    lines!(ax, t, energy; color=:black, linestyle=res_styles[2])
+    ###
+    #lines!(ax, t, regular_energy; color=color2, linestyle=res_styles[1])
+    ###
+    #lines!(ax, t, interaction_energy; color=color3, linestyle=res_styles[1])
+    # ###
+    lines!(ax, t, pe1 ; color=color1, linestyle=res_styles[1])
+    lines!(ax, t, pe2 ; color=color1, linestyle=res_styles[2])
+
+    lines!(ax, t, ke1; color=color2, linestyle=res_styles[1])
+    lines!(ax, t, ke2; color=color2, linestyle=res_styles[2])
+
+    ax.xlabel = L"t"
+    # ylims!(ax, 0, nothing)
+    # # 2. Resolution legend (Low, Med, High Res)
+    res_legend = Legend(leg[1, 1],
+                        [LineElement(; color=:black, linestyle=res_styles[2]),
+                         LineElement(; color=color1, linestyle=res_styles[1]),
+                         LineElement(; color=color1, linestyle=res_styles[2]),
+                         LineElement(; color=color2, linestyle=res_styles[1]),
+                         LineElement(; color=color2, linestyle=res_styles[2])],
+                        [L"\textrm{total}",
+                         L"\textrm{pe1}", L"\textrm{pe2}",
+                         L"\textrm{ke1}", L"\textrm{ke2}"];
+                        halign=:center,
+                        valign=:top,
+                        tellwidth=false,
+                        tellheight=true, orientation=:horizontal, nbanks=1)
+
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    if opposite_charges(sim1)
+        folder = "interacting_particles/attracting/"
+    else
+        folder = "interacting_particles/repelling/"
+    end
+    savename = name("$(folder)/total_energy22", sim1)
+    save(joinpath(FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+    return fig
+end
+
+
+
+
+
+
+
+
+
+
 
 end

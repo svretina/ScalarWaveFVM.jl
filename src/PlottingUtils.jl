@@ -14,7 +14,7 @@ const PAPER_PATH = "/home/svretina/PhD/mypapers/ScalarSelfForcePaper"
 const PAPER_FIG_PATH = joinpath(PAPER_PATH, "figs")
 
 export mytheme_aps, mymean, name_potential, name_interacting, name_forced,
-       name_analytic_potential
+       name_analytic_potential, opposite_charges
 export FIG_PATH, PAPER_FIG_PATH
 
 function name_potential(pre, sim, post=nothing)
@@ -264,6 +264,16 @@ function mytheme_aps()
                                                 RGBAf(0.392157, 0.709804, 0.803922, 1.0)]),
                  # PolarAxis attributes
                  PolarAxis=Attributes(; spinewidth=1.1))
+end
+
+function opposite_charges(sim)
+    q1 = sim.params.q1
+    q2 = sim.params.q2
+    if q1 == q2
+        return false
+    else
+        return true
+    end
 end
 
 end # end of module

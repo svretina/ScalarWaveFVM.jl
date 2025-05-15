@@ -1,12 +1,79 @@
 module ParticlePotentialPlots
 
 using ..PlottingUtils
+using ..ScalarField
+using ..InitialData
 using CairoMakie
 # using GLMakie
 using LinearAlgebra
+using DataInterpolations
 
 @inline name(pre, sim, post=nothing) = name_potential(pre, sim, post)
 @inline name_analytic(pre, sim, post=nothing) = name_analytic_potential(pre, sim, post)
+
+function trapezoidal(y, h)
+    n = length(y) - 1
+    integral = zero(eltype(y))
+    @inbounds for i in 1:n
+        integral += y[i]
+    end
+    @inbounds integral += 0.5 * (y[1] + y[n + 1])  # Adjust endpoints
+    integral *= h
+    return integral
+end
+
+function plot_pifield(i, sim1)
+    set_theme!(mytheme_aps())
+    # Get time points and assert equality
+    if i == -1
+        i = lastindex(sim1.sol.t)
+    end
+    t1 = sim1.sol.t[i]
+    t = t1
+
+    # Create figure and axis
+
+    F = 2
+    L = sim1.params.L
+    x_range = (-L / F, L / F)
+    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+    x_filtered = sim1.params.x[mask]
+
+    # Filter sim1 data (640 points)
+    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    x1_filtered = sim1.params.x[mask1]  # ~320 elements if symmetric around 0
+    y1_filtered = sim1.sol.u[i].x[1][mask1, 1]  # Matches x1_filtered length
+
+    # Compute y-limits with padding
+    # y_min = minimum([minimum(y1_filtered), minimum(y2_filtered), minimum(y4_filtered)])
+    # y_max = maximum([maximum(y1_filtered), maximum(y2_filtered), maximum(y4_filtered)])
+    # padding = 0.1 * (y_max - y_min)  # Add 10% padding
+    # y_limits = (y_min - padding, y_max + padding)
+
+    xp = sim1.sol.u[i].x[2][2]
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"x",
+              ylabel=L"\Pi_\mathrm{r}",
+              title=L"t=%$(round(t, digits=3))")
+    #,
+    #limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+    # Plot the data
+    lines!(ax, x_filtered, y1_filtered; label=L"\Pi")
+    vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+    # Add legend at the bottom
+
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    # Save the figure
+
+    # savename = name("particle_potential/psifield", sim1, "i=$(i)")
+    # save(joinpath(FIG_PATH, savename), fig)
+    # save(joinpath(PAPER_FIG_PATH, savename), fig)
+    return fig
+end
 
 function plot_pifield_resolutions(i, sim1, sim2, sim4)
     set_theme!(mytheme_aps())
@@ -20,9 +87,10 @@ function plot_pifield_resolutions(i, sim1, sim2, sim4)
 
     # Create figure and axis
 
+    F = 2
     L = sim1.params.L
-    x_range = (-L / 2, L / 2)
-    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    x_range = (-L / F, L / F)
+    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
     x_filtered = sim1.params.x[mask]
 
     # Filter sim1 data (640 points)
@@ -68,6 +136,58 @@ function plot_pifield_resolutions(i, sim1, sim2, sim4)
     savename = name("particle_potential/pifield", sim1, "i=$(i)")
     save(joinpath(FIG_PATH, savename), fig)
     save(joinpath(PAPER_FIG_PATH, savename), fig)
+    return fig
+end
+
+function plot_psifield(i, sim1)
+    set_theme!(mytheme_aps())
+    # Get time points and assert equality
+    if i == -1
+        i = lastindex(sim1.sol.t)
+    end
+    t1 = sim1.sol.t[i]
+    t = t1
+
+    # Create figure and axis
+
+    F = 2
+    L = sim1.params.L
+    x_range = (-L / F, L / F)
+    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+    x_filtered = sim1.params.x[mask]
+
+    # Filter sim1 data (640 points)
+    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    x1_filtered = sim1.params.x[mask1]  # ~320 elements if symmetric around 0
+    y1_filtered = sim1.sol.u[i].x[1][mask1, 2]  # Matches x1_filtered length
+
+    # Compute y-limits with padding
+    # y_min = minimum([minimum(y1_filtered), minimum(y2_filtered), minimum(y4_filtered)])
+    # y_max = maximum([maximum(y1_filtered), maximum(y2_filtered), maximum(y4_filtered)])
+    # padding = 0.1 * (y_max - y_min)  # Add 10% padding
+    # y_limits = (y_min - padding, y_max + padding)
+
+    xp = sim1.sol.u[i].x[2][2]
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"x",
+              ylabel=L"\Psi_\mathrm{r}",
+              title=L"t=%$(round(t, digits=3))")
+    #,
+    #limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+    # Plot the data
+    lines!(ax, x_filtered, y1_filtered; label=L"\Psi")
+    vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+    # Add legend at the bottom
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    # Save the figure
+
+    # savename = name("particle_potential/psifield", sim1, "i=$(i)")
+    # save(joinpath(FIG_PATH, savename), fig)
+    # save(joinpath(PAPER_FIG_PATH, savename), fig)
     return fig
 end
 
@@ -242,6 +362,7 @@ function plot_psifield_convord(sim1, sim2, sim4)
 end
 
 function plot_particle_position(sim1; invert=true)
+    CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
 
@@ -279,9 +400,86 @@ function plot_particle_position(sim1; invert=true)
     rowgap!(fig.layout, 0)                 # Gap between plot and legend
 
     # Save the figure
-    savename = name("particle_potential/particle_position", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
-    save(joinpath(PAPER_FIG_PATH, savename), fig)
+    # savename = name("particle_potential/particle_position", sim1)
+    # save(joinpath(FIG_PATH, savename), fig)
+    # save(joinpath(PAPER_FIG_PATH, savename), fig)
+    return fig
+end
+
+function plot_particle_velocity(sim1)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+    # Get time points and assert equality
+
+    # Create figure and axis
+    L = sim1.params.L
+    x_range = (-L / 2, L / 2)
+    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    x_filtered = sim1.params.x[mask]
+
+    nt = length(sim1.sol.t)
+    xs1 = zeros(nt)
+    for i in 1:nt
+        xs1[i] = sim1.sol.u[i].x[2][3]
+    end
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1]; title=L"\textrm{Particle Velocity}")
+    # Plot the data
+    lines!(ax, sim1.sol.t, xs1; label=L"\textrm{particle 1}")
+    ax.ylabel = L"v(t)"
+    ax.xlabel = L"t"
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    rowgap!(fig.layout, 0)                 # Gap between plot and legend
+
+    # Save the figure
+    # savename = name("particle_potential/particle_position", sim1)
+    # save(joinpath(FIG_PATH, savename), fig)
+    # save(joinpath(PAPER_FIG_PATH, savename), fig)
+    return fig
+end
+
+function plot_particle_mass(sim1)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+    # Get time points and assert equality
+
+    # Create figure and axis
+    L = sim1.params.L
+    x_range = (-L / 2, L / 2)
+    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    x_filtered = sim1.params.x[mask]
+
+    nt = length(sim1.sol.t)
+    xs1 = zeros(nt)
+    for i in 1:nt
+        xs1[i] = sim1.sol.u[i].x[2][1]
+    end
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              title=L"\textrm{Particle Mass}")
+    # Plot the data
+    lines!(ax, sim1.sol.t, xs1; label=L"\textrm{particle 1}")
+    ax.ylabel = L"m(t)"
+    ax.xlabel = L"t"
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    rowgap!(fig.layout, 0)                 # Gap between plot and legend
+
+    # Save the figure
+    # savename = name("particle_potential/particle_position", sim1)
+    # save(joinpath(FIG_PATH, savename), fig)
+    # save(joinpath(PAPER_FIG_PATH, savename), fig)
     return fig
 end
 
@@ -379,6 +577,7 @@ function plot_particle_positions_resolutions(sim1, sim2, sim4, sim1sf, sim2sf, s
 end
 
 function plot_particle_position_resolutions(sim1, sim2, sim4; invert=true)
+    CairoMakie.activate!()
     mytheme = mytheme_aps()
     set_theme!(mytheme)
     # Get time points and assert equality
@@ -445,6 +644,91 @@ function plot_particle_position_resolutions(sim1, sim2, sim4; invert=true)
     return fig
 end
 
+function plot_energy(sim1)
+    CairoMakie.activate!()
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+    # Get time points and assert equality
+
+    # Create figure and axis
+    L = sim1.params.L
+    x_range = (-L / 2, L / 2)
+    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    x_filtered = sim1.params.x[mask]
+
+    nt = length(sim1.sol.t)
+    particle_energy = zeros(nt)
+    potential = zeros(nt)
+    kinetic = zeros(nt)
+    self_potential = zeros(nt)
+    regular_field_energy1 = zeros(nt)
+    mixed_terms = zeros(nt)
+
+    q = sim1.params.q
+    sf = sim1.params.sf
+    dx = sim1.params.dx
+    xs = sim1.params.x
+
+    # V(x) = ScalarField.Φs(x, -q, xpot, 0.0)
+    k = sim1.params.k
+    V(x) = InitialData.Harmonic(0.0, x, k)
+    if sf
+        m0 = sim1.sol.u[1].x[2][1]
+        for i in 1:nt
+            m = sim1.sol.u[i].x[2][1]
+            z = sim1.sol.u[i].x[2][2]
+            v = sim1.sol.u[i].x[2][3]
+            # Φ = @view sim1.sol.u[i].x[1][:, 3]
+            Π = @view sim1.sol.u[i].x[1][:, 1]
+            Ψ = @view sim1.sol.u[i].x[1][:, 2]
+
+            γ = 1.0 / sqrt(1.0 - v * v)
+
+            ## This is with Φr and z as a generalized coordinate:
+            num = @. q * sign.(x_filtered - z) * (Π[mask] * v + Ψ[mask] * (-1.0 + 2v * v))
+            denom = (1.0 - v * v)^1.5
+            term2 = num / denom
+            regular_field_energy1[i] = trapezoidal(0.5 * (Π[mask] .^ 2 .+ Ψ[mask] .^ 2) .-
+                                                   term2, dx)
+            particle_energy[i] = γ * m # potential[i] + kinetic[i]
+        end
+    else
+        m0 = sim1.sol.u[1].x[2][1]
+        for i in 1:nt
+            m = sim1.sol.u[i].x[2][1]
+            v = sim1.sol.u[i].x[2][3]
+            γ = 1.0 / sqrt(1.0 - v * v)
+            particle_energy[i] = γ * m
+        end
+    end
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              title=L"\textrm{Energy}")
+    # Plot the data
+    lines!(ax, sim1.sol.t, regular_field_energy1;
+           label=L"\textrm{no singular}")
+
+    # lines!(ax, sim1.sol.t,
+    #        regular_field_energy .- regular_field_energy[1] +
+    #        particle_energy .- particle_energy[1]; linestyle=:dash,
+    #        label=L"\textrm{total}")
+
+    lines!(ax, sim1.sol.t, particle_energy .- particle_energy[1]; linestyle=:dash,
+           label=L"\textrm{particle}")
+    ax.ylabel = L"energy"
+    ax.xlabel = L"t"
+
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    rowgap!(fig.layout, 0)                 # Gap between plot and legend
+    return fig
+end
+
 ### Particle rhs only
 ###
 ###
@@ -456,14 +740,14 @@ function plot_particle_position_analytic(sim1; invert=true, paper=true)
     x0 = sim1.params.x0
     k = sim1.params.k
     m = sim1.params.m
-    analytic(t) = x0 * sin(sqrt(k / m) * t + 0.5pi)
+    analytic(t) = x0 * sin(sqrt(k) * t + 0.5pi)
     # Create figure and axis
     nt = length(sim1.sol.t)
     xs1 = zeros(nt)
     # vs1 = zeros(nt)
     # ms1 = zeros(nt)
     for i in 1:nt
-        xs1[i] = sim1.sol.u[i][2]
+        xs1[i] = sim1.sol.u[i].x[2][2]
     end
 
     fig = Figure(; size=(253, 200))
@@ -471,12 +755,12 @@ function plot_particle_position_analytic(sim1; invert=true, paper=true)
               title=L"\textrm{Particle Position}")
     # Plot the data
     if invert
-        lines!(ax, xs1, sim1.sol.t; label=L"\textrm{particle 1}")
+        lines!(ax, xs1, sim1.sol.t; label=L"\textrm{particle}")
         lines!(ax, analytic.(sim1.sol.t), sim1.sol.t; label=L"\textrm{analytic}")
         ax.xlabel = L"z(t)"
         ax.ylabel = L"t"
     else
-        lines!(ax, sim1.sol.t, xs1; label=L"\textrm{particle 1}")
+        lines!(ax, sim1.sol.t, xs1; label=L"\textrm{particle}")
         lines!(ax, sim1.sol.t, analytic.(sim1.sol.t); linestyle=:dash,
                label=L"\textrm{analytic}")
         ax.ylabel = L"z(t)"
@@ -578,8 +862,8 @@ function plot_particle_position_analytic_diff(sim1, sim2, sim4; invert=true, pap
     err1 = zeros(nt)
     err2 = zeros(nt)
     for i in 1:nt
-        err1[i] = sim1.sol.u[i][2] - sim2.sol.u[2i - 1][2]
-        err2[i] = sim2.sol.u[2i - 1][2] - sim4.sol.u[4i - 3][2]
+        err1[i] = sim1.sol.u[i].x[2][2] - sim2.sol.u[2i - 1].x[2][2]
+        err2[i] = sim2.sol.u[2i - 1].x[2][2] - sim4.sol.u[4i - 3].x[2][2]
     end
     # convfac = @. (xs1 - xs2) / (xs2 - xs4)
     fig = Figure(; size=(253, 200))
@@ -680,7 +964,7 @@ function plot_particle_velocity_analytic(sim1; paper=true)
     vs1 = zeros(nt)
     # ms1 = zeros(nt)
     for i in 1:nt
-        vs1[i] = sim1.sol.u[i][3]
+        vs1[i] = sim1.sol.u[i].x[2][3]
     end
 
     fig = Figure(; size=(253, 200))
@@ -703,7 +987,7 @@ function plot_particle_velocity_analytic(sim1; paper=true)
     # Save the figure
     savename = name_analytic("particle_analytic_potential/particle_velocity", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-        if paper
+    if paper
         save(joinpath(PAPER_FIG_PATH, savename), fig)
     end
 
@@ -813,14 +1097,14 @@ function plot_particle_velocity_analytic_diff(sim1, sim2, sim4; paper=true)
     # Save the figure
     savename = name_analytic("particle_analytic_potential/particle_velocity_diff", sim1)
     save(joinpath(FIG_PATH, savename), fig)
-        if paper
+    if paper
         save(joinpath(PAPER_FIG_PATH, savename), fig)
     end
 
     return fig
 end
 
-function plot_particle_velocity_analytic_convfac(sim1, sim2, sim4;  paper=true)
+function plot_particle_velocity_analytic_convfac(sim1, sim2, sim4; paper=true)
     CairoMakie.activate!()
     mytheme = mytheme_aps()
     set_theme!(mytheme)
@@ -874,7 +1158,7 @@ function plot_particle_velocity_analytic_convfac(sim1, sim2, sim4;  paper=true)
     return fig
 end
 
-function plot_particle_mass_analytic(sim1;  paper=true)
+function plot_particle_mass_analytic(sim1; paper=true)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
 
@@ -885,7 +1169,7 @@ function plot_particle_mass_analytic(sim1;  paper=true)
     nt = length(sim1.sol.t)
     ms1 = zeros(nt)
     for i in 1:nt
-        ms1[i] = sim1.sol.u[i][1]
+        ms1[i] = sim1.sol.u[i].x[2][1]
     end
 
     fig = Figure(; size=(253, 200))
@@ -893,6 +1177,7 @@ function plot_particle_mass_analytic(sim1;  paper=true)
               title=L"\textrm{Particle Mass}")
     # Plot the data
     lines!(ax, sim1.sol.t, ms1; label=L"\textrm{particle 1}")
+    # lines!(ax, sim1.sol.t, analytic_mass)
     ax.ylabel = L"m(t)"
     ax.xlabel = L"t"
     leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)

@@ -39,62 +39,98 @@ function prepare_forced_plots(Nosc, dx0, cfl, vmax, q; paper=true, sf=true)
     sim1, sim2, sim4 = run_forced_sims(Nosc, dx0, cfl, vmax, q, sf)
     tidx_end = length(sim1.sol.t)
     _ = ForcedPlots.plot_pifield_resolutions(tidx_end, sim1, sim2, sim4, 2, paper)
-    _ = ForcedPlots.plot_pifield_resolutions(Int64(floor(tidx_end/2)), sim1, sim2, sim4, 4, paper)
-    _ = ForcedPlots.plot_pifield_resolutions(Int64(floor(tidx_end/4)), sim1, sim2, sim4, 8, paper)
-    
+    _ = ForcedPlots.plot_pifield_resolutions(Int64(floor(tidx_end / 2)), sim1, sim2, sim4,
+                                             4, paper)
+    _ = ForcedPlots.plot_pifield_resolutions(Int64(floor(tidx_end / 4)), sim1, sim2, sim4,
+                                             8, paper)
+
     _ = ForcedPlots.plot_psifield_resolutions(tidx_end, sim1, sim2, sim4, 2, paper)
-    _ = ForcedPlots.plot_psifield_resolutions(Int64(floor(tidx_end/2)), sim1, sim2, sim4,4, paper)
-    _ = ForcedPlots.plot_psifield_resolutions(Int64(floor(tidx_end/4)), sim1, sim2, sim4,8, paper)
+    _ = ForcedPlots.plot_psifield_resolutions(Int64(floor(tidx_end / 2)), sim1, sim2, sim4,
+                                              4, paper)
+    _ = ForcedPlots.plot_psifield_resolutions(Int64(floor(tidx_end / 4)), sim1, sim2, sim4,
+                                              8, paper)
 
     _ = ForcedPlots.plot_pifield_diff(tidx_end, sim1, sim2, sim4, 2, paper)
-    _ = ForcedPlots.plot_pifield_diff(Int64(floor(tidx_end/2)), sim1, sim2, sim4, 4, paper)
-    _ = ForcedPlots.plot_pifield_diff(Int64(floor(tidx_end/4)), sim1, sim2, sim4, 8, paper)
-    
+    _ = ForcedPlots.plot_pifield_diff(Int64(floor(tidx_end / 2)), sim1, sim2, sim4, 4,
+                                      paper)
+    _ = ForcedPlots.plot_pifield_diff(Int64(floor(tidx_end / 4)), sim1, sim2, sim4, 8,
+                                      paper)
+
     _ = ForcedPlots.plot_psifield_diff(tidx_end, sim1, sim2, sim4, 2, paper)
-    _ = ForcedPlots.plot_psifield_diff(Int64(floor(tidx_end/2)), sim1, sim2, sim4, 4, paper)
-    _ = ForcedPlots.plot_psifield_diff(Int64(floor(tidx_end/4)), sim1, sim2, sim4, 8, paper)
-  
+    _ = ForcedPlots.plot_psifield_diff(Int64(floor(tidx_end / 2)), sim1, sim2, sim4, 4,
+                                       paper)
+    _ = ForcedPlots.plot_psifield_diff(Int64(floor(tidx_end / 4)), sim1, sim2, sim4, 8,
+                                       paper)
+
     _ = ForcedPlots.plot_pifield_convord(sim1, sim2, sim4, paper)
     _ = ForcedPlots.plot_psifield_convord(sim1, sim2, sim4, paper)
     return nothing
 end
 
-function prepare_forced_plots(sim1, sim2, sim4; paper=true, sf=true)    
+function prepare_forced_plots(sim1, sim2, sim4; paper=true, sf=true)
     tidx_end = length(sim1.sol.t)
     _ = ForcedPlots.plot_pifield_resolutions(tidx_end, sim1, sim2, sim4, 2, paper)
-    _ = ForcedPlots.plot_pifield_resolutions(Int64(floor(tidx_end/2)), sim1, sim2, sim4, 4, paper)
-    _ = ForcedPlots.plot_pifield_resolutions(Int64(floor(tidx_end/4)), sim1, sim2, sim4, 8, paper)
-    
+    _ = ForcedPlots.plot_pifield_resolutions(Int64(floor(tidx_end / 2)), sim1, sim2, sim4,
+                                             4, paper)
+    _ = ForcedPlots.plot_pifield_resolutions(Int64(floor(tidx_end / 4)), sim1, sim2, sim4,
+                                             8, paper)
+
     _ = ForcedPlots.plot_psifield_resolutions(tidx_end, sim1, sim2, sim4, 2, paper)
-    _ = ForcedPlots.plot_psifield_resolutions(Int64(floor(tidx_end/2)), sim1, sim2, sim4, 4, paper)
-    _ = ForcedPlots.plot_psifield_resolutions(Int64(floor(tidx_end/4)), sim1, sim2, sim4, 8, paper)
+    _ = ForcedPlots.plot_psifield_resolutions(Int64(floor(tidx_end / 2)), sim1, sim2, sim4,
+                                              4, paper)
+    _ = ForcedPlots.plot_psifield_resolutions(Int64(floor(tidx_end / 4)), sim1, sim2, sim4,
+                                              8, paper)
 
     _ = ForcedPlots.plot_pifield_diff(tidx_end, sim1, sim2, sim4, 2, paper)
-    _ = ForcedPlots.plot_pifield_diff(Int64(floor(tidx_end/2)), sim1, sim2, sim4, 4, paper)
-    _ = ForcedPlots.plot_pifield_diff(Int64(floor(tidx_end/4)), sim1, sim2, sim4, 8, paper)
-    
+    _ = ForcedPlots.plot_pifield_diff(Int64(floor(tidx_end / 2)), sim1, sim2, sim4, 4,
+                                      paper)
+    _ = ForcedPlots.plot_pifield_diff(Int64(floor(tidx_end / 4)), sim1, sim2, sim4, 8,
+                                      paper)
+
     _ = ForcedPlots.plot_psifield_diff(tidx_end, sim1, sim2, sim4, 2, paper)
-    _ = ForcedPlots.plot_psifield_diff(Int64(floor(tidx_end/2)), sim1, sim2, sim4, 4, paper)
-    _ = ForcedPlots.plot_psifield_diff(Int64(floor(tidx_end/4)), sim1, sim2, sim4, 8, paper)
-  
-    
+    _ = ForcedPlots.plot_psifield_diff(Int64(floor(tidx_end / 2)), sim1, sim2, sim4, 4,
+                                       paper)
+    _ = ForcedPlots.plot_psifield_diff(Int64(floor(tidx_end / 4)), sim1, sim2, sim4, 8,
+                                       paper)
+
     _ = ForcedPlots.plot_pifield_convord(sim1, sim2, sim4, paper)
     _ = ForcedPlots.plot_psifield_convord(sim1, sim2, sim4, paper)
     return nothing
 end
 
-
-
-function prepare_interacting_plots(L, N, tf, cfl, v0, q0; same_q=true, sf=true, paper=true)
-    sim1, sim2, sim4 = run_interacting_sims(L, N, tf, cfl, v0, q0; same_q=same_q, sf=sf, paper=paper)
+function prepare_interacting_plots(L, N, tf, cfl, v0, q0; same_q=true, sf=true, paper=false)
+    sim1, sim2, sim4 = run_interacting_sims(L, N, tf, cfl, v0, q0; same_q=same_q, sf=sf)
     tidx_end = length(sim1.sol.t)
-    _ = InteractingPlots.plot_pifield_resolutions(tidx_end, sim1, sim2, sim4, paper=paper)
-    _ = InteractingPlots.plot_psifield_resolutions(tidx_end, sim1, sim2, sim4, paper=paper)
-    _ = InteractingPlots.plot_pifield_convord(sim1, sim2, sim4, paper=paper)
-    _ = InteractingPlots.plot_psifield_convord(sim1, sim2, sim4, paper=paper)
-    _ = InteractingPlots.plot_particle_positions_resolutions(sim1, sim2, sim4, paper=paper)
-    _ = InteractingPlots.plot_particle_velocities_resolutions(sim1, sim2, sim4, paper=paper)
-    _ = InteractingPlots.plot_particle_masses_resolutions(sim1, sim2, sim4, paper=paper)
+    _ = InteractingPlots.plot_pifield_resolutions(tidx_end, sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_psifield_resolutions(tidx_end, sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_pifield_convord(sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_psifield_convord(sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_particle_positions_resolutions(sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_particle_velocities_resolutions(sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_particle_masses_resolutions(sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_field_energy(sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_half_field_momentum(sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_particle_kinetic_energy(sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_particle_potential_energy(sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_particle_total_energy(sim1, sim2, sim4; paper=paper)
+    return nothing
+end
+
+function prepare_interacting_plots(sim1, sim2, sim4; paper=false)
+    # sim1, sim2, sim4 = run_interacting_sims(L, N, tf, cfl, v0, q0; same_q=same_q, sf=sf)
+    tidx_end = length(sim1.sol.t)
+    _ = InteractingPlots.plot_pifield_resolutions(tidx_end, sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_psifield_resolutions(tidx_end, sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_pifield_convord(sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_psifield_convord(sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_particle_positions_resolutions(sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_particle_velocities_resolutions(sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_particle_masses_resolutions(sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_field_energy(sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_half_field_momentum(sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_particle_kinetic_energy(sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_particle_potential_energy(sim1, sim2, sim4; paper=paper)
+    _ = InteractingPlots.plot_particle_total_energy(sim1, sim2, sim4; paper=paper)
     return nothing
 end
 
@@ -118,66 +154,70 @@ function prepare_fixed_potential_plots(L, dx, dt, Nosc, k; paper=true)
     sim1, sim2, sim4 = run_fixed_potential_sims(L, dx, dt, Nosc, k)
 
     tidx_end = length(sim1.sol.t)
-    _ = ParticlePotentialPlots.plot_particle_position_analytic(sim1; invert=false, paper=paper)
+    _ = ParticlePotentialPlots.plot_particle_position_analytic(sim1; invert=false,
+                                                               paper=paper)
     _ = ParticlePotentialPlots.plot_particle_velocity_analytic(sim1; paper=paper)
     _ = ParticlePotentialPlots.plot_particle_mass_analytic(sim1; paper=paper)
-    _ = ParticlePotentialPlots.plot_particle_position_analytic_diff(sim1, sim2, sim4; paper=paper)
-    _ = ParticlePotentialPlots.plot_particle_velocity_analytic_diff(sim1, sim2, sim4; paper=paper)
-    _ = ParticlePotentialPlots.plot_particle_mass_analytic_diff(sim1, sim2, sim4; paper=paper)
+    _ = ParticlePotentialPlots.plot_particle_position_analytic_diff(sim1, sim2, sim4;
+                                                                    paper=paper)
+    _ = ParticlePotentialPlots.plot_particle_velocity_analytic_diff(sim1, sim2, sim4;
+                                                                    paper=paper)
+    _ = ParticlePotentialPlots.plot_particle_mass_analytic_diff(sim1, sim2, sim4;
+                                                                paper=paper)
 
     return nothing
 end
 
-function prepare_all_plots(;paper=true)
+function prepare_all_plots(; paper=true)
     ## forced motion case
     println("Running Forced Motion")
-    q=1.0
-    vmax=0.5
-    cfl=0.25
+    q = 1.0
+    vmax = 0.5
+    cfl = 0.25
     Nosc = 3
-    
-    dx0=0.5
+
+    dx0 = 0.5
     prepare_forced_plots(Nosc, dx0, cfl, vmax, q; paper=paper, sf=true)
-    dx0=0.25
+    dx0 = 0.25
     prepare_forced_plots(Nosc, dx0, cfl, vmax, q; paper=paper, sf=true)
-    dx0=0.125/4
+    dx0 = 0.125 / 4
     prepare_forced_plots(Nosc, dx0, cfl, vmax, q; paper=paper, sf=true)
 
     ## interacting particles
     L = 2000
     N = 2000
-    cfl=0.25
-    q=0.1
-    
-    tf=270
-    v0=0.5
+    cfl = 0.25
+    q = 0.1
+
+    tf = 270
+    v0 = 0.5
     prepare_interacting_plots(L, N, tf, cfl, v0, q0; same_q=true, sf=true, paper=paper)
-    tf=100
-    v0=0.0
+    tf = 100
+    v0 = 0.0
     prepare_interacting_plots(L, N, tf, cfl, v0, q0; same_q=true, sf=true, paper=paper)
-    tf=130
-    v0=0.0
+    tf = 130
+    v0 = 0.0
     prepare_interacting_plots(L, N, tf, cfl, v0, q0; same_q=false, sf=true, paper=paper)
 
     ## particle in potential
     println("Running Particle in harmonic oscillator potential")
     println("k=1")
     k = 1
-    dt=0.1
-    q=1
-    L=100
-    dx=0.5
-    Nosc=3
-    prepare_fixed_potential_plots(L,dx,dt,Nosc, k; paper=paper)
+    dt = 0.1
+    q = 1
+    L = 100
+    dx = 0.5
+    Nosc = 3
+    prepare_fixed_potential_plots(L, dx, dt, Nosc, k; paper=paper)
 
     println("k=50")
     k = 50
-    dt=0.001
-    q=1
-    L=100
-    dx=0.1
-    Nosc=3
-    prepare_fixed_potential_plots(L,dx,dt,Nosc, k; paper=paper)
+    dt = 0.001
+    q = 1
+    L = 100
+    dx = 0.1
+    Nosc = 3
+    prepare_fixed_potential_plots(L, dx, dt, Nosc, k; paper=paper)
     return nothing
 end
 
