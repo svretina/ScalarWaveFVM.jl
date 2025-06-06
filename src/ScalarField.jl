@@ -18,11 +18,15 @@ end
     return -q * sign(-x + xp) / (2sqrt(one(v) - v * v))
 end
 
-@inline function ∂vΠ(x, q, xp, v)
+@inline function ∂vΦs(x, q, xp, v)
+    return q * v * abs(x - xp) / (2exp32(one(v) - v * v))
+end
+
+@inline function ∂vΠs(x, q, xp, v)
     return -q * sign(x - xp) / (2exp32(one(v) - v * v))
 end
 
-@inline function ∂vΨ(x, q, xp, v)
+@inline function ∂vΨs(x, q, xp, v)
     return v * q * sign(x - xp) / (2exp32(one(v) - v * v))
 end
 

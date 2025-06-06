@@ -230,9 +230,11 @@ function particle_in_potential(L, dx, dt, Nosc, k, sf=true)
 
     T = 2π / sqrt(abs(k))
     tf = Nosc * T
+    @show tf
     tspan = (0.0, tf)
     t = 0.0:dt:tf
     x = collect((-L):dx:L)
+
     N = length(x)
     cfl = dt / dx
 
@@ -240,11 +242,8 @@ function particle_in_potential(L, dx, dt, Nosc, k, sf=true)
     Π = zeros(Float64, length(x))
     Ψ = zeros(Float64, length(x))
 
-    # V(x) = ScalarField.Φs(x, -q, xpot, 0.0)
-    # dxV(x) = ScalarField.Ψs(x, -q, xpot, 0.0)
-
-    V(x) = InitialData.Harmonic(0.0, x, k)
-    dxV(x) = InitialData.dxHarmonic(0.0, x, k)
+    V(x) = InitialData.Harmonic(x, k)
+    dxV(x) = InitialData.dxHarmonic(x, k)
     field_statevector = hcat(Π, Ψ, Φ)
 
     ## Particle 1
@@ -259,7 +258,7 @@ function particle_in_potential(L, dx, dt, Nosc, k, sf=true)
     println("x = $x10")
     println("v = $v10")
 
-    particle_statevector = [m10, x10, v10]#, m20, x20, v20]
+    particle_statevector = [m10, x10, v10] #, m20, x20, v20]
     statevector = ArrayPartition(field_statevector,
                                  particle_statevector)
 
@@ -276,16 +275,21 @@ function particle_in_potential(L, dx, dt, Nosc, k, sf=true)
               Potential=V,
               dxPotential=dxV,
               interpolation_method=interpolation_method)
+
+    # alg = ImplicitMidpoint()
+    alg = RK4() ## loses energy
+    alg = Tsit5() ## fails
+    # alg = TsitPap8() ## ok
+    # alg = Vern7() ## ok
+
+    ode = ODEProblem{true}(ODE.particle_in_potential_rhs!, statevector, tspan,
+                           params; saveat=t)
+
+    sol = solve(ode, alg; dt=dt, adaptive=false)
     sim = SimulationParametersAnalyticPotential(L, dx, dt, x, q,
                                                 m10, x10, v10,
                                                 k, sf, cfl)
 
-    # alg = ImplicitMidpoint()
-    alg = Tsit5()
-    ode = ODEProblem{true}(ODE.particle_in_potential_rhs!, statevector, tspan,
-                           params; saveat=t)
-
-    sol = solve(ode, alg; dt=dt)#, callback=cb)
     res = Simulation(sim, sol)
     return res
 end

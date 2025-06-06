@@ -12,16 +12,12 @@ end
     return 2A * π * cos(2π * (x - c * t) / λ) / λ
 end
 
-@inline function Harmonic(t, x, k)
-    return -0.5k * x * x
+@inline function Harmonic(x, k)
+    return 0.5k * x * x
 end
 
-@inline function dtHarmonic(t, x, k)
-    return zero(x)
-end
-
-@inline function dxHarmonic(t, x, k)
-    return -k * x
+@inline function dxHarmonic(x, k)
+    return k * x
 end
 
 # @inline function Gaussian1D(t::Real, x::Real, A::Real, σ::Real)

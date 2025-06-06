@@ -236,6 +236,7 @@ function field_rhs!(dQ, Q, params, t)
     a1 = dQ_particle[3]
     x1 = Q_particle[2]
     v1 = Q_particle[3] ### ASK ERIK dQ or Q ?
+    # v1 = dQ_particle[2]
     ###
     # a2 = dQ_particle[6]
     # x2 = Q_particle[5]
@@ -247,12 +248,22 @@ function field_rhs!(dQ, Q, params, t)
     if sf
         h = params.h
         h2 = 0.5h
-        # @inline s1(x) = a1 * ScalarField.∂vΠ(x, q1, x1, v1)
+        @inline s1(x) = a1 * ScalarField.∂vΠs(x, q, x1, v1)
+        @inline s2(x) = a1 * ScalarField.∂vΨs(x, q, x1, v1)
+        @inline s3(x) = a1 * ScalarField.∂vΦs(x, q, x1, v1)
         dtΠ = @view dQ_field[:, 1]
+        dtΨ = @view dQ_field[:, 2]
+        dtΦ = @view dQ_field[:, 3]
         @inbounds @batch for i in 1:N
-            left_face = x[i] - h2
-            right_face = x[i] + h2
-            dtΠ[i] -= a1 * ScalarField.cell_average(left_face, right_face, q, x1, v1, h)
+            # left_face = x[i] - h2
+            # right_face = x[i] + h2
+            # dtΠ[i] -= a1 * ScalarField.cell_average(left_face, right_face, q, x1, v1, h)
+
+            ###
+            ###
+            dtΠ[i] -= s1(x[i])
+            # dtΨ[i] -= s2(x[i])
+            # dtΦ[i] -= s3(x[i])
         end
     end
     return nothing
@@ -491,10 +502,8 @@ function particle_with_potential_rhs!(dQ, Q, params, t)
     vel = 0.99
     abs(v) <= vel || throw("v=$v > $(vel), at t=$(t), a1 = $(dQ_particle[3])")
 
-    v2 = v * v
-    a2 = one(v) - v2
+    a2 = one(v) - v * v
 
-    # v∇Φ1 = Πr + v * Ψr
     if sf
         Π = @view Q_field[:, 1]
         Ψ = @view Q_field[:, 2]
@@ -505,18 +514,19 @@ function particle_with_potential_rhs!(dQ, Q, params, t)
         Πr = interpolator_Π(z)
         Ψr = interpolator_Ψ(z)
 
-        @inbounds dQ_particle[1] = -q * (Πr + v * (Ψr + dxV(z)))
-        @inbounds dQ_particle[2] = v
-        @inbounds dQ_particle[3] = q * a2 * (v * Πr + Ψr + dxV(z)) / m
-
-        # Φ = @view Q_field[:, 3]
-        # interpolator_Φ = interpolation_method(Φ, xs;
-        #                                      extrapolation=ExtrapolationType.Extension)
-
-        # Φr = interpolator_Φ(z)
-        # @inbounds dQ_particle[1] = 0.0
+        # @inbounds dQ_particle[1] = -q * (Πr + v * (Ψr + dxV(z)))
+        # # @inbounds dQ_particle[1] = -q * (Ψr + dxV(z))
         # @inbounds dQ_particle[2] = v
-        # @inbounds dQ_particle[3] = q * a2 * (v * Πr + Ψr + dxV(z)) / (m - q * (Φr + V(z)))
+        # @inbounds dQ_particle[3] = q * a2 * (v * Πr + Ψr + dxV(z)) / m
+
+        Φ = @view Q_field[:, 3]
+        interpolator_Φ = interpolation_method(Φ, xs;
+                                              extrapolation=ExtrapolationType.Extension)
+        Φr = interpolator_Φ(z)
+
+        @inbounds dQ_particle[1] = 0.0
+        @inbounds dQ_particle[2] = v
+        @inbounds dQ_particle[3] = q * a2 * (v * Πr + Ψr + sqrt(a2) * dxV(z)) / (m - q * Φr)
     else
         # @inbounds dQ_particle[1] = 0.0
         # @inbounds dQ_particle[2] = v
@@ -524,9 +534,13 @@ function particle_with_potential_rhs!(dQ, Q, params, t)
 
         ## in this case the conserved energy is simply
         ## E = γ*m(t)
-        @inbounds dQ_particle[1] = -q * v * dxV(z)
+        # @inbounds dQ_particle[1] = 0.0
+        # @inbounds dQ_particle[2] = v
+        # @inbounds dQ_particle[3] = q * a2 * dxV(z) / m
+
+        @inbounds dQ_particle[1] = 0.0
         @inbounds dQ_particle[2] = v
-        @inbounds dQ_particle[3] = q * a2 * dxV(z) / m
+        @inbounds dQ_particle[3] = q * (1.0 - v * v)^1.5 * dxV(z) / m
     end
     return nothing
 end
