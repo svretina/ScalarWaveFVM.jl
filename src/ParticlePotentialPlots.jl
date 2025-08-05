@@ -1,5 +1,7 @@
 module ParticlePotentialPlots
 
+using CairoMakie: regularly_spaced_array_to_range
+using LinearAlgebra: sqrt_diag!
 using DataInterpolations: derivative
 using ..PlottingUtils
 using ..ScalarField
@@ -23,6 +25,18 @@ function trapezoidal(y, h)
     return integral
 end
 
+function deriv(y, h)
+    n = length(y)
+    dy = zeros(eltype(y), n)
+    for i in 2:(n - 1)
+        dy[i] = (y[i + 1] - y[i - 1]) / (2h)
+    end
+
+    dy[1] = (y[1] - y[2]) / h
+    dy[n] = (y[n - 1] - y[n]) / h
+    return dy
+end
+
 function plot_total_field(i, sim1)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
@@ -32,7 +46,7 @@ function plot_total_field(i, sim1)
     end
     t1 = sim1.sol.t[i]
     t = t1
-
+    @show t
     q = sim1.params.q
     xp = sim1.sol.u[i].x[2][2]
     vp = sim1.sol.u[i].x[2][3]
@@ -88,7 +102,7 @@ function plot_total_field_diff(ti, sim1)
 
     t1 = sim1.sol.t[ti]
     ti0 = 1
-
+    @show t1
     q = sim1.params.q
     n = length(sim1.params.x)
     idx_zero = div(n - 1, 2)
@@ -104,33 +118,35 @@ function plot_total_field_diff(ti, sim1)
 
     ## Filter our grid affected from boundary information
     ## propagating inwards
-    F = 2
     L = sim1.params.L
-    x_range = (-L / F, L / F)
-    x_range = (20.0, L / F)
-
+    Nosc = sim1.params.Nosc
+    k = sim1.params.k
+    T = 2π / sqrt(abs(k))
+    tf = Nosc * T
+    L0 = 2tf
+    x_range = (10, L0 / 4)#(-L0 / 4, L0 / 4)
+    @show x_range
     mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
-
     x1_filtered = sim1.params.x[mask1]
 
     ## Fields at start of simulation
     Φ10_filtered = sim1.sol.u[ti0].x[1][mask1, 3] .+
-                   ScalarField.Φs.(x1_filtered, q, xp10, vp10)
+                   ScalarField.Φs.(x1_filtered, xp10, vp10, q)
     ## Fields at t=ti of simulation
-    Φ1_filtered = sim1.sol.u[ti].x[1][mask1, 3] .+ ScalarField.Φs.(x1_filtered, q, xp1, vp1)
+    Φ1_filtered = sim1.sol.u[ti].x[1][mask1, 3] .+ ScalarField.Φs.(x1_filtered, xp1, vp1, q)
 
     ## Π fields
     Π10_filtered = sim1.sol.u[ti0].x[1][mask1, 1] .+
-                   ScalarField.Πs.(x1_filtered, q, xp10, vp10)
+                   ScalarField.Πs.(x1_filtered, xp10, vp10, q)
     ## Fields at t=ti of simulation
-    Π1_filtered = sim1.sol.u[ti].x[1][mask1, 1] .+ ScalarField.Πs.(x1_filtered, q, xp1, vp1)
+    Π1_filtered = sim1.sol.u[ti].x[1][mask1, 1] .+ ScalarField.Πs.(x1_filtered, xp1, vp1, q)
 
     ## Ψ fields
     Ψ10_filtered = sim1.sol.u[ti0].x[1][mask1, 2] .+
-                   ScalarField.Ψs.(x1_filtered, q, xp10, vp10)
+                   ScalarField.Ψs.(x1_filtered, xp10, vp10, q)
 
     ## Fields at t=ti of simulation
-    Ψ1_filtered = sim1.sol.u[ti].x[1][mask1, 2] .+ ScalarField.Ψs.(x1_filtered, q, xp1, vp1)
+    Ψ1_filtered = sim1.sol.u[ti].x[1][mask1, 2] .+ ScalarField.Ψs.(x1_filtered, xp1, vp1, q)
 
     ## Figure
     fig = Figure(; size=(253, 200))
@@ -143,14 +159,18 @@ function plot_total_field_diff(ti, sim1)
     # Plot the data
     # lines!(ax, x1_filtered, y10_filtered; label=L"init")
     # lines!(ax, x1_filtered, y1_filtered; linestyle=:dash, label=L"end")
-
-    # lines!(ax, x1_filtered, Φ10_filtered .- Φ1_filtered; label=L"\Phi")
-    lines!(ax, x1_filtered, Π10_filtered .- Π1_filtered; linestyle=:dash, label=L"\Pi")
-    lines!(ax, x1_filtered, Ψ10_filtered .- Ψ1_filtered; linestyle=:dash, label=L"\Psi")
+    @show Φ10_filtered[end] .- Φ1_filtered[end]
+    @show Π10_filtered[end] .- Π1_filtered[end]
+    @show Ψ10_filtered[end] .- Ψ1_filtered[end]
+    lines!(ax, x1_filtered, Φ10_filtered .- Φ1_filtered; label=L"Δ\Phi")
+    lines!(ax, x1_filtered, Π10_filtered .- Π1_filtered; linestyle=:dash, label=L"Δ\Pi")
+    lines!(ax, x1_filtered, Ψ10_filtered .- Ψ1_filtered; linestyle=:dash,
+           label=L"\Delta\Psi")
 
     vlines!(ax, [xp1]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
-
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal,
+                 tellwidth=false, tellheight=true)
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
@@ -291,7 +311,8 @@ function plot_total_field_diff_res(ti, xi, sim1, sim2, sim4)
 
     vlines!(ax, [xp1]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
-
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal,
+                 tellwidth=false, tellheight=true)
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
@@ -303,7 +324,7 @@ function plot_total_field_diff_res(ti, xi, sim1, sim2, sim4)
     return fig
 end
 
-function plot_phifield(i, sim1)
+function plot_phifield(i, sim1; F=200)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -315,10 +336,8 @@ function plot_phifield(i, sim1)
 
     # Create figure and axis
 
-    F = 2
-    L = sim1.params.L
-    x_range = (-L / F, L / F)
-    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+    x_range = (-F, F)
+    mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     x_filtered = sim1.params.x[mask]
 
     # Filter sim1 data (640 points)
@@ -332,8 +351,10 @@ function plot_phifield(i, sim1)
     # padding = 0.1 * (y_max - y_min)  # Add 10% padding
     # y_limits = (y_min - padding, y_max + padding)
 
+    q = sim1.params.q
+    dx = sim1.params.dx
     xp = sim1.sol.u[i].x[2][2]
-
+    vp = sim1.sol.u[i].x[2][3]
     fig = Figure(; size=(253, 200))
     ax = Axis(fig[1, 1];
               xlabel=L"x",
@@ -342,10 +363,14 @@ function plot_phifield(i, sim1)
     #,
     #limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
     # Plot the data
-    lines!(ax, x_filtered, y1_filtered; label=L"\Pi")
+    lines!(ax, x_filtered, y1_filtered; label=L"\Phi_r")
+    lines!(ax, x_filtered, ScalarField.Φs.(x_filtered, q, xp, vp); label=L"\Phi_s")
+    lines!(ax, x_filtered, y1_filtered .+ ScalarField.Φs.(x_filtered, q, xp, vp);
+           label=L"\Phi")
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
-
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal,
+                 tellwidth=false, tellheight=true)
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
@@ -357,7 +382,7 @@ function plot_phifield(i, sim1)
     return fig
 end
 
-function plot_pifield(i, sim1)
+function plot_pifield(i, sim1; F=2)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -369,25 +394,23 @@ function plot_pifield(i, sim1)
 
     # Create figure and axis
 
-    F = 2
     L = sim1.params.L
-    x_range = (-L / F, L / F)
-    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
-    x_filtered = sim1.params.x[mask]
-
+    x_range = (-F, F)
+    @show x_range
     # Filter sim1 data (640 points)
-    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
-    x1_filtered = sim1.params.x[mask1]  # ~320 elements if symmetric around 0
-    y1_filtered = sim1.sol.u[i].x[1][mask1, 1]  # Matches x1_filtered length
+    mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    x_filtered = sim1.params.x[mask]  # ~320 elements if symmetric around 0
+    y_filtered = sim1.sol.u[i].x[1][mask, 1]  # Matches x1_filtered length
 
     # Compute y-limits with padding
     # y_min = minimum([minimum(y1_filtered), minimum(y2_filtered), minimum(y4_filtered)])
     # y_max = maximum([maximum(y1_filtered), maximum(y2_filtered), maximum(y4_filtered)])
     # padding = 0.1 * (y_max - y_min)  # Add 10% padding
     # y_limits = (y_min - padding, y_max + padding)
-
+    q = sim1.params.q
+    dx = sim1.params.dx
     xp = sim1.sol.u[i].x[2][2]
-
+    vp = sim1.sol.u[i].x[2][3]
     fig = Figure(; size=(253, 200))
     ax = Axis(fig[1, 1];
               xlabel=L"x",
@@ -396,10 +419,27 @@ function plot_pifield(i, sim1)
     #,
     #limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
     # Plot the data
-    lines!(ax, x_filtered, y1_filtered; label=L"\Pi")
+    Πr = y_filtered
+    dxΠr = deriv(Πr, dx)
+    Ψr = sim1.sol.u[i].x[1][mask, 2]
+
+    denom1 = 2(1 - vp^2)^3.5
+    denom2 = 4(1 - vp^2)^3
+    term1 = @. (3q * abs.(x_filtered - xp) * dxΠr * vp) / denom1
+    term2 = @. -(3q * abs.(x_filtered - xp) * dxΠr * vp^3) / denom1
+    term3 = @. q^2 * sign.(x_filtered - xp)^2 / denom2
+
+    @show trapezoidal((@. term1 + term2), dx)
+    #     lines!(ax, x_filtered, @. term1 + term2; label=L"\Pi_r")
+    lines!(ax, x_filtered, y_filtered; label=L"\Pi_r")
+    lines!(ax, x_filtered, ScalarField.Πs.(x_filtered, q, xp, vp); label=L"\Pi_s")
+    lines!(ax, x_filtered, y_filtered .+ ScalarField.Πs.(x_filtered, q, xp, vp);
+           label=L"\Pi")
+
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
-
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal,
+                 tellwidth=false, tellheight=true)
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
@@ -475,7 +515,7 @@ function plot_pifield_resolutions(i, sim1, sim2, sim4)
     return fig
 end
 
-function plot_psifield(i, sim1)
+function plot_psifield(i, sim1; F=100)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -487,10 +527,8 @@ function plot_psifield(i, sim1)
 
     # Create figure and axis
 
-    F = 2
-    L = sim1.params.L
-    x_range = (-L / F, L / F)
-    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+    x_range = (-F, F)
+    mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     x_filtered = sim1.params.x[mask]
 
     # Filter sim1 data (640 points)
@@ -504,7 +542,9 @@ function plot_psifield(i, sim1)
     # padding = 0.1 * (y_max - y_min)  # Add 10% padding
     # y_limits = (y_min - padding, y_max + padding)
 
+    q = sim1.params.q
     xp = sim1.sol.u[i].x[2][2]
+    vp = sim1.sol.u[i].x[2][3]
 
     fig = Figure(; size=(253, 200))
     ax = Axis(fig[1, 1];
@@ -514,9 +554,15 @@ function plot_psifield(i, sim1)
     #,
     #limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
     # Plot the data
-    lines!(ax, x_filtered, y1_filtered; label=L"\Psi")
+    lines!(ax, x_filtered, y1_filtered; label=L"\Psi_r")
+    lines!(ax, x_filtered, ScalarField.Ψs.(x_filtered, q, xp, vp); label=L"\Psi_s")
+    lines!(ax, x_filtered, y1_filtered .+ ScalarField.Ψs.(x_filtered, q, xp, vp);
+           linestyle=:dash, label=L"\Psi")
+
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal,
+                 tellwidth=false, tellheight=true)
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
@@ -763,7 +809,9 @@ function plot_particle_velocity(sim1)
     fig = Figure(; size=(253, 200))
     ax = Axis(fig[1, 1]; title=L"\textrm{Particle Velocity}")
     # Plot the data
-    lines!(ax, sim1.sol.t, xs1; label=L"\textrm{particle 1}")
+    # lines!(ax, sim1.sol.t, xs1; label=L"\textrm{particle 1}")
+
+    lines!(ax, sim1.sol.t, tanh.(xs1); label=L"\textrm{particle 1}")
     ax.ylabel = L"v(t)"
     ax.xlabel = L"t"
     leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
@@ -788,8 +836,14 @@ function plot_particle_mass(sim1)
 
     # Create figure and axis
     L = sim1.params.L
-    x_range = (-L / 2, L / 2)
-    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    Nosc = sim1.params.Nosc
+    k = sim1.params.k
+    T = 2π / sqrt(abs(k))
+    tf = Nosc * T
+    L0 = 2tf
+    x_range = (-L0 / 2, L0 / 2)
+
+    mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     x_filtered = sim1.params.x[mask]
 
     nt = length(sim1.sol.t)
@@ -801,20 +855,45 @@ function plot_particle_mass(sim1)
 
     k = sim1.params.k
     q = sim1.params.q
-    V(x) = InitialData.Harmonic(0.0, x, k)
+    xs = sim1.params.x
+    dx = sim1.params.dx
+    V(x) = InitialData.Harmonic(x, k)
     m0 = sim1.sol.u[1].x[2][1]
     for i in 1:nt
         z = sim1.sol.u[i].x[2][2]
-        Φ = sim1.sol.u[i].x[1][:, 3]
-        interp = PCHIPInterpolation(Φ[mask], x_filtered;
-                                    extrapolation=ExtrapolationType.Extension)
-        Φr = interp(z)
-        m2[i] = m0 - q * Φr
-        # @show z
-        # @show q * Φr
-        # @show q * V(z)
-        # @show m2[i]
-        # break
+        v = sim1.sol.u[i].x[2][3]
+        Φr = @view sim1.sol.u[i].x[1][mask, 3]
+        Πr = @view sim1.sol.u[i].x[1][mask, 1]
+        Ψr = @view sim1.sol.u[i].x[1][mask, 2]
+        interpolator_Ψ = PCHIPInterpolation(Ψr, x_filtered;
+                                            extrapolation=ExtrapolationType.Extension)
+        interpolator_Π = PCHIPInterpolation(Πr, x_filtered;
+                                            extrapolation=ExtrapolationType.Extension)
+        interpolator_Φ = PCHIPInterpolation(Φr, x_filtered;
+                                            extrapolation=ExtrapolationType.Extension)
+
+        Πrz = interpolator_Π(z)
+        Ψrz = interpolator_Ψ(z)
+        Φrz = interpolator_Φ(z)
+
+        a2 = 1.0 - v * v
+        γ = 1.0 / sqrt(a2)
+        # temp = @. q * sign.(xs .- z) * (3Π * v + Ψ * (1 + 2v^2)) / (2a2^2.5)
+        # m2[i] = (m0 + q * Φr) / a2^1.5 - trapezoidal(temp, dx)
+
+        # term1 = @. 0.25q^2 * sign.(x_filtered - z)^2 * γ^3
+
+        #term2 = @. q * sign.(xsm - z) * (3Πr * v + Ψr * (1 + 2v^2)) / (2a2^2.5)
+        # term2 = @. 0.5q * sign.(x_filtered - z) * (3Πr * v + Ψr * (1 + 2v^2)) * γ^5
+        # # term3 = @. -δ * (q * Φr) * γ^3 + term2 + term1
+        # # m = -m0 * γ^3 + trapezoidal(term3, dx)
+        # term3 = @. term2 + term1
+        # m[i] = -1 * (-(m0 + q * Φrz) * γ^3 + trapezoidal(term3, dx))
+        term2 = @. 0.5q * γ^5 * sign.(x_filtered - z) * (3Πr * v + Ψr * (1 + 2 * v^2))
+        # term3 = @. -δ * (q * Φr) * γ^3 + term2 + term1
+        # m = -m0 * γ^3 + trapezoidal(term3, dx)
+        # term3 = @. term2 + 0term1
+        m[i] = -(-(m0 + q * Φrz) * γ^3 + trapezoidal(term2, dx))
     end
 
     fig = Figure(; size=(253, 200))
@@ -822,7 +901,7 @@ function plot_particle_mass(sim1)
               title=L"\textrm{Particle Mass}")
     # Plot the data
     # lines!(ax, sim1.sol.t, m; label=L"\textrm{particle}")
-    lines!(ax, sim1.sol.t, m2; label=L"\textrm{particle mass}")
+    lines!(ax, sim1.sol.t, m; label=L"\textrm{particle mass}")
     ax.ylabel = L"m(t)"
     ax.xlabel = L"t"
     leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
@@ -1236,6 +1315,7 @@ function plot_work(sim1; F=2)
     rowgap!(fig.layout, 0)                 # Gap between plot and legend
     return fig
 end
+using RegularizationTools
 
 function plot_balance_law(sim1; F=2)
     CairoMakie.activate!()
@@ -1246,10 +1326,19 @@ function plot_balance_law(sim1; F=2)
     # Create figure and axis
     # F = 6
     L = sim1.params.L
-    x_range = (-L / F, L / F)
+    Nosc = sim1.params.Nosc
+    k = sim1.params.k
+    T = 2π / sqrt(abs(k))
+    tf = Nosc * T
+    L0 = 2tf
+    x_range2 = (-L0 / 2, L0 / 2)
+    x_range = (-L0 / 2, L0 / 2) #(-100, 100)
     @show x_range
-    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+    mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    mask2 = (sim1.params.x .>= x_range2[1]) .& (sim1.params.x .<= x_range2[2])
+
     x_filtered = sim1.params.x[mask]
+    x_filtered2 = sim1.params.x[mask2]
 
     nt = length(sim1.sol.t)
     particle_energy = zeros(nt)
@@ -1262,6 +1351,12 @@ function plot_balance_law(sim1; F=2)
     flux = zeros(nt)
     flux_analytic = zeros(nt)
     bl = zeros(nt)
+    dxTi0 = zeros(nt, length(x_filtered))
+    Hfr = zeros(nt, length(x_filtered))
+    Hfr2 = zeros(nt, length(x_filtered))
+    dHpdt_analytic = zeros(nt)
+    dHfrdt_analytic2 = zeros(nt, length(x_filtered))
+    tmp = zeros(nt, length(x_filtered))
     # fluxes2 = zeros(nt)
     # fluxes3 = zeros(nt)
     # fluxes4 = zeros(nt)
@@ -1278,7 +1373,7 @@ function plot_balance_law(sim1; F=2)
         n = length(y)
         dy = zeros(eltype(y), n)
         for i in 2:(n - 1)
-            dy[i] = (y[i - 1] - y[i + 1]) / (2h)
+            dy[i] = (y[i + 1] - y[i - 1]) / (2h)
         end
 
         dy[1] = (y[1] - y[2]) / h
@@ -1286,89 +1381,393 @@ function plot_balance_law(sim1; F=2)
         return dy
     end
     # V(x) = ScalarField.Φs(x, -q, xpot, 0.0)
-    k = sim1.params.k
+
     V(x) = InitialData.Harmonic(x, k)
     dxV(x) = InitialData.dxHarmonic(x, k)
     m0 = sim1.sol.u[1].x[2][1]
+
+    function delta(x, z, h)
+        x_left = x - h / 2
+        x_right = x + h / 2
+        return (z >= x_left && z < x_right) ? 1.0 : 0.0
+    end
     for i in 1:nt
         m = sim1.sol.u[i].x[2][1]
         z = sim1.sol.u[i].x[2][2]
         v = sim1.sol.u[i].x[2][3]
+        δ = delta.(x_filtered, z, dx)
         ## This is with Φr and z as a generalized coordinate:
         Φr = @view sim1.sol.u[i].x[1][mask, 3]
         Πr = @view sim1.sol.u[i].x[1][mask, 1]
         Ψr = @view sim1.sol.u[i].x[1][mask, 2]
 
-        interpolator_Φ = PCHIPInterpolation(Φr, x_filtered;
+        interpolator_Φ = AkimaInterpolation(Φr, x_filtered;
                                             extrapolation=ExtrapolationType.Extension)
-        interpolator_Π = PCHIPInterpolation(Πr, x_filtered;
+        interpolator_Π = AkimaInterpolation(Πr, x_filtered;
                                             extrapolation=ExtrapolationType.Extension)
-        interpolator_Ψ = PCHIPInterpolation(Ψr, x_filtered;
+        interpolator_Ψ = AkimaInterpolation(Ψr, x_filtered;
                                             extrapolation=ExtrapolationType.Extension)
 
         Φrz = interpolator_Φ(z)
         Πrz = interpolator_Π(z)
         Ψrz = interpolator_Ψ(z)
-        Φs = ScalarField.Φs.(x_filtered, q, z, v)
-        Πs = ScalarField.Πs.(x_filtered, q, z, v)
-        Ψs = ScalarField.Ψs.(x_filtered, q, z, v)
-        ∂vΠs = ScalarField.∂vΠs.(x_filtered, q, z, v)
-        ∂vΨs = ScalarField.∂vΨs.(x_filtered, q, z, v)
+        # Φrz = Φr .* δ
+        # Πrz = Πr .* δ
+        # Ψrz = Ψr .* δ
+
+        Φs = ScalarField.Φs.(x_filtered, z, v, q)
+        Πs = ScalarField.Πs.(x_filtered, z, v, q)
+        Ψs = ScalarField.Ψs.(x_filtered, z, v, q)
+
+        ∂vΦs = ScalarField.Φs001.(x_filtered, z, v, q)
+        ∂vΠs = ScalarField.Πs001.(x_filtered, z, v, q)
+        ∂vΨs = ScalarField.Ψs001.(x_filtered, z, v, q)
+        ∂zΠs = ScalarField.Πs010.(x_filtered, z, v, q)
+        ∂xΨs = ScalarField.Ψs100.(x_filtered, z, v, q)
+
         dxΠr = deriv(Πr, dx)
         dxΨr = deriv(Ψr, dx)
 
         a2 = 1.0 - v * v
         γ = 1.0 / sqrt(a2)
+        signxz = sign.(x_filtered .- z)
+
+        δ2 = delta.(x_filtered2, z, dx)
+        ## This is with Φr and z as a generalized coordinate:
+        Φr2 = @view sim1.sol.u[i].x[1][mask2, 3]
+        Πr2 = @view sim1.sol.u[i].x[1][mask2, 1]
+        Ψr2 = @view sim1.sol.u[i].x[1][mask2, 2]
+
+        interpolator_Φ2 = ConstantInterpolation(Φr2, x_filtered;
+                                                extrapolation=ExtrapolationType.Extension)
+        interpolator_Π2 = ConstantInterpolation(Πr2, x_filtered;
+                                                extrapolation=ExtrapolationType.Extension)
+        interpolator_Ψ2 = ConstantInterpolation(Ψr2, x_filtered;
+                                                extrapolation=ExtrapolationType.Extension)
+
+        Φrz2 = interpolator_Φ2(z)
+        Πrz2 = interpolator_Π2(z)
+        Ψrz2 = interpolator_Ψ2(z)
+        # Φrz = Φr .* δ
+        # Πrz = Πr .* δ
+        # Ψrz = Ψr .* δ
+
+        Φs2 = ScalarField.Φs.(x_filtered2, z, v, q)
+        Πs2 = ScalarField.Πs.(x_filtered2, z, v, q)
+        Ψs2 = ScalarField.Ψs.(x_filtered2, z, v, q)
+
+        ∂vΦs2 = ScalarField.Φs001.(x_filtered2, z, v, q)
+        ∂vΠs2 = ScalarField.Πs001.(x_filtered2, z, v, q)
+        ∂vΨs2 = ScalarField.Ψs001.(x_filtered2, z, v, q)
+        ∂zΠs2 = ScalarField.Πs010.(x_filtered2, z, v, q)
+        ∂xΨs2 = ScalarField.Ψs100.(x_filtered2, z, v, q)
+
+        dxΠr2 = deriv(Πr2, dx)
+        dxΨr2 = deriv(Ψr2, dx)
+
+        signxz2 = sign.(x_filtered2 .- z)
+
+        ### calculate Acceleration
+        term1 = @. -q^2 * signxz2^2 / (4(-1 + v^2)^3)
+        term2 = @. q * signxz2 * (3Πr2 * v + Ψr2 * (1 + 2v^2)) / (2a2^2.5)
+        # term3 = @. -δ2 * (q * Φr2) * γ^3 + term2 + term1
+        # m = -m0 * γ^3 + trapezoidal(term3, dx)
+        term3 = @. term2 + 0term1
+        m = -(m0 + q * Φrz2) * γ^3 + trapezoidal(term3, dx)
+
+        temp = @. -0.5q * signxz2 * (v * dxΠr2 + dxΨr2) * γ^3
+        # numerator = @. q * δ2 * (Ψr2 * v^2 - dxV.(x_filtered2) * a2^1.5 + Πr2 * v) * γ^3 +
+        #                temp
+        # acc = trapezoidal(numerator, dx) / m
+        numerator = q * (Ψrz2 * v^2 + Πrz2 * v) * γ^3 + q * dxV(z) +
+                    trapezoidal(temp, dx)
+        acc = numerator / m
+        ####
 
         kinetic[i] = γ * m0
-        potential[i] = -q * V(z)
-        self_potential[i] = -γ * q * Φrz
-
+        potential[i] = q * V(z) # trapezoidal(q * V.(x_filtered) .* δ, dx)
+        self_potential[i] = γ * q * Φrz # trapezoidal(γ * q * Φr .* δ, dx)
         particle_energy[i] = kinetic[i] + potential[i] + self_potential[i]
         Π = Πr .+ Πs
         Ψ = Ψr .+ Ψs
+        Φ = Φr .+ Φs
+
+        tmp = @. 0.5((Πr + Πs)^2 + Ψ^2) +
+                 v * (Π * ∂vΠs -
+                      Ψ * ∂vΨs)
+        regular_field_energy[i] = γ * (m0 + q * Φrz) + q * V(z) + trapezoidal(tmp, dx)
         ## This is with Φr and z as a generalized coordinate:
-        Hfr = @. Πr * Π + 0.5 * (-Π^2 + Ψ^2) + v * (Π * ∂vΠs - Ψ * ∂vΨs)
-        regular_field_energy[i] = trapezoidal(Hfr, dx)
-        tmp = @. Ψ * dxΠr + Πr * dxΨr
-        dHfrdt_analytic[i] = trapezoidal(tmp, dx) + q * v^2 * Πrz * γ
+        # Hfr[i, :] .= @. Πr * Π + 0.5 * (-Π^2 + Ψ^2) + v * (Π * ∂vΠs - Ψ * ∂vΨs)
+        # Hfr[i, :] .= @. 0.5(Πr^2 - 2Πr * v * ∂vΠs + Ψr * Ψr + 2Ψr * Ψs - Ψr * 2v * ∂vΨs)
+        # term1 = @. -q * signxz * (Πr * v - Ψr * (1 - 2v^2)) / (2a2^1.5)
+        # term1 = @. -0.5q * (Πr * v + Ψr * (-1 + 2v^2)) * γ^3
+
+        # ##################################################################################
+        # term2 = -q^2 * (-1 + 2v^2) / (8 * (-1 + v^2)) ## this term is the missing piece
+        # # term2 = -0.5q^2 * v^2  ## this term is the missing piece
+        # # D[(-1 + 2 v[t]^2)/(8 (-1 + v[t]^2)), t] // FullSimplifyterm2 = -v * acc / (4(-1 + v^2)^2)
+        # ## but I dont remember how I derived IT !!!!
+        # ##
+        # # @show term2
+        # # Hfr[i, :] .= term1
+        # Hfr[i, :] .= @. 0.5 * (Πr^2 + Ψr^2) + signxz * term1 #+ term2 # + q^2 / 8# + q * V.(x_filtered) .* δ +
+        # # γ * q * Φr .* δ + δ * γ * m0 #+ term2
+
+        # ρ = q * δ
+        # L = @. -ρ * V.(x_filtered) + 0.5 * (Π^2 - Ψ^2) - δ * m0 * sqrt(a2) -
+        #        ρ * Φ * sqrt(a2)
+        # DLdΠr = Π
+        # ## maybe m0 should get removed?
+        # # DLdz = @. Π * ∂vΠs + γ * ((δ * m0 + ρ * Φ) * v - ρ * a2 * ∂vΦs) - Ψ * ∂vΨs
+        # DLdz = @. Π * ∂vΠs + γ * ((δ * m0 + ρ * Φ) * v - ρ * a2 * ∂vΦs) - Ψ * ∂vΨs
+        # # DLdz = @. δ * m0 * v * γ + γ * ρ * Φ * v + Π * ∂vΠs - ρ * sqrt(a2) * ∂vΦs -
+        # #           Ψ * ∂vΨs -
+        # #           γ^3 * V.(x_filtered) *
+        # #           (-∂zΠs +
+        # #            v * (-a2 * ScalarField.Πs011.(x_filtered, z, v, q) +
+        # #                 ScalarField.Ψs100.(x_filtered, z, v, q)) +
+        # #            a2 * ScalarField.Ψs101.(x_filtered, z, v, q)) -
+        # #           γ^2 * Φ *
+        # #           (-ScalarField.Πs010.(x_filtered, z, v, q) +
+        # #            v * (-a2 * ScalarField.Πs011.(x_filtered, z, v, q) +
+        # #                 ScalarField.Ψs100.(x_filtered, z, v, q)) +
+        # #            a2 * ScalarField.Ψs101.(x_filtered, z, v, q))
+
+        # temp1 = @. (1 / 8) * (q^2 * signxz^2)
+        # Hfr[i, :] .= @. 0.5 * (Πr^2 + Ψr^2) * γ^2 + signxz * term1 +
+        #                 abs.(x_filtered .- z) * δ * q^2 + temp1
+        # #Hfr[i, :] .= @. DLdΠr * Πr + DLdz * v - L
+        # # Hfr[i, :] .-= Hfr[i, 1]
+        # # D[H,t] + D[Ti0,x]
+        # #
+        # bl[i] = 2q * v * dxV(z) - 0.5q * v * γ^3 * (Πrz * v + Ψrz * (-1 + 2v^2))
+        # # D[H,t] only
+        # # bl[i] = -0.5 * γ^3 *
+        # #         (q * Φrz * v * (-1 + 2v^2) + q * Πrz * (-2 + 3v^2) +
+        # #          (-1 + v^2) * (4q * dxV(z) * v * sqrt(a2))) +
+        # #         0.5 * γ^3 * a2 *
+        # #         trapezoidal(q .* signxz .* dxΠr .+ 2sqrt(a2) .* (Ψr .* dxΠr .+ Πr .* dxΨr),
+        # #                     dx)
+        # # Hfr[i, :] .= Hfr[i, :] .- Hfr[i, 1]
+        # # regular_field_energy[i] = q * V(z) + m0 * γ + q * Φrz * γ +
+        # #                           trapezoidal(Hfr[i, :], dx)
+        # regular_field_energy[i] = m0 * γ + trapezoidal(Hfr[i, :], dx)
+        # # @show regular_field_energy[i]
+        # ## After substituting particle and field eq.of.motion
+        # # dHfrdt_analytic2[i, :] .= @. Ψr * dxΠr + Πr * dxΨr +
+        # #                              q * γ * Πr * δ +
+        # #                              0.5q * γ * signxz * dxΠr
+
+        # ## After substituting field eq.of.motion only (no particle eqs)
+
+        # denom = 2a2^2.5
+        # # dHfrdt_analytic2[i, :] .= @. (-2q * δ * dxV.(x_filtered) * v * a2^2.5 +
+        # #                               +2q * δ * Φr * v * a2 * acc + q * signxz * a2 * dxΠr -
+        # #                               2q * signxz * v^2 * a2 * dxΠr -
+        # #                               Ψr * (2q * δ * v^5 + q * signxz * v * acc -
+        # #                                     2q * v^3 * (δ - signxz * acc) - 2sqrt(a2) * dxΠr +
+        # #                                     4v^2 * sqrt(a2) * dxΠr - 2v^4 * sqrt(a2) * dxΠr) -
+        # #                               q * signxz * v * a2 * dxΨr +
+        # #                               Πr *
+        # #                               (2v^4 * sqrt(a2) * dxΨr + 2(q * δ + sqrt(a2)dxΨr) -
+        # #                                v^2 *
+        # #                                (2q * δ + 3q * signxz * acc + 4sqrt(a2) * dxΨr))) /
+        # #                              denom +
+        # #                              δ * m0 * v * acc / a2^1.5
+
+        # ######### field part only
+        # #########
+        # ######### sign^2 term after substituting acceleration
+        # tmp = @. q^3 * signxz * v * (v * dxΠr + dxΨr) /
+        #          ((4(-1 + v^2)^2 * (2m0 * (-1 + v^2) + 2q * δ * Φr * (-1 + v^2) +
+        #                             q * signxz * (Ψr + 3Πr * v + 2Ψr * v^2))))
+
+        # # dHfrdt_analytic2[i, :] .= @. (Ψr * (2sqrt(a2) * dxΠr +
+        # #                                     v * (q * δ * (-1 + 3v^2 - 2v^4) -
+        # #                                          q * signxz * (1 + 2v^2) * acc -
+        # #                                          4v * sqrt(a2) * dxΠr + 2v^3 * sqrt(a2) * dxΠr)) +
+        # #                               q * signxz * (-1 + v^2) *
+        # #                               ((-1 + 2v^2) * dxΠr + v * dxΨr) +
+        # #                               Πr * (2sqrt(a2) * dxΨr +
+        # #                                     v^2 *
+        # #                                     (q * δ - 3q * signxz * acc - 4sqrt(a2) * dxΨr) +
+        # #                                     v^4 * (-q * δ + 2sqrt(a2) * dxΨr))) / denom # -
+        # # # q^2 * v * acc / (4a2^3)
+        # dHfrdt_analytic2[i, :] .= @. 0.5 *
+        #                              (-q * δ * Ψr * v / a2^1.5 + q * δ * Πr * v^2 / a2^1.5) +
+        #                              q * δ * Ψr * v^3 / a2^1.5 + tmp + Ψr * dxΠr +
+        #                              Πr * dxΨr -
+        #                              0.5(q * signxz *
+        #                                  (3Πr * v^2 * acc + Ψr * v * (1 + 2v^2) * acc +
+        #                                   a2 * ((-1 + 2v^2) * dxΠr + v * dxΨr)))
+
+        # ## D[Hf,t] with substitutions, but not substituting acceleration
+        # ## agrees with my pure numerical results
+        # ## so not subtracting stuff
+        # ## if I put the sign^2 term to zero, it agrees with the expression above. and
+        # ## cancels with the fluxes
+        # temp = @. Ψr * dxΠr + Πr * dxΨr +
+        #           signxz * (-0.5q * γ^5 *
+        #                     (3Πr * v^2 * acc + Ψr * v * (1 + 2v^2) * acc +
+        #                      a2 * ((-1 + 2v^2) * dxΠr + v * dxΨr))) +
+        #           0signxz^2 * (q^2 * v * acc) / (4 * (-1 + v^2)^3)
+        # dHfrdt_analytic[i] = 0.5q * v * γ^3 * (Πrz * v + Ψrz * (-1 + 2 * v^2)) +
+        #                      trapezoidal(temp, dx)
+
+        # dHpdt_analytic[i] = -(-q * dxV(z) * v * a2^1.5 -
+        #                       v * ((m0 + q * Φrz) * acc + q * a2 * Ψrz) + q * a2 * Πrz) /
+        #                     a2^1.5
+
+        # dHfrdt_analytic[i] = trapezoidal(dHfrdt_analytic2[i, :], dx)
         Ti0 = -Πr .* Ψ
-        dxTi0 = @. -Ψ * dxΠr + Πr * (-dxΨr)
-        tmp2 = @. -Ψ * dxΠr - Πr * dxΨr
-        flux_analytic[i] = trapezoidal(tmp2, dx) - q * Πrz * γ
-        flux[i] = trapezoidal(dxTi0, dx) - q * γ * Πrz
-        # bl[i] = -q * γ * Πrz
-        bl[i] = -q * sqrt(a2) * Πrz
+        #intTi0 = AkimaInterpolation(Ti0, x_filtered)
+        #dxti0(x) = derivative(intTi0, x, 1)
+        #dxTi0[i, :] .= dxti0.(x_filtered)
+        dxTi0[i, :] .= deriv(Ti0, dx)
+
+        tmp2 = @. -Ψ * dxΠr - Πr * (dxΨr + ∂xΨs)
+        flux_analytic[i] = Ti0[end] - Ti0[begin] # trapezoidal(tmp2, dx)
+        flux[i] = trapezoidal(dxTi0[i, :], dx)
+        bl[i] = regular_field_energy[i] + flux[i]
     end
 
-    Ep = PCHIPInterpolation(particle_energy, sim1.sol.t)
-    dEdtp(t) = derivative(Ep, t, 1)
+    # Ep = AkimaInterpolation(particle_energy, sim1.sol.t)
+    # dEdtp(t) = derivative(Ep, t, 1)
 
-    Er = PCHIPInterpolation(regular_field_energy, sim1.sol.t)
+    Er = AkimaInterpolation(regular_field_energy, sim1.sol.t)
     dEdtr(t) = derivative(Er, t, 1)
-    dEdtr2 = deriv(regular_field_energy, dt)
 
+    function time_derivative(y, h, ti)
+        nt, nx = size(y)
+        dy = zeros(eltype(y), nx)
+        if ti == -1
+            ti = nt
+        end
+
+        if ti == 1
+            dy[:] .= @. (y[1, :] - y[2, :]) / h
+        elseif ti == nt
+            dy[:] .= @. (y[nt - 1, :] - y[nt, :]) / h
+        else
+            dy[:] .= @. (y[ti + 1, :] - y[ti - 1, :]) / (2h)
+        end
+        return dy
+    end
     fig = Figure(; size=(2 * 253, 2 * 200))
     ax = Axis(fig[1, 1];
               title=L"\textrm{Energy}")
     # Plot the data
+    # ylims!(ax, -0.0001, 0.0001)
+    # lines!(ax, sim1.sol.t, dEdtp.(sim1.sol.t); label="dEpdt")
+    # lines!(ax, sim1.sol.t, bl; label="fa")
+    ti = 100
+    # lines!(ax, x_filtered, time_derivative(Hfr, dt, ti) .+ dxTi0[ti, :];
+    #        label="Balance with dHfrdt")
 
-    lines!(ax, sim1.sol.t, dEdtp.(sim1.sol.t); label="dEpdt")
-    # lines!(ax, sim1.sol.t, dEdtr2;
+    # lines!(ax, x_filtered, time_derivative(Hfr, dt, ti) .+ dxTi0[ti, :];
+    #        label="adf")
+
+    # lines!(ax, x_filtered,
+    #        time_derivative(Hfr, dt, ti);
+    #        label="dHfrdt")
+    # lines!(ax, x_filtered, dHfrdt_analytic2[ti, :]; label="analytic",
+    #        linestyle=:dash)
+
+    # lines!(ax, x_filtered, dxTi0[ti, :];
+    #        label="dxTi0")
+    # lines!(ax, x_filtered,
+    #        time_derivative(Hfr, dt, ti) .+ dxTi0[ti, :];
+    #        label="dHfrdt")
+    # lines!(ax, x_filtered, dHfrdt_analytic2[ti, :] .+ dxTi0[ti, :]; label="analytic",
+    #        linestyle=:dash)
+
+    # lines!(ax, x_filtered[(end - 200):end], Hfr[ti, (end - 200):end];
+    #        label="Hfr")
+
+    # tmp = time_derivative(Hfr, dt, ti) .- dHfrdt_analytic2[ti, :]
+    # @show tmp[1:5]
+
+    # lines!(ax, x_filtered, tmp;
+    #        label="num-analytic",
+    #        linestyle=:dash)
+
+    # lines!(ax, x_filtered, tmp[ti, :]; label="tmp")
+
+    # lines!(ax, x_filtered, dHfrdt_analytic2[ti, :] .+ dxTi0[ti, :]; label="balance")
+    # lines!(ax, x_filtered, dxTi0[ti, :]; label="dxTi0")
+    # lines!(ax, x_filtered[1:300], Hfr[ti - 1, 1:300]; label="dHfrdt")
+    # lines!(ax, x_filtered[1:300], Hfr[ti + 1, 1:300]; label="dHfrdt")
+    # lines!(ax, x_filtered[1:300], Hfr2[ti - 1, 1:300]; label="dxTi0")
+    # lines!(ax, x_filtered[1:300], Hfr2[ti + 2, 1:300]; label="dxTi0")
+    # @show regular_field_energy[1]
+    # lines!(ax, sim1.sol.t, regular_field_energy .- regular_field_energy[1];
+    #        label=L"field energy")
+    # lines!(ax, sim1.sol.t, particle_energy .- particle_energy[1]; label=L"particle energy")
+    # lines!(ax, sim1.sol.t,
+    #        regular_field_energy .+ particle_energy .- 0particle_energy[1] .-
+    #        0regular_field_energy[1];
+    #        label=L"Total energy")
+    # function filter(y, e)
+    #     n = length(y)
+    #     for i in 2:(n - 1)
+    #         if abs(y[i]) > e
+    #             y[i] = 0.5(y[i - 1] + y[i + 1])
+    #         end
+    #     end
+    #     if abs(y[1]) > e
+    #         y[1] = 0.0
+    #     end
+    #     return y
+    # end
+    # y = deriv(regular_field_energy .+ 0particle_energy, dt)
+    # A = RegularizationSmooth(filter(y, 0.0004), sim1.sol.t, 3; alg=:gcv_svd)
+    # yhat = A.û
+
+    # lines!(ax, sim1.sol.t, yhat;
+    #        label=L"\textrm{total_energy FD}")
+    # lines!(ax, sim1.sol.t, yhat;
     #        label=L"\textrm{total_energy FD}")
 
     # lines!(ax, sim1.sol.t, dEdtr.(sim1.sol.t);
     #        label=L"\textrm{total_energy int}")
-    lines!(ax, sim1.sol.t, dHfrdt_analytic;
-           label=L"\textrm{dHdt analytic}")
-    lines!(ax, sim1.sol.t, flux;
-           label=L"\textrm{flux}")
-    lines!(ax, sim1.sol.t, dHfrdt_analytic .+ flux;
-           label="total")
-    lines!(ax, sim1.sol.t, bl;
-           label="total analytic")
-    lines!(ax, sim1.sol.t, flux_analytic;
-           label="flux analytic")
+    # lines!(ax, sim1.sol.t, dHfrdt_analytic;
+    #        label=L"\textrm{dHfrdt analytic}")
+
+    # lines!(ax, sim1.sol.t, dEdtp.(sim1.sol.t);
+    #        label=L"\textrm{particle_energy dt}")
+    # lines!(ax, sim1.sol.t, dHpdt_analytic;
+    #        label=L"\textrm{particle_energy dt analytic}")
+    lines!(ax, sim1.sol.t[10:end], dEdtr.(sim1.sol.t[10:end]);
+           label=L"\textrm{dHdt}")
+    lines!(ax, sim1.sol.t, regular_field_energy .- regular_field_energy[1];
+           label=L"\textrm{H}")
+
+    # lines!(ax, sim1.sol.t, dEdtr.(sim1.sol.t) .+ dEdtp.(sim1.sol.t);
+
+    #        label=L"\textrm{dt total energy num}")
+    # lines!(ax, sim1.sol.t, dHfrdt_analytic .+ dHpdt_analytic;
+    #        label=L"\textrm{dt total energy analytic}")
+    # lines!(ax, sim1.sol.t, bl; linestyle=:dash,
+    #        label=L"\textrm{bl}")
+
+    ######
+    # lines!(ax, sim1.sol.t, flux_analytic; label=L"\textrm{fluxes}")
+    # lines!(ax, sim1.sol.t, flux; label=L"\textrm{flux}")
+
+    # lines!(ax, sim1.sol.t, deriv(particle_energy, dt);
+    #        label=L"\textrm{particle deriv}")
+    # lines!(ax, sim1.sol.t, dHfrdt_analytic;
+    #        label=L"\textrm{dHdt analytic}")
+    # lines!(ax, sim1.sol.t, dHfrdt_analytic + flux;
+    #        label="total")
+    # lines!(ax, sim1.sol.t, deriv(regular_field_energy .+ particle_energy, dt) + flux;
+    #        label="total")
+
+    # lines!(ax, sim1.sol.t, flux_analytic;
+    #        label="flux analytic")
+
+    # lines!(ax, sim1.sol.t, deriv(regular_field_energy, dt) .+ flux_analytic;
+    #        label="balance")
 
     # lines!(ax, sim1.sol.t, fluxes1; linestyle=:dash,
     #        label=L"\textrm{T_r^{i0}}")
