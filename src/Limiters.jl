@@ -40,11 +40,11 @@ end
 
 ## Slope limiters
 
-@inline function superbee(σd, σu)
-    σ1 = minmod(σd, 2σu)
-    σ2 = minmod(2σd, σu)
-    return maxmod(σ1, σ2)
-end
+# @inline function superbee(σd, σu)
+#     σ1 = minmod(σd, 2σu)
+#     σ2 = minmod(2σd, σu)
+#     return maxmod(σ1, σ2)
+# end
 
 @inline function upwind(σ1::T, σ2::T) where {T}
     return zero(σ1)
@@ -78,16 +78,42 @@ end
     return max(zero(θ), min(one(θ), 2θ), min(2.0, θ))
 end
 
+@inline function superbee(a, b)
+    ab = a / b
+    if isnan(ab)
+        return zero(a)
+    else
+        return superbee(ab) * b
+    end
+end
+
 @inline function MC(θ)
     return max(zero(θ), min((one(θ) + θ) * 0.5, 2.0, 2θ))
+end
+
+@inline function MC(a, b)
+    ab = a / b
+    if isnan(ab)
+        return zero(a)
+    else
+        return MC(ab) * b
+    end
 end
 
 @inline function vanLeer(θ)
     return (θ + abs(θ)) / (one(θ) + abs(θ))
 end
 
+@inline function vanLeer(a, b)
+    return vanLeer(a / b) * b
+end
+
 @inline function koren(θ)
     return max(zero(θ), min(2θ, min((one(θ) + 2θ) / 3, 2.0)))
+end
+
+@inline function koren(a, b)
+    return koren(a / b) * b
 end
 
 @inline function ospre(θ)
@@ -95,17 +121,33 @@ end
     return (1.5 * (θ2 + θ)) / (θ2 + θ + one(θ))
 end
 
+@inline function ospre(a, b)
+    return ospre(a, b) * b
+end
+
 @inline function vanAlbada(θ)
     θ2 = θ * θ
     return (θ2 + θ) / (θ2 + one(θ))
+end
+
+@inline function vanAlbada(a, b)
+    return vanAlbada(a / b) * b
 end
 
 @inline function umist(θ)
     return max(zero(θ), min(2θ, 0.25 + 0.75θ, 0.75 + 0.25θ, 2.0))
 end
 
+@inline function umist(a, b)
+    return umist(a / b) * b
+end
+
 @inline function muscl(θ)
     return max(zero(θ), min(one(θ) + θ, 2.0, 2θ))
+end
+
+@inline function muscl(a, b)
+    return muscl(a / b) * b
 end
 
 end #end of module

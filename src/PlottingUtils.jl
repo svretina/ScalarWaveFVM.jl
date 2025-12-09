@@ -14,7 +14,7 @@ const PAPER_PATH = "/home/svretina/PhD/mypapers/ScalarSelfForcePaper"
 const PAPER_FIG_PATH = joinpath(PAPER_PATH, "figs")
 
 export mytheme_aps, mymean, name_potential, name_interacting, name_forced,
-       name_analytic_potential, opposite_charges
+       name_analytic_potential
 export FIG_PATH, PAPER_FIG_PATH
 
 function name_potential(pre, sim, post=nothing)
@@ -148,8 +148,8 @@ function mytheme_aps()
                  ;
                  Axis=Attributes(; spinewidth=1.1,
                                  xgridvisible=false,
-                                 xlabelpadding=-2,
-                                 xlabelsize=10,
+                                 xlabelpadding=-0,
+                                 xlabelsize=12,
                                  xminortickalign=1,
                                  xminorticks=IntervalsBetween(5, true),
                                  xminorticksize=3,
@@ -162,14 +162,14 @@ function mytheme_aps()
                                  xtickwidth=0.8,
                                  ygridvisible=false,
                                  ylabelpadding=2,
-                                 ylabelsize=10,
+                                 ylabelsize=12,
                                  yminortickalign=1,
                                  yminorticks=IntervalsBetween(5, true),
                                  yminorticksize=3,
                                  yminorticksvisible=true,
                                  yminortickwidth=0.75,
                                  ytickalign=1,
-                                 yticklabelsize=8,
+                                 yticklabelsize=10,
                                  yticksize=5,
                                  yticksmirrored=true,
                                  ytickwidth=0.8,

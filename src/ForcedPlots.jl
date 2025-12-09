@@ -33,6 +33,7 @@ function deriv(y, h)
 end
 
 function plot_pifield_resolutions(i, sim1, sim2, sim4, F=8, paper=false)
+    CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     t1 = sim1.sol.t[i]
@@ -66,7 +67,7 @@ function plot_pifield_resolutions(i, sim1, sim2, sim4, F=8, paper=false)
     padding = 0.1 * (y_max - y_min)  # Add 10% padding
     y_limits = (y_min - padding, y_max + padding)
 
-    xp, _, _ = ParticleMotion.oscillator(t, sim1.params.x0, sim1.params.A, sim1.params.ω)
+    xp, _, _ = ParticleMotion.oscillator(t, sim1.params.z0, sim1.params.A, sim1.params.ω)
 
     fig = Figure(; size=(253, 200))
     ax = Axis(fig[1, 1];
@@ -100,7 +101,260 @@ function plot_pifield_resolutions(i, sim1, sim2, sim4, F=8, paper=false)
     return fig
 end
 
+function plot_total_pifield(i, sim1, F=2, paper=false)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+    # Get time points and assert equality
+    t = sim1.sol.t[i]
+
+    # Create figure and axis
+
+    L = sim1.params.L
+    x_range = (-L / F, L / F)
+    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+    x_filtered = sim1.params.x[mask]
+
+    xp, vp, _ = ParticleMotion.oscillator(t, sim1.params.z0, sim1.params.A, sim1.params.ω)
+    Pis = ScalarField.Πs.(x_filtered, xp, vp, sim1.params.q)
+    # Filter sim1 data (640 points)
+    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    x1_filtered = sim1.params.x[mask1]  # ~320 elements if symmetric around 0
+    y1_filtered = Pis .+ sim1.sol.u[i][mask1, 1]  # Matches x1_filtered length
+
+    # Compute y-limits with padding
+    y_min = minimum(y1_filtered)
+    y_max = maximum(y1_filtered)
+    padding = round(0.1 * (y_max - y_min); digits=3)  # Add 10% padding
+    y_limits = round.((y_min - padding, y_max + padding); digits=3)
+
+    @show padding
+    @show y_limits
+    @show y_max
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"x",
+              ylabel=L"\Pi",
+              title=L"t=%$(round(t, digits=3))",
+              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+    # Plot the data
+    lines!(ax, x_filtered, y1_filtered)
+    # lines!(ax, x_filtered, sim1.sol.u[i][mask1, 1])
+    vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+    # Add legend at the bottom
+    # leg = Legend(fig[2, 1],
+    #              ax;
+    #              orientation=:horizontal,
+    #              tellwidth=false,
+    #              tellheight=true,)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    #rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    # Save the figure
+    savename = name("forced_motion/pifield_forced", sim1, "i=$(i)")
+    save(joinpath(FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+    return fig
+end
+
+function plot_total_psifield(i, sim1, F=2, paper=false)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+    # Get time points and assert equality
+    t = sim1.sol.t[i]
+
+    # Create figure and axis
+
+    L = sim1.params.L
+    x_range = (-L / F, L / F)
+    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+    x_filtered = sim1.params.x[mask]
+
+    xp, vp, _ = ParticleMotion.oscillator(t, sim1.params.z0, sim1.params.A, sim1.params.ω)
+    Psis = ScalarField.Ψs.(x_filtered, xp, vp, sim1.params.q)
+    # Filter sim1 data (640 points)
+    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    x1_filtered = sim1.params.x[mask1]  # ~320 elements if symmetric around 0
+    y1_filtered = Psis .+ sim1.sol.u[i][mask1, 2]  # Matches x1_filtered length
+
+    # Compute y-limits with padding
+    y_min = minimum(y1_filtered)
+    y_max = maximum(y1_filtered)
+    padding = round(0.1 * (y_max - y_min); digits=3)  # Add 10% padding
+    y_limits = round.((y_min - padding, y_max + padding); digits=3)
+
+    @show padding
+    @show y_limits
+    @show y_max
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"x",
+              ylabel=L"\Psi",
+              title=L"t=%$(round(t, digits=3))",
+              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+    # Plot the data
+    lines!(ax, x_filtered, y1_filtered)
+    lines!(ax, x_filtered, sim1.sol.u[i][mask1, 2])
+    vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+    # Add legend at the bottom
+    # leg = Legend(fig[2, 1],
+    #              ax;
+    #              orientation=:horizontal,
+    #              tellwidth=false,
+    #              tellheight=true,)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    #rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    # Save the figure
+    savename = name("forced_motion/psifield_forced", sim1, "i=$(i)")
+    save(joinpath(FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+    return fig
+end
+
+function plot_total_phifield(i, sim1, F=2, paper=false)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+    # Get time points and assert equality
+    t = sim1.sol.t[i]
+
+    # Create figure and axis
+
+    L = sim1.params.L
+    x_range = (-L / F, L / F)
+    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+    x_filtered = sim1.params.x[mask]
+
+    xp, vp, _ = ParticleMotion.oscillator(t, sim1.params.z0, sim1.params.A, sim1.params.ω)
+    Phis = ScalarField.Φs.(x_filtered, xp, vp, sim1.params.q)
+    # Filter sim1 data (640 points)
+    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    x1_filtered = sim1.params.x[mask1]  # ~320 elements if symmetric around 0
+    y1_filtered = Phis .+ sim1.sol.u[i][mask1, 3]  # Matches x1_filtered length
+
+    # Compute y-limits with padding
+    y_min = minimum(y1_filtered)
+    y_max = maximum(y1_filtered)
+    padding = round(0.1 * (y_max - y_min); digits=3)  # Add 10% padding
+    y_limits = round.((y_min - padding, y_max + padding); digits=3)
+
+    @show padding
+    @show y_limits
+    @show y_max
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"x",
+              ylabel=L"\Phi",
+              title=L"t=%$(round(t, digits=3))",
+              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+    # Plot the data
+    lines!(ax, x_filtered, y1_filtered)
+    # lines!(ax, x_filtered, sim1.sol.u[i][mask1, 3])
+    vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+    # Add legend at the bottom
+    # leg = Legend(fig[2, 1],
+    #              ax;
+    #              orientation=:horizontal,
+    #              tellwidth=false,
+    #              tellheight=true,)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    #rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    # Save the figure
+    savename = name("forced_motion/phifield_forced", sim1, "i=$(i)")
+    save(joinpath(FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+    return fig
+end
+
+function plot_total_pifield_resolutions(i, sim1, sim2, sim4, F=8, paper=false)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+    # Get time points and assert equality
+    t1 = sim1.sol.t[i]
+    t2 = sim2.sol.t[2i - 1]
+    t4 = sim4.sol.t[4i - 3]
+    @assert t1 == t2
+    @assert t2 == t4
+    t = t1
+
+    # Create figure and axis
+
+    L = sim1.params.L
+    x_range = (-L / F, L / F)
+    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+    x_filtered = sim1.params.x[mask]
+
+    xp, vp, _ = ParticleMotion.oscillator(t, sim1.params.z0, sim1.params.A, sim1.params.ω)
+    Pis = ScalarField.Πs.(x_filtered, xp, vp, sim1.params.q)
+    # Filter sim1 data (640 points)
+    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    x1_filtered = sim1.params.x[mask1]  # ~320 elements if symmetric around 0
+    y1_filtered = Pis .+ sim1.sol.u[i][mask1, 1]  # Matches x1_filtered length
+
+    y2_raw = mymean(sim2.sol.u[2i - 1][:, 1])  # ~640 elements
+    y2_filtered = Pis .+ y2_raw[mask1]           # Should reduce to ~320 elements
+
+    y4_raw = mymean(mymean(sim4.sol.u[4i - 3][:, 1]))  # ~1280 elements
+    y4_filtered = Pis .+ y4_raw[mask1]   # Should reduce to ~320 elements
+
+    # Compute y-limits with padding
+    y_min = minimum([minimum(y1_filtered), minimum(y2_filtered), minimum(y4_filtered)])
+    y_max = maximum([maximum(y1_filtered), maximum(y2_filtered), maximum(y4_filtered)])
+    padding = round(0.1 * (y_max - y_min); digits=3)  # Add 10% padding
+    y_limits = round.((y_min - padding, y_max + padding); digits=3)
+
+    @show padding
+    @show y_limits
+    @show y_max
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"x",
+              ylabel=L"\Pi",
+              title=L"t=%$(round(t, digits=3))",
+              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+    # Plot the data
+    lines!(ax, x_filtered, y1_filtered; label=L"\textrm{low}")
+    lines!(ax, x_filtered, y2_filtered; label=L"\textrm{mid}")
+    lines!(ax, x_filtered, y4_filtered; label=L"\textrm{high}")
+    vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+    # Add legend at the bottom
+    leg = Legend(fig[2, 1],
+                 ax;
+                 orientation=:horizontal,
+                 tellwidth=false,
+                 tellheight=true,)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    # Save the figure
+    savename = name("forced_motion/pifield_res_forced", sim1, "i=$(i)")
+    save(joinpath(FIG_PATH, savename), fig)
+    if paper
+        save(joinpath(PAPER_FIG_PATH, savename), fig)
+    end
+    return fig
+end
+
 function plot_psifield_resolutions(i, sim1, sim2, sim4, F=8, paper=false)
+    CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     t1 = sim1.sol.t[i]
@@ -161,7 +415,7 @@ function plot_psifield_resolutions(i, sim1, sim2, sim4, F=8, paper=false)
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
     savename = name("forced_motion/psifield_res_forced", sim1, "i=$(i)")
-    save(joinpath(FIG_PATH, savename), fig)
+    # save(joinpath(FIG_PATH, savename), fig)
     if paper
         save(joinpath(PAPER_FIG_PATH, savename), fig)
     end
@@ -169,6 +423,7 @@ function plot_psifield_resolutions(i, sim1, sim2, sim4, F=8, paper=false)
 end
 
 function plot_pifield_diff(i, sim1, sim2, sim4, F=8, paper=false)
+    CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     t1 = sim1.sol.t[i]
@@ -203,7 +458,7 @@ function plot_pifield_diff(i, sim1, sim2, sim4, F=8, paper=false)
     # Compute y-limits with padding
     y_min = minimum([minimum(diff1), minimum(diff2)])
     y_max = maximum([maximum(diff1), maximum(diff2)])
-    padding = 0.1 * (y_max - y_min)  # Add 10% padding
+    padding = 0.2 * (y_max - y_min)  # Add 10% padding
     y_limits = (y_min - padding, y_max + padding)
 
     xp, _, _ = ParticleMotion.oscillator(t, sim1.params.x0, sim1.params.A, sim1.params.ω)
@@ -313,7 +568,8 @@ function plot_psifield_diff(i, sim1, sim2, sim4, F=8, paper=false)
     return fig
 end
 
-function plot_pifield_convfac(sim1, sim2, sim4, F=8, paper=false)
+function plot_pifield_convfac(sim1, sim2, sim4, F=2, paper=false)
+    CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
 
@@ -321,6 +577,7 @@ function plot_pifield_convfac(sim1, sim2, sim4, F=8, paper=false)
     # Create figure and axis
 
     L = sim1.params.L
+
     x_range = (-L / F, L / F)
     mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
     x_filtered = sim1.params.x[mask]
@@ -351,6 +608,7 @@ function plot_pifield_convfac(sim1, sim2, sim4, F=8, paper=false)
         diff1 = y1_filtered .- y2_filtered
         diff2 = y2_filtered .- y4_filtered
         convfac[i] = norm(diff1) / norm(diff2)
+        @show convfac[i]
     end
     # Compute y-limits with padding
     y_min = minimum(convfac)
@@ -362,7 +620,7 @@ function plot_pifield_convfac(sim1, sim2, sim4, F=8, paper=false)
               xlabel=L"t",
               # ylabel=L"",
               title=L"\textrm{Convergence Factor of \Pi_\mathrm{r} field}",
-              limits=(-1, sim1.sol.t[end], 1, 2),)
+              limits=(-1, sim1.sol.t[end], 0, 4),)
     # Plot the data
     lines!(ax, sim1.sol.t[2:end], convfac[2:end]; linewidth=1)
     # scatter!(ax, sim1.sol.t[2:end], convfac[2:end]; markersize=5)
@@ -382,6 +640,7 @@ function plot_pifield_convfac(sim1, sim2, sim4, F=8, paper=false)
 end
 
 function plot_psifield_convfac(sim1, sim2, sim4, paper=false)
+    CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
 
@@ -450,6 +709,7 @@ function plot_psifield_convfac(sim1, sim2, sim4, paper=false)
 end
 
 function plot_pifield_convord(sim1, sim2, sim4, paper=false)
+    CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
 
@@ -518,15 +778,27 @@ function plot_pifield_convord(sim1, sim2, sim4, paper=false)
 end
 
 function plot_psifield_convord(sim1, sim2, sim4, paper=false)
+    CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
 
+    vmax = sim1.params.vmax
+    A = sim1.params.A
+
     nt = length(sim1.sol.t)
     # Create figure and axis
+    A = 1.0
+    ω = round(vmax / A; digits=9)
+    T = (2π / ω)
+    Nosc = sim1.params.Nosc
+    tf = Nosc * T
 
     L = sim1.params.L
-    x_range = (-L / 2, L / 2)
-    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    # x_range = (-L / 2, L / 2)
+    x_range = (-tf, tf)
+
+    # mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    mask = (sim1.params.x .>= -tf) .& (sim1.params.x .<= tf)
     x_filtered = sim1.params.x[mask]
 
     # Filter sim1 data (640 points)

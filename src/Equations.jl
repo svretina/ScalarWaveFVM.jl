@@ -35,29 +35,47 @@ end
     return A
 end
 
-@inline function right_eigenvectors(equation::LinearScalarWaveEquation1D)
+# @inline function right_eigenvectors(equation::LinearScalarWaveEquation1D)
+#     c = equation.velocity
+#     r1 = @SVector [c, one(c)] # eigenvalue = -c # left going
+#     r2 = @SVector [-c, one(c)] # eigenvalue = c # right going
+#     return r1, r2
+# end
+
+# @inline function left_eigenvectors(equation::LinearScalarWaveEquation1D)
+#     c = equation.velocity
+#     l1 = @SVector [one(c) / 2c, one(c) / 2]
+#     l2 = @SVector [-one(c) / 2c, one(c) / 2]
+#     return l1, l2
+# end
+
+@inline function eigenvalue_matrix(equation::LinearScalarWaveEquation1D)
     c = equation.velocity
-    r1 = @SVector [c, one(c)] # eigenvalue = -c # left going
-    r2 = @SVector [-c, one(c)] # eigenvalue = c # right going
-    return r1, r2
+    return @SMatrix [c zero(c)
+                     zero(c) -c]
+end
+@inline function right_eigenmatrix(equation::LinearScalarWaveEquation1D)
+    c = equation.velocity
+    return @SMatrix [one(c)/c one(c)
+                     -one(c)/c one(c)]
 end
 
-@inline function left_eigenvectors(equation::LinearScalarWaveEquation1D)
+@inline function left_eigenmatrix(equation::LinearScalarWaveEquation1D)
     c = equation.velocity
-    l1 = @SVector [one(c) / 2c, one(c) / 2]
-    l2 = @SVector [-one(c) / 2c, one(c) / 2]
-    return l1, l2
+    return @SMatrix [one(c)/2c -one(c)/2
+                     one(c)/2c one(c)/2]
 end
 
 @inline function characteristic_variables(q, equation::LinearScalarWaveEquation1D)
+    c = equation.velocity
     R = @SMatrix [c -c
                   one(c) one(c)]
-    L = @SMatrix [one(c)/(2c) 0.5
-                  -one(c)/(2c) 0.5] # R^-1 # inverse of R
+    L = @SMatrix [one(c)/(2c) -0.5
+                  one(c)/(2c) 0.5] # R^-1 # inverse of R
     w = L * q
     # q = [Π, Ψ]
-    # w[1] left going
-    # w[2] right going
+    # w[1] right going Π - Ψ
+    # w[2] left going Π + Ψ
     return w
 end
 

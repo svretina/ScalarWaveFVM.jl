@@ -1,5 +1,6 @@
 module ScalarWaveFVM
 
+using Base: include_callbacks
 include("Interpolations.jl")
 include("InitialData.jl")
 include("Equations.jl")
@@ -9,6 +10,7 @@ include("NumericalFluxes.jl")
 include("ParticleMotion.jl")
 include("ScalarField.jl")
 include("FractionalStepMethods.jl")
+include("RetardedPotentials.jl")
 
 include("ODE.jl")
 include("Run.jl")
@@ -20,5 +22,5 @@ include("ForcedPlots.jl")
 include("InteractingPlots.jl")
 include("ParticlePotentialPlots.jl")
 include("PreparePlots.jl")
-
+include("RetardedPotentialPlots.jl")
 end

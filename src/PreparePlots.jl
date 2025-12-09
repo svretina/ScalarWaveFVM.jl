@@ -21,7 +21,7 @@ function run_fixed_potential_sims(L, dx, dt, Nosc, k)
     return sim1, sim2, sim4
 end
 
-function run_forced_sims(Nosc, dx0, cfl, vmax, q, sf=true)
+function run_forced_sims(Nosc, dx0, cfl, vmax, q; sf=true)
     sim1 = Run.forced_motion(Nosc, dx0, cfl, vmax, q, sf)
     sim2 = Run.forced_motion(Nosc, dx0 / 2, cfl, vmax, q, sf)
     sim4 = Run.forced_motion(Nosc, dx0 / 4, cfl, vmax, q, sf)

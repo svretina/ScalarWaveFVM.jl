@@ -20,6 +20,16 @@ end
     return k * x
 end
 
+@inline function sign(x, z)
+    if x < z
+        return one(x)
+    elseif x > z
+        return -one(x)
+    else
+        return zero(x)
+    end
+end
+
 # @inline function Gaussian1D(t::Real, x::Real, A::Real, σ::Real)
 #     L = 100
 #     xc = t

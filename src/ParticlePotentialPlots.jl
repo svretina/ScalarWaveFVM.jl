@@ -1,8 +1,5 @@
 module ParticlePotentialPlots
 
-using CairoMakie: regularly_spaced_array_to_range
-using LinearAlgebra: sqrt_diag!
-using DataInterpolations: derivative
 using ..PlottingUtils
 using ..ScalarField
 using ..InitialData
@@ -10,6 +7,7 @@ using CairoMakie
 # using GLMakie
 using LinearAlgebra
 using DataInterpolations
+using Roots
 
 @inline name(pre, sim, post=nothing) = name_potential(pre, sim, post)
 @inline name_analytic(pre, sim, post=nothing) = name_analytic_potential(pre, sim, post)
@@ -382,7 +380,7 @@ function plot_phifield(i, sim1; F=200)
     return fig
 end
 
-function plot_pifield(i, sim1; F=2)
+function plot_pifield(i, sim1)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -391,11 +389,15 @@ function plot_pifield(i, sim1; F=2)
     end
     t1 = sim1.sol.t[i]
     t = t1
-
+    k = sim1.params.k
+    Nosc = sim1.params.Nosc
+    T = 2π / sqrt(abs(k))
+    tf = Nosc * T
+    L0 = 2tf
     # Create figure and axis
 
     L = sim1.params.L
-    x_range = (-F, F)
+    x_range = (-L0 / 2, L0 / 2)
     @show x_range
     # Filter sim1 data (640 points)
     mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
@@ -416,25 +418,11 @@ function plot_pifield(i, sim1; F=2)
               xlabel=L"x",
               ylabel=L"\Pi_\mathrm{r}",
               title=L"t=%$(round(t, digits=3))")
-    #,
-    #limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
-    # Plot the data
-    Πr = y_filtered
-    dxΠr = deriv(Πr, dx)
-    Ψr = sim1.sol.u[i].x[1][mask, 2]
 
-    denom1 = 2(1 - vp^2)^3.5
-    denom2 = 4(1 - vp^2)^3
-    term1 = @. (3q * abs.(x_filtered - xp) * dxΠr * vp) / denom1
-    term2 = @. -(3q * abs.(x_filtered - xp) * dxΠr * vp^3) / denom1
-    term3 = @. q^2 * sign.(x_filtered - xp)^2 / denom2
-
-    @show trapezoidal((@. term1 + term2), dx)
-    #     lines!(ax, x_filtered, @. term1 + term2; label=L"\Pi_r")
     lines!(ax, x_filtered, y_filtered; label=L"\Pi_r")
-    lines!(ax, x_filtered, ScalarField.Πs.(x_filtered, q, xp, vp); label=L"\Pi_s")
-    lines!(ax, x_filtered, y_filtered .+ ScalarField.Πs.(x_filtered, q, xp, vp);
-           label=L"\Pi")
+    # lines!(ax, x_filtered, ScalarField.Πs.(x_filtered, q, xp, vp); label=L"\Pi_s")
+    # lines!(ax, x_filtered, y_filtered .+ ScalarField.Πs.(x_filtered, q, xp, vp);
+    #        label=L"\Pi")
 
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
@@ -766,21 +754,21 @@ function plot_particle_position(sim1; invert=true)
               title=L"\textrm{Particle Position}")
     # Plot the data
     if invert
-        lines!(ax, xs1, sim1.sol.t; label=L"\textrm{particle 1}")
+        lines!(ax, xs1, sim1.sol.t)# ; label=L"\textrm{particle 1}")
         ax.xlabel = L"z(t)"
         ax.ylabel = L"t"
     else
-        lines!(ax, sim1.sol.t, xs1; label=L"\textrm{particle 1}")
+        lines!(ax, sim1.sol.t, xs1)# ; label=L"\textrm{particle 1}")
         ax.ylabel = L"z(t)"
         ax.xlabel = L"t"
     end
-    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+    # leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
 
     # Adjust layout to ensure proper spacing
-    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
-    colsize!(fig.layout, 1, Relative(0.9))
-    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
-    rowgap!(fig.layout, 0)                 # Gap between plot and legend
+    # rowsize!(fig.layout, 1, Relative(1.1))  # Let the axis size adjust
+    # colsize!(fig.layout, 1, Relative(0.9))
+    # rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    # rowgap!(fig.layout, 0)                 # Gap between plot and legend
 
     # Save the figure
     # savename = name("particle_potential/particle_position", sim1)
@@ -860,24 +848,24 @@ function plot_particle_mass(sim1)
     V(x) = InitialData.Harmonic(x, k)
     m0 = sim1.sol.u[1].x[2][1]
     for i in 1:nt
-        z = sim1.sol.u[i].x[2][2]
-        v = sim1.sol.u[i].x[2][3]
-        Φr = @view sim1.sol.u[i].x[1][mask, 3]
-        Πr = @view sim1.sol.u[i].x[1][mask, 1]
-        Ψr = @view sim1.sol.u[i].x[1][mask, 2]
-        interpolator_Ψ = PCHIPInterpolation(Ψr, x_filtered;
-                                            extrapolation=ExtrapolationType.Extension)
-        interpolator_Π = PCHIPInterpolation(Πr, x_filtered;
-                                            extrapolation=ExtrapolationType.Extension)
-        interpolator_Φ = PCHIPInterpolation(Φr, x_filtered;
-                                            extrapolation=ExtrapolationType.Extension)
+        # z = sim1.sol.u[i].x[2][2]
+        # v = sim1.sol.u[i].x[2][3]
+        # Φr = @view sim1.sol.u[i].x[1][mask, 3]
+        # Πr = @view sim1.sol.u[i].x[1][mask, 1]
+        # Ψr = @view sim1.sol.u[i].x[1][mask, 2]
+        # # interpolator_Ψ = PCHIPInterpolation(Ψr, x_filtered;
+        # #                                     extrapolation=ExtrapolationType.Extension)
+        # # interpolator_Π = PCHIPInterpolation(Πr, x_filtered;
+        # #                                     extrapolation=ExtrapolationType.Extension)
+        # interpolator_Φ = PCHIPInterpolation(Φr, x_filtered;
+        #                                     extrapolation=ExtrapolationType.Extension)
 
-        Πrz = interpolator_Π(z)
-        Ψrz = interpolator_Ψ(z)
-        Φrz = interpolator_Φ(z)
+        # # Πrz = interpolator_Π(z)
+        # # Ψrz = interpolator_Ψ(z)
+        # Φrz = interpolator_Φ(z)
 
-        a2 = 1.0 - v * v
-        γ = 1.0 / sqrt(a2)
+        # a2 = 1.0 - v * v
+        # γ = 1.0 / sqrt(a2)
         # temp = @. q * sign.(xs .- z) * (3Π * v + Ψ * (1 + 2v^2)) / (2a2^2.5)
         # m2[i] = (m0 + q * Φr) / a2^1.5 - trapezoidal(temp, dx)
 
@@ -889,11 +877,12 @@ function plot_particle_mass(sim1)
         # # m = -m0 * γ^3 + trapezoidal(term3, dx)
         # term3 = @. term2 + term1
         # m[i] = -1 * (-(m0 + q * Φrz) * γ^3 + trapezoidal(term3, dx))
-        term2 = @. 0.5q * γ^5 * sign.(x_filtered - z) * (3Πr * v + Ψr * (1 + 2 * v^2))
+        # term2 = @. 0.5q * γ^5 * sign.(x_filtered - z) * (3Πr * v + Ψr * (1 + 2 * v^2))
         # term3 = @. -δ * (q * Φr) * γ^3 + term2 + term1
         # m = -m0 * γ^3 + trapezoidal(term3, dx)
         # term3 = @. term2 + 0term1
-        m[i] = -(-(m0 + q * Φrz) * γ^3 + trapezoidal(term2, dx))
+        # m[i] = abs(-(m0 + 2q * Φrz))
+        m[i] = sim1.sol.u[i].x[2][1]
     end
 
     fig = Figure(; size=(253, 200))
@@ -1080,7 +1069,7 @@ function plot_particle_position_resolutions(sim1, sim2, sim4; invert=true)
     return fig
 end
 
-function plot_energy(sim1; F=2)
+function plot_energy(sim1)
     CairoMakie.activate!()
     mytheme = mytheme_aps()
     set_theme!(mytheme)
@@ -1088,6 +1077,8 @@ function plot_energy(sim1; F=2)
 
     # Create figure and axis
     L = sim1.params.L
+    F = 2
+    # L0 = sim1.params.L0
     x_range = (-L / F, L / F)
     @show x_range
     mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
@@ -1109,43 +1100,81 @@ function plot_energy(sim1; F=2)
 
     k = sim1.params.k
     V(x) = InitialData.Harmonic(x, k)
+    ts2plot = [0.0]
+    field_energy = [0.0]
+    potential_energy = [q * V(sim1.sol.u[1].x[2][2])]
     if sf
+        vold = sign(sim1.sol.u[2].x[2][3])
         m0 = sim1.sol.u[1].x[2][1]
-        for i in 1:nt
+        for i in 10:nt
             m = sim1.sol.u[i].x[2][1]
             z = sim1.sol.u[i].x[2][2]
             v = sim1.sol.u[i].x[2][3]
-            Φr = @view sim1.sol.u[i].x[1][mask, 3]
-            Πr = @view sim1.sol.u[i].x[1][mask, 1]
-            Ψr = @view sim1.sol.u[i].x[1][mask, 2]
 
-            interpolator_Φ = PCHIPInterpolation(Φr, x_filtered;
-                                                extrapolation=ExtrapolationType.Extension)
-            interpolator_Π = PCHIPInterpolation(Πr, x_filtered;
-                                                extrapolation=ExtrapolationType.Extension)
-            interpolator_Ψ = PCHIPInterpolation(Ψr, x_filtered;
-                                                extrapolation=ExtrapolationType.Extension)
+            if (vold * v < 0)
+                vold = v
+                vs = [sim1.sol.u[(i - 5)].x[2][3],
+                      sim1.sol.u[(i - 4)].x[2][3],
+                      sim1.sol.u[(i - 3)].x[2][3],
+                      sim1.sol.u[(i - 2)].x[2][3],
+                      sim1.sol.u[(i - 1)].x[2][3],
+                      sim1.sol.u[i].x[2][3],
+                      sim1.sol.u[(i + 1)].x[2][3],
+                      sim1.sol.u[(i + 2)].x[2][3],
+                      sim1.sol.u[(i + 3)].x[2][3],
+                      sim1.sol.u[(i + 4)].x[2][3],
+                      sim1.sol.u[(i + 5)].x[2][3]]
+                zs = [sim1.sol.u[(i - 5)].x[2][2],
+                      sim1.sol.u[(i - 4)].x[2][2],
+                      sim1.sol.u[(i - 3)].x[2][2],
+                      sim1.sol.u[(i - 2)].x[2][2],
+                      sim1.sol.u[(i - 1)].x[2][2],
+                      sim1.sol.u[i].x[2][2],
+                      sim1.sol.u[(i + 1)].x[2][2],
+                      sim1.sol.u[(i + 2)].x[2][2],
+                      sim1.sol.u[(i + 3)].x[2][2],
+                      sim1.sol.u[(i + 4)].x[2][2],
+                      sim1.sol.u[(i + 5)].x[2][2]]
+                vin = PCHIPInterpolation(vs, sim1.sol.t[(i - 5):(i + 5)];
+                                         extrapolation=ExtrapolationType.Extension)
+                zin = PCHIPInterpolation(zs,
+                                         sim1.sol.t[(i - 5):(i + 5)];
+                                         extrapolation=ExtrapolationType.Extension)
+                tzero = find_zero(vin, (sim1.sol.t[i - 5], sim1.sol.t[i + 5]))
+                zzero = zin(tzero)
+                @show z
+                @show zzero
+                # zzero = z
+                # Φr = @view sim1.sol.u[i].x[1][mask, 3]
+                Πr = @view sim1.sol.u[i].x[1][mask, 1]
+                Ψr = @view sim1.sol.u[i].x[1][mask, 2]
 
-            Φrz = interpolator_Φ(z)
-            Πrz = interpolator_Π(z)
-            Ψrz = interpolator_Ψ(z)
-            Φs = ScalarField.Φs.(x_filtered, q, z, v)
-            Πs = ScalarField.Πs.(x_filtered, q, z, v)
-            Ψs = ScalarField.Ψs.(x_filtered, q, z, v)
-            ∂vΠs = ScalarField.∂vΠs.(x_filtered, q, z, v)
-            ∂vΨs = ScalarField.∂vΨs.(x_filtered, q, z, v)
+                # interpolator_Φ = AkimaInterpolation(Φr, x_filtered)
+                # interpolator_Π = AkimaInterpolation(Πr, x_filtered)
+                # interpolator_Ψ = AkimaInterpolation(Ψr, x_filtered)
 
-            γ = 1.0 / sqrt(1.0 - v * v)
-            kinetic[i] = γ * m0
-            potential[i] = -q * V(z)
-            self_potential[i] = -γ * q * Φrz
+                # Φrz = interpolator_Φ(zzero)
+                # Πrz = interpolator_Π(z)
+                # Ψrz = interpolator_Ψ(z)
 
-            particle_energy[i] = kinetic[i] + potential[i] + self_potential[i]
-            Π = Πr .+ Πs
-            Ψ = Ψr .+ Ψs
-            ## This is with Φr and z as a generalized coordinate:
-            Hfr = @. Πr * Π + 0.5 * (-Π^2 + Ψ^2) + v * (Π * ∂vΠs - Ψ * ∂vΨs)
-            regular_field_energy[i] = trapezoidal(Hfr, dx)
+                # γ = 1.0 / sqrt(1.0 - v * v)
+                # kinetic[i] = 0# γ * m0
+                # potential[i] = -q * V(z)
+                # self_potential[i] = 0# -γ * q * Φrz
+
+                # particle_energy[i] = kinetic[i] + potential[i] + self_potential[i]
+                ## This is with Φr and z as a generalized coordinate:
+                Hfr = @. (Πr^2 + Ψr^2) / 2 #+ (q / 8) * q * sign(x_filtered - z)^2
+                # regular_field_energy[i] = trapezoidal(Hfr, dx)
+                # @show trapezoidal((1 / 8) * q^2 .* sign.(x_filtered .- z) .^ 2, dx)
+                # @show -2q * Φrz
+                # Hfr_i = PCHIPInterpolation(Hfr, x_filtered)
+                # @show trapezoidal(Hfr, dx) -
+                #       DataInterpolations.integral(Hfr_i, x_filtered[1], x_filtered[end])
+                append!(potential_energy, q * V(zzero))
+                append!(field_energy, trapezoidal(Hfr, dx))
+                append!(ts2plot, sim1.sol.t[i])
+            end
         end
     else
         m0 = sim1.sol.u[1].x[2][1]
@@ -1159,16 +1188,21 @@ function plot_energy(sim1; F=2)
             particle_energy[i] = kinetic[i] + potential[i] + self_potential[i]
         end
     end
-
+    V0 = q * V(sim1.sol.u[1].x[2][2])
+    @show V0
     fig = Figure(; size=(2 * 253, 2 * 200))
     ax = Axis(fig[1, 1];
               title=L"\textrm{Energy}")
     # Plot the data
-    # lines!(ax, sim1.sol.t, regular_field_energy .- regular_field_energy[1];
+    # lines!(ax, sim1.sol.t, regular_field_energy;
     #        label=L"\textrm{field}")
-    lines!(ax, sim1.sol.t, particle_energy;
-           label=L"\textrm{particle}")
-
+    # lines!(ax, sim1.sol.t, particle_energy;
+    #        label=L"\textrm{particle}")
+    @show sim1.sol.u[1].x[2][1]
+    scatter!(ax, ts2plot, field_energy; label="field")
+    scatter!(ax, ts2plot, potential_energy; label="potential")
+    scatter!(ax, ts2plot, -V0 + 0sim1.sol.u[1].x[2][1] .+ field_energy .+ potential_energy;
+             label="total")
     # lines!(ax, sim1.sol.t, singular_field_energy;
     #        label=L"\textrm{with singular}")
 
@@ -1194,6 +1228,68 @@ function plot_energy(sim1; F=2)
     rowgap!(fig.layout, 0)                 # Gap between plot and legend
     return fig
 end
+
+function plot_fluxes(r, sim1)
+    CairoMakie.activate!()
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+    # Get time points and assert equality
+
+    # Create figure and axis
+    L = sim1.params.L
+    F = 2
+    # L0 = sim1.params.L0
+    x_range = (-L / F, L / F)
+    @show x_range
+    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+    x_filtered = sim1.params.x[mask]
+
+    nt = length(sim1.sol.t)
+
+    flux_l = zeros(nt)
+    flux_r = zeros(nt)
+
+    q = sim1.params.q
+    sf = sim1.params.sf
+    dx = sim1.params.dx
+    xs = sim1.params.x
+
+    for i in 1:nt
+        m = sim1.sol.u[i].x[2][1]
+        z = sim1.sol.u[i].x[2][2]
+        v = sim1.sol.u[i].x[2][3]
+
+        Πr = @view sim1.sol.u[i].x[1][mask, 1]
+        Ψr = @view sim1.sol.u[i].x[1][mask, 2]
+        Πr_int = PCHIPInterpolation(Πr, x_filtered)
+        Ψr_int = PCHIPInterpolation(Ψr, x_filtered)
+
+        flux_r[i] = -Πr_int(r) * Ψr_int(r)
+        flux_l[i] = Πr_int(-r) * Ψr_int(-r)
+    end
+
+    fig = Figure(; size=(2 * 253, 2 * 200))
+    ax = Axis(fig[1, 1];
+              title=L"\textrm{Fluxes}")
+    # Plot the data
+    lines!(ax, sim1.sol.t, flux_r; label="right")
+    lines!(ax, sim1.sol.t, flux_l; label="left")
+    lines!(ax, sim1.sol.t, flux_r + flux_l; label="total")
+
+    ax.ylabel = L"fluxes"
+    ax.xlabel = L"t"
+
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    rowgap!(fig.layout, 0)                 # Gap between plot and legend
+    return fig
+end
+
+########################################
 
 function plot_work(sim1; F=2)
     CairoMakie.activate!()

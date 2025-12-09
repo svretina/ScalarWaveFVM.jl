@@ -28,6 +28,15 @@ end
     return σ
 end
 
+@inline function compute_limited_slope2(qi, ql, qr, h, slope_limiter)
+    σD = downwind_slope(qi, ql, qr, h)
+    σU = upwind_slope(qi, ql, qr, h)
+    # σC = central_slope(qi, ql, qr, h)
+    θ = σU / σD
+    σ = slope_limiter(θ) * σD
+    return σ
+end
+
 # Slopes
 @inline function constant_slope(qi, ql, qr, h)
     return zero(qi)
