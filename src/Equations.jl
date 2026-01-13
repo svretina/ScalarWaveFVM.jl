@@ -11,6 +11,11 @@ struct LinearScalarAdvectionEquation1D{RealT<:Real}
     advection_velocity::RealT
 end
 
+@inline function flux(u, equation::LinearScalarAdvectionEquation1D)
+    a = equation.advection_velocity
+    return a * u
+end
+
 ###
 ### LINEAR SCALAR WAVE EQUATION IN FIRST ORDER REDUCTION
 ###
@@ -22,10 +27,6 @@ struct LinearScalarWaveEquation1D{RealT<:Real}
 end
 
 # Calculate 1D flux in for a single point
-@inline function flux(u, equation::LinearScalarAdvectionEquation1D)
-    a = equation.advection_velocity
-    return a * u
-end
 
 @inline function principal_part(equation::LinearScalarWaveEquation1D)
     c = equation.velocity
@@ -51,27 +52,27 @@ end
 
 @inline function eigenvalue_matrix(equation::LinearScalarWaveEquation1D)
     c = equation.velocity
-    return @SMatrix [c zero(c)
-                     zero(c) -c]
+    # return @SMatrix [c zero(c)
+    #                  zero(c) -c]
+    return @SMatrix [-c zero(c)
+                     zero(c) c]
 end
 @inline function right_eigenmatrix(equation::LinearScalarWaveEquation1D)
     c = equation.velocity
-    return @SMatrix [one(c)/c one(c)
-                     -one(c)/c one(c)]
+    # return @SMatrix [one(c)/c one(c)
+    #                  -one(c)/c one(c)]
+    return @SMatrix [c -c
+                     one(c) one(c)]
 end
 
 @inline function left_eigenmatrix(equation::LinearScalarWaveEquation1D)
     c = equation.velocity
-    return @SMatrix [one(c)/2c -one(c)/2
-                     one(c)/2c one(c)/2]
+    return @SMatrix [one(c)/2c one(c)/2
+                     -one(c)/2c one(c)/2]
 end
 
 @inline function characteristic_variables(q, equation::LinearScalarWaveEquation1D)
-    c = equation.velocity
-    R = @SMatrix [c -c
-                  one(c) one(c)]
-    L = @SMatrix [one(c)/(2c) -0.5
-                  one(c)/(2c) 0.5] # R^-1 # inverse of R
+    L = left_eigenmatrix(equation) # R^-1 # inverse of R
     w = L * q
     # q = [Π, Ψ]
     # w[1] right going Π - Ψ
@@ -81,15 +82,22 @@ end
 
 @inline function Aplus(equation::LinearScalarWaveEquation1D)
     c = equation.velocity
+    # A = @SMatrix [c/2 -c * c/2
+    #               -one(c)/2 c/2]
+
     A = @SMatrix [c/2 -c * c/2
                   -one(c)/2 c/2]
+
     return A
 end
 
 @inline function Aminus(equation::LinearScalarWaveEquation1D)
     c = equation.velocity
+    # A = @SMatrix [-c/2 -c * c/2
+    #               -one(c)/2 -c/2]
     A = @SMatrix [-c/2 -c * c/2
                   -one(c)/2 -c/2]
+
     return A
 end
 

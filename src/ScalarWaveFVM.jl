@@ -18,9 +18,12 @@ include("Run.jl")
 include("Convergence.jl")
 include("Energies.jl")
 include("PlottingUtils.jl")
+
 include("ForcedPlots.jl")
 include("InteractingPlots.jl")
 include("ParticlePotentialPlots.jl")
 include("PreparePlots.jl")
 include("RetardedPotentialPlots.jl")
+include("PaperPlots.jl")
+
 end

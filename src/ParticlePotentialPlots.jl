@@ -322,7 +322,7 @@ function plot_total_field_diff_res(ti, xi, sim1, sim2, sim4)
     return fig
 end
 
-function plot_phifield(i, sim1; F=200)
+function plot_phifield(i, sim1)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -333,8 +333,8 @@ function plot_phifield(i, sim1; F=200)
     t = t1
 
     # Create figure and axis
-
-    x_range = (-F, F)
+    L = sim1.params.L
+    x_range = (-L / 2, L / 2)
     mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     x_filtered = sim1.params.x[mask]
 
@@ -362,9 +362,10 @@ function plot_phifield(i, sim1; F=200)
     #limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
     # Plot the data
     lines!(ax, x_filtered, y1_filtered; label=L"\Phi_r")
-    lines!(ax, x_filtered, ScalarField.Φs.(x_filtered, q, xp, vp); label=L"\Phi_s")
-    lines!(ax, x_filtered, y1_filtered .+ ScalarField.Φs.(x_filtered, q, xp, vp);
-           label=L"\Phi")
+    # lines!(ax, x_filtered, ScalarField.Φs.(x_filtered, Ref(xp), Ref(vp), Ref(q));
+    #        label=L"\Phi_s")
+    # lines!(ax, x_filtered, y1_filtered .+ ScalarField.Φs.(x_filtered, xp, vp, q);
+    #        label=L"\Phi")
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
     leg = Legend(fig[2, 1], ax; orientation=:horizontal,
@@ -420,6 +421,11 @@ function plot_pifield(i, sim1)
               title=L"t=%$(round(t, digits=3))")
 
     lines!(ax, x_filtered, y_filtered; label=L"\Pi_r")
+    #=     lines!(ax, x_filtered, ScalarField.Πs.(x_filtered, xp, vp, q); label=L"\Pi_s")
+
+        lines!(ax, x_filtered, y_filtered .+ ScalarField.Πs.(x_filtered, xp, vp, q);
+               label=L"\Pi") =#
+
     # lines!(ax, x_filtered, ScalarField.Πs.(x_filtered, q, xp, vp); label=L"\Pi_s")
     # lines!(ax, x_filtered, y_filtered .+ ScalarField.Πs.(x_filtered, q, xp, vp);
     #        label=L"\Pi")
@@ -503,7 +509,7 @@ function plot_pifield_resolutions(i, sim1, sim2, sim4)
     return fig
 end
 
-function plot_psifield(i, sim1; F=100)
+function plot_psifield(i, sim1)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -515,9 +521,8 @@ function plot_psifield(i, sim1; F=100)
 
     # Create figure and axis
 
-    x_range = (-F, F)
-    mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
-    x_filtered = sim1.params.x[mask]
+    L = sim1.params.L
+    x_range = (-L / 2, L / 2)
 
     # Filter sim1 data (640 points)
     mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
@@ -539,13 +544,13 @@ function plot_psifield(i, sim1; F=100)
               xlabel=L"x",
               ylabel=L"\Psi_\mathrm{r}",
               title=L"t=%$(round(t, digits=3))")
-    #,
-    #limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+    # ,
+    # limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
     # Plot the data
-    lines!(ax, x_filtered, y1_filtered; label=L"\Psi_r")
-    lines!(ax, x_filtered, ScalarField.Ψs.(x_filtered, q, xp, vp); label=L"\Psi_s")
-    lines!(ax, x_filtered, y1_filtered .+ ScalarField.Ψs.(x_filtered, q, xp, vp);
-           linestyle=:dash, label=L"\Psi")
+    lines!(ax, x1_filtered, y1_filtered; label=L"\Psi_r")
+    # lines!(ax, x1_filtered, ScalarField.Ψs.(x1_filtered, q, xp, vp); label=L"\Psi_s")
+    # lines!(ax, x1_filtered, y1_filtered .+ ScalarField.Ψs.(x1_filtered, q, xp, vp);
+    #        linestyle=:dash, label=L"\Psi")
 
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
@@ -745,8 +750,14 @@ function plot_particle_position(sim1; invert=true)
 
     nt = length(sim1.sol.t)
     xs1 = zeros(nt)
+    xa = zeros(nt)
+
+    A = 0.01
+    vmax = sim1.sol.u[1].x[2][3]
+    ω = round(vmax / A; digits=9)
     for i in 1:nt
         xs1[i] = sim1.sol.u[i].x[2][2]
+        xa[i] = A * sin(ω * sim1.sol.t[i])
     end
 
     fig = Figure(; size=(253, 200))
@@ -755,6 +766,7 @@ function plot_particle_position(sim1; invert=true)
     # Plot the data
     if invert
         lines!(ax, xs1, sim1.sol.t)# ; label=L"\textrm{particle 1}")
+        lines!(ax, xa, sim1.sol.t)
         ax.xlabel = L"z(t)"
         ax.ylabel = L"t"
     else
@@ -765,10 +777,14 @@ function plot_particle_position(sim1; invert=true)
     # leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
 
     # Adjust layout to ensure proper spacing
-    # rowsize!(fig.layout, 1, Relative(1.1))  # Let the axis size adjust
-    # colsize!(fig.layout, 1, Relative(0.9))
+    #rowsize!(fig.layout, 1, Relative(1.1))  # Let the axis size adjust
+    #colsize!(fig.layout, 1, Relative(0.9))
     # rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
-    # rowgap!(fig.layout, 0)                 # Gap between plot and legend
+    #rowgap!(fig.layout, 0)                 # Gap between plot and legend
+
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
 
     # Save the figure
     # savename = name("particle_potential/particle_position", sim1)

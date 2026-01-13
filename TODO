@@ -1,0 +1,65 @@
+- SubCell integration of source
+- New particle equations after I discuss them with Erik
+
+- Radiation calculation, particle Harmonic Oscillator. Non-relativistic case.
+--- Accelerated electron, radiation reaction, no SF.
+--- Analytic waveform at boundary: known trajectory and field.
+    Calculate Retarded potentials ( Check old Python code ). Evaluate
+    known field at retarded time. [DONE]
+    Compare with numerical.
+
+
+-- Add to ForcedPlots.jl:
+       - Total Field plots
+
+- make this an ORG
+
+
+=== 21 Oct
+-- convergence test between retarded field and numerical field (forced motion)
+-- radiated power = energy loss
+   - theoretical energy/power of forced motion particle
+   - forced motion numerical calculation of energy ( should agree )
+   - potential case: energy loss should be equal to the energy radiated.
+-- potential contributing to mass of particle
+-- check convergence orders for particle in a potential case
+
+-- Compare mass renormalization from equations of motion vs Hamiltonian!
+-- calculate energy with renormalized terms ( the renormalization happens in the dHdt )
+
+=== 31 Oct
+
+- estimate how much energy i lose (simulation)
+- Lienerd Wiechert: integrate over one period, the far field (radiative piece)
+- compare.
+
+-- Larmor's formula from Lienerd-Wiechert potentials
+-- Energy at extremum of oscillation
+-- why 2 in front of \Phi_r
+-- Series Expansion, why is there the \Phi_r(z) potential term in the mass?
+   - check series expansion
+-- Try Non Relativistic Action
+   - subtract from self potential term the mass contribution
+-- Plots
+
+
+
+========== 19 - Nov
+
+Calculate (radiated power) energy flux of lienerd-wiechert over one cycle for forced motion for one amplitude
+this should agree with the tangent (energy over time) for ONE time instant of
+the self-forced motion. Then repeat for all of the points.
+
+choose amplitude A_0  for t_0, calculate P_0 (power), then this should agree
+with the tangent of the Pontential energy at t=t_0.
+
+go to A_1 for t_1 etc...
+
+
+==== 9 Dec
+
+Question to Erik: For the retarded potentials for the first order variables,
+should I just take my FOV and evaluate it at the retarded time or take a time
+derivative of the retarded potential?
+
+the first one is what the code produces, the 2nd one is "weird"

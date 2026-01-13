@@ -1,6 +1,6 @@
 module Run
 
-using RecursiveArrayTools: state_values
+using RecursiveArrayTools
 using ..Equations
 using ..ODE
 using ..InitialData
@@ -86,15 +86,13 @@ function forced_motion(Nosc, dx, cfl, vmax, q, sf=true, muscl=true)
     c = 1.0
     equation = LinearScalarWaveEquation1D(c)
 
-    # vmax = 0.999
-    # ω = 2π
-    # T = 1.0
-    # A = vmax / ω
-
-    A = 1.0
+    A = 0.01
     ω = round(vmax / A; digits=9)
-    T = (2π / ω)
+    T = 2π / ω
 
+    println("==========================================")
+    @show 2Nosc * T
+    @show 2π / ω
     L = ceil(2Nosc * T)
     @show ω
     @show A
@@ -106,8 +104,8 @@ function forced_motion(Nosc, dx, cfl, vmax, q, sf=true, muscl=true)
     grid = UniformStaggeredGrid1D(Float64[-L, L], N)
     x = coords(grid) # cell centers
     @show length(x)
+
     Φ = zeros(Float64, length(grid))
-    # Π = InitialData.sign.(x, 0.0) # zeros(Float64, length(grid))
     Π = zeros(Float64, length(grid))
     Ψ = zeros(Float64, length(grid))
 
@@ -118,10 +116,10 @@ function forced_motion(Nosc, dx, cfl, vmax, q, sf=true, muscl=true)
     @show dx, dt
 
     numerical_flux = NumericalFluxes.flux_godunov
-    slope_limiter = Limiters.MC
-    flux_limiter = Limiters.MC
 
-    # q = +1
+    slope_limiter = Limiters.MC
+    flux_limiter = Limiters.upwind
+
     z0 = 0.0
     direction = +1
 
@@ -129,7 +127,6 @@ function forced_motion(Nosc, dx, cfl, vmax, q, sf=true, muscl=true)
     L0 = ceil(2Nosc * T)
     @show L0
     @show tf
-    #@assert L > L0
 
     tspan = (0.0, tf)
     t = 0.0:dt:(tf + dt)
@@ -145,14 +142,13 @@ function forced_motion(Nosc, dx, cfl, vmax, q, sf=true, muscl=true)
               dt=dt, z0=z0, ω=ω, q=q)
     if muscl
         alg = SSPRK54()
-        # alg = SSPRK22()
-        # alg = TsitPap8()
         if sf
+            println("Self Force = True")
             ode = ODEProblem{true}(ODE.field_rhs_forced!,
                                    statevector, tspan, params;
                                    saveat=t)
         else
-            ode = ODEProblem{true}(ODE.muscl3!, statevector, tspan, params; saveat=t)
+            ode = ODEProblem{true}(ODE.muscl!, statevector, tspan, params; saveat=t)
         end
     else
         alg = Euler()
@@ -233,41 +229,56 @@ function particle_in_fixed_potential_interpolation(L, dx, dt, Nosc, k)
     return res
 end
 
-function particle_in_potential(dx, dt, Nosc, k, sf=true)
+function particle_in_potential(Nosc, dx, cfl, vmax, q, sf=true)
     c = 1.0
     equation = LinearScalarWaveEquation1D(c)
 
-    T = 2π / sqrt(abs(k))
+    A = 0.01
+    ω = round(vmax / A; digits=9)
+    T = 2π / ω
+
     tf = Nosc * T
     L0 = 2tf
     L = Int(ceil(L0))
     @show tf
+    @show T
+    @show A
+    @show ω
     @show L, L0
     @assert L >= L0
     @show L
+
     tspan = (0.0, tf)
+    dt = cfl * dx / c
     t = 0.0:dt:tf
+    @show length(t)
+
     N = Int64(2L / dx)
+
     grid = UniformStaggeredGrid1D(Float64[-L, L], N)
     x = coords(grid) # cell centers
+
     @assert spacing(grid) == dx
+
     N = length(x)
-    cfl = dt / dx
-    @show cfl
 
     Φ = zeros(Float64, length(x))
     Π = zeros(Float64, length(x))
     Ψ = zeros(Float64, length(x))
 
-    V(x) = InitialData.Harmonic(x, k)
-    dxV(x) = InitialData.dxHarmonic(x, k)
     field_statevector = hcat(Π, Ψ, Φ)
 
     ## Particle 1
-    q = 1.0
     m0 = 1.0
     z0 = 0.0
-    v0 = 0.6283185307179586 #0.0
+    v0 = vmax
+    # z0 = 0.0
+    # v0 = 0.6283185307179586
+
+    k = (m0 / q) * ω^2
+    @show k
+    V(x) = InitialData.Harmonic(x, k)
+    dxV(x) = InitialData.dxHarmonic(x, k)
 
     println("Particle:")
     println("q = $q")
@@ -275,14 +286,13 @@ function particle_in_potential(dx, dt, Nosc, k, sf=true)
     println("x = $z0")
     println("v = $v0")
 
-    particle_statevector = [m0, z0, v0] #, m20, x20, v20]
-    statevector = ArrayPartition(field_statevector,
-                                 particle_statevector)
+    particle_statevector = [m0, z0, v0]
+    statevector = ArrayPartition(field_statevector, particle_statevector)
 
     numerical_flux = NumericalFluxes.flux_rusanov
     slope_limiter = Limiters.MC
     flux_limiter = Limiters.MC
-    interpolation_method = AkimaInterpolation # QuadraticInterpolation # LinearInterpolation # QuadraticInterpolation
+    interpolation_method = LinearInterpolation #AkimaInterpolation # QuadraticInterpolation # LinearInterpolation # QuadraticInterpolation
 
     params = (equation=equation, numerical_flux=numerical_flux,
               slope_limiter=slope_limiter, flux_limiter=flux_limiter,
@@ -295,34 +305,17 @@ function particle_in_potential(dx, dt, Nosc, k, sf=true)
               m0=m0,
               L0=L0)#, acc=Number[0.0])
 
-    # alg = ImplicitMidpoint()
-    # alg = ImplicitEuler()
-    # alg = RK4() ## loses energy
-    # alg = Tsit5() ## fails
-    # alg = TsitPap8() ## ok
-    # alg = Euler()
-    # alg = Vern7() ## ok
     alg = SSPRK54()
-    # alg = AutoTsit5(Rosenbrock23())
-    # alg = SSPSDIRK2()
-    #    alg = Trapezoid()
+
     ode = ODEProblem{true}(ODE.particle_in_potential_rhs!, statevector, tspan,
                            params; saveat=t)
     integrator = init(ode, alg; adaptive=false, dt=dt, p=params)
     for (uprev, tprev, u, t) in intervals(integrator)
-        # if t > 0
-        #     dt_new = (atanh(1.0) - abs(uprev.x[2][3])) / abs(integrator.p.acc[1])
-        # end
         if iszero(t % 10)
             @show t
         end
-        # a = integrator.p.acc[1]
-        # if abs(a) > 0.1
-        #     @show t, a
-        # end
-        # set_proposed_dt!(integrator, dt_new)
     end
-    # sol = solve(ode, alg; dt=dt, adaptive=false)
+
     sim = SimulationParametersAnalyticPotential(L, dx, dt, x, q,
                                                 m0, z0, v0,
                                                 k, sf, cfl, float(Nosc))

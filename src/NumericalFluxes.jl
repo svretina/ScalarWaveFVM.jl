@@ -69,11 +69,43 @@ function flux_rusanov(ql, qr, equation::LinearScalarWaveEquation1D; kwargs...)
     return 0.5 * (A * (ql + qr)) - 0.5equation.velocity * (qr - ql)
 end
 
-# same as rusanov
-# function flux_HLLE(ql, qr, equation::LinearScalarWaveEquation1D; kwargs...)
+@inline function physical_flux(q, equation::LinearScalarWaveEquation1D)
+    # F(q) = A * q
+    return Equations.principal_part(equation) * q
+end
 
-#     A = Equations.principal_part(equation)
-#     return (c * A * ql + c * A * qr - c * c(qr - ql)) / (2c)
-# end
+function flux_hll(ql, qr, equation::LinearScalarWaveEquation1D)
+    # 1. Retrieve Wave Speed c
+    c = equation.velocity
+
+    # 2. Define Wave Speeds estimates (Exact for linear case)
+    # S_L: Speed of the fastest wave moving to the left
+    # S_R: Speed of the fastest wave moving to the right
+    S_L = -c
+    S_R = c
+
+    # 3. Calculate Physical Fluxes
+    fl = physical_flux(ql, equation)
+    fr = physical_flux(qr, equation)
+
+    # 4. HLL Logic
+    if S_L >= 0.0
+        # Flow is entirely supersonic to the right (impossible for wave eq where c > 0)
+        return fl
+    elseif S_R <= 0.0
+        # Flow is entirely supersonic to the left (impossible for wave eq where c > 0)
+        return fr
+    else
+        # Subsonic / Transonic case (The standard case for wave eq)
+        # F_hll = (Sr*Fl - Sl*Fr + Sl*Sr*(Qr - Ql)) / (Sr - Sl)
+
+        inv_diff = one(c) / (S_R - S_L)
+
+        # Note: We must be careful with matrix/vector multiplication order
+        # Sl, Sr are scalars. fl, fr, ql, qr are Vectors (SVector).
+
+        return inv_diff * (S_R * fl - S_L * fr + S_L * S_R * (qr - ql))
+    end
+end
 
 end #end of module

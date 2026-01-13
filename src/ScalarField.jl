@@ -1,6 +1,6 @@
 module ScalarField
 
-using ForwardDiff
+using ForwardDiff: derivative
 
 @inline function exp32(x::T) where {T<:Real}
     return x * sqrt(x)
@@ -9,23 +9,29 @@ end
 # boost with +v
 
 @inline function Φs(x, z, v, q)
-    #return 0.5q * abs(x - z) * cosh(v)
-    return (q / 2) * abs((x - z) / (sqrt(one(v) - v * v)))
+    # return 0.5q * abs(x - z) * cosh(v)
+    # return (q / 2) * abs(x - z) / (sqrt(one(v) - v * v))
+    return 0.5q * abs(x - z) / (one(v) - v * sign(x - z))
 end
 
 @inline function Πs(x, z, v, q)
     # return -0.5q * sinh(v) * sign(x - z)
-    return -q * v * sign(x - z) / (2sqrt(one(v) - v * v))
+    # return -q * v * sign(x - z) / (2sqrt(one(v) - v * v))
+    σ = sign(x - z)
+    return -0.5q * v * σ / (one(v) - v * σ)
 end
 
 @inline function Ψs(x, z, v, q)
-    return q * sign(x - z) / (2sqrt(one(v) - v * v))
+    # return q * sign(x - z) / (2sqrt(one(v) - v * v))
+    σ = sign(x - z)
+    return 0.5q * σ / (one(v) - v * σ)
 end
 
 ## Φ
 @inline function Φs001(x, z, v, q)
     # return 0.5q * abs(x - z) * sinh(v) * cosh(v)^2
     return derivative(vv -> Φs(x, z, vv, q), v)
+    # return 0.5q * v * abs(x - z) / exp32(one(v) - v * v)
 end
 
 @inline function Φs002(x, z, v, q)
@@ -51,6 +57,7 @@ end
 @inline function Πs001(x, z, v, q)
     # return -0.5q * cosh(v)^3 * sign(x - z)
     return derivative(vv -> Πs(x, z, vv, q), v)
+    # return -0.5q * sign(x - z) / exp32(one(v) - v * v)
 end
 
 @inline function Πs010(x, z, v, q)
@@ -108,9 +115,9 @@ end
 #     return q * v * delta(x, z) / (sqrt(one(v) - v * v))
 # end
 
-@inline function ∂²vΠs2(x, z, v, q)
-    return -3q * v * sign(x - z) / (2(one(v) - v * v)^2.5)
-end
+# @inline function ∂²vΠs2(x, z, v, q)
+#     return -3q * v * sign(x - z) / (2(one(v) - v * v)^2.5)
+# end
 
 # @inline function ∂vΨs2(x, z, v, q)
 #     return v * q * sign(x - z) / (2exp32(one(v) - v * v))
