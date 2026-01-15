@@ -9,128 +9,66 @@ using Makie
 using CairoMakie
 
 const PROJ_PATH = pkgdir(@__MODULE__)
-const FIG_PATH = joinpath(PROJ_PATH, "figures")
+const DEFAULT_FIG_PATH = joinpath(PROJ_PATH, "figures")
+const FIG_PATH_REF = Ref(DEFAULT_FIG_PATH)
 const PAPER_PATH = "/home/svretina/PhD/mypapers/ScalarSelfForcePaper"
-const PAPER_FIG_PATH = joinpath(PAPER_PATH, "figs")
+const PAPER_FIG_PATH_BASE = joinpath(PAPER_PATH, "figures")
+const EXPERIMENT_TYPE_REF = Ref("")
+const RUN_NAME_REF = Ref("")
 
-export mytheme_aps, mymean, name_potential, name_interacting, name_forced,
-       name_analytic_potential
-export FIG_PATH, PAPER_FIG_PATH
+export mytheme_aps, mymean, simple_name
+export get_fig_path, set_experiment_path!, reset_fig_path!
+export get_paper_fig_path
 
-function name_potential(pre, sim, post=nothing)
-    q = sim.params.q
-    v = sim.params.v0
-    dx = sim.params.dx
-    λ = sim.params.λ
-    cfl = sim.params.cfl
-    if post === nothing
-        tmp = join([pre,
-                    "v=$(v)",
-                    "q=$(q)",
-                    "dx=$(dx)",
-                    "cfl=$(cfl)",
-                    "pdf"],
-                   "_", ".")
+function format_val(x)
+    # Round to 4 digits to remove floating point noise like 1.250000002 -> 1.25
+    # string(round(x, digits=4))
+    # Or simply:
+    val = round(x; digits=4)
+    if isinteger(val)
+        return string(Int(val))
     else
-        tmp = join([pre,
-                    "v=$(v)",
-                    "q=$(q)",
-                    "dx=$(dx)",
-                    "cfl=$(cfl)",
-                    post, "pdf"],
-                   "_", ".")
+        return string(val)
     end
-    return tmp
 end
 
-function name_analytic_potential(pre, sim, post=nothing)
-    q = sim.params.q
-    v = sim.params.v0
-    dx = sim.params.dx
-    k = sim.params.k
-    dt = sim.params.dt
-    if post === nothing
-        tmp = join([pre,
-                    "k=$(k)",
-                    "v=$(v)",
-                    "q=$(q)",
-                    "dx=$(dx)",
-                    "dt=$(dt)",
-                    "pdf"],
-                   "_", ".")
-    else
-        tmp = join([pre,
-                    "k=$(k)",
-                    "v=$(v)",
-                    "q=$(q)",
-                    "dx=$(dx)",
-                    "dt=$(dt)",
-                    post, "pdf"],
-                   "_", ".")
-    end
-    return tmp
+function get_fig_path()
+    return FIG_PATH_REF[]
 end
 
-function name_interacting(pre, sim, post=nothing)
-    q1 = sim.params.q1
-    q2 = sim.params.q2
-
-    v1 = sim.params.v1
-    v2 = sim.params.v2
-
-    dx = sim.params.dx
-    cfl = sim.params.cfl
-    if post === nothing
-        tmp = join([pre,
-                    "q1=$(q1)",
-                    "q2=$(q2)",
-                    "v1=$(v1)",
-                    "v2=$(v2)",
-                    "dx=$(dx)",
-                    "cfl=$(cfl)",
-                    "pdf"],
-                   "_", ".")
-    else
-        tmp = join([pre,
-                    "q1=$(q1)",
-                    "q2=$(q2)",
-                    "v1=$(v1)",
-                    "v2=$(v2)",
-                    "dx=$(dx)",
-                    "cfl=$(cfl)",
-                    post, "pdf"],
-                   "_", ".")
+function get_paper_fig_path()
+    path = joinpath(PAPER_FIG_PATH_BASE, EXPERIMENT_TYPE_REF[], RUN_NAME_REF[])
+    if !isdir(path)
+        mkpath(path)
     end
-    return tmp
+    return path
 end
 
-function name_forced(pre, sim, post=nothing)
-    q = sim.params.q
+function reset_fig_path!()
+    FIG_PATH_REF[] = DEFAULT_FIG_PATH
+    EXPERIMENT_TYPE_REF[] = ""
+    RUN_NAME_REF[] = ""
+    return nothing
+end
 
-    vmax = sim.params.vmax
-    Nosc = sim.params.Nosc
-    dx = sim.params.dx
-    cfl = sim.params.cfl
-    if post === nothing
-        tmp = join([pre,
-                    "q=$(q)",
-                    "vmax=$(vmax)",
-                    "Nosc=$(Nosc)",
-                    "dx=$(dx)",
-                    "cfl=$(cfl)",
-                    "pdf"],
-                   "_", ".")
-    else
-        tmp = join([pre,
-                    "q=$(q)",
-                    "vmax=$(vmax)",
-                    "Nosc=$(Nosc)",
-                    "dx=$(dx)",
-                    "cfl=$(cfl)",
-                    post, "pdf"],
-                   "_", ".")
+function set_experiment_path!(experiment_type, q, vmax, Nosc, dx, cfl)
+    EXPERIMENT_TYPE_REF[] = experiment_type
+    run_name = "run_q=$(format_val(q))_vmax=$(format_val(vmax))_Nosc=$(format_val(Nosc))_dx=$(format_val(dx))_cfl=$(format_val(cfl))"
+    RUN_NAME_REF[] = run_name
+    new_path = joinpath(DEFAULT_FIG_PATH, experiment_type, run_name)
+    if !isdir(new_path)
+        mkpath(new_path)
     end
-    return tmp
+    FIG_PATH_REF[] = new_path
+    return nothing
+end
+
+function simple_name(base_name, time=nothing)
+    if time === nothing
+        return "$(base_name).pdf"
+    else
+        return "$(base_name)_t=$(format_val(time)).pdf"
+    end
 end
 
 function mymean(arr)
@@ -147,7 +85,7 @@ function mytheme_aps()
                  # Axis attributes
                  ;
                  Axis=Attributes(; spinewidth=1.1,
-                                 xgridvisible=false,
+                                 xgridvisible=true,
                                  xlabelpadding=-0,
                                  xlabelsize=12,
                                  xminortickalign=1,
@@ -160,7 +98,7 @@ function mytheme_aps()
                                  xticksize=5,
                                  xticksmirrored=true,
                                  xtickwidth=0.8,
-                                 ygridvisible=false,
+                                 ygridvisible=true,
                                  ylabelpadding=2,
                                  ylabelsize=12,
                                  yminortickalign=1,
@@ -217,7 +155,7 @@ function mytheme_aps()
                                    ),
                  # Lines attributes
                  Lines=Attributes(;
-                                  cycle=Cycle([[:color] => :color, [:marker] => :marker],
+                                  cycle=Cycle([[:color] => :color],
                                               true)),
                  # Scatter attributes
                  Scatter=Attributes(;

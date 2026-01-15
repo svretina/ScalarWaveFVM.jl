@@ -9,7 +9,7 @@ using DataInterpolations
 using ..ScalarField
 using ..Energies
 
-@inline name(pre, sim, post=nothing) = name_interacting(pre, sim, post)
+@inline name(pre, sim, post=nothing) = simple_name(pre * (post === nothing ? "" : "_$post"))
 
 function plot_pifield(i, sim1; paper=false)
     CairoMakie.activate!()
@@ -59,9 +59,9 @@ function plot_pifield(i, sim1; paper=false)
         folder = "interacting_particles/repelling/"
     end
     savename = name("$(folder)/pifield", sim1, "i=$(i)")
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
 
     return fig
@@ -115,9 +115,9 @@ function plot_psifield(i, sim1; paper=false)
         folder = "interacting_particles/repelling/"
     end
     savename = name("$(folder)/psifield", sim1, "i=$(i)")
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
 
     return fig
@@ -189,9 +189,9 @@ function plot_pifield_resolutions(i, sim1, sim2, sim4; paper=false)
         folder = "interacting_particles/repelling/"
     end
     savename = name("$(folder)/pifield_res_interacting", sim1, "i=$(i)")
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
 
     return fig
@@ -265,9 +265,9 @@ function plot_psifield_resolutions(i, sim1, sim2, sim4; paper=false)
         folder = "interacting_particles/repelling/"
     end
     savename = name("$(folder)/psifield_res_interacting", sim1, "i=$(i)")
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
 
     return fig
@@ -326,9 +326,9 @@ function plot_pifield_convord(sim1, sim2, sim4; paper=false)
         folder = "interacting_particles/repelling/"
     end
     savename = name("$(folder)/pifield_convord_interacting", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
 
     return fig
@@ -387,9 +387,9 @@ function plot_psifield_convord(sim1, sim2, sim4; paper=false)
         folder = "interacting_particles/repelling/"
     end
     savename = name("$(folder)/psifield_convord_interacting", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
 
     return fig
@@ -443,9 +443,9 @@ function plot_particle_positions(sim1; invert=true, paper=false)
         folder = "interacting_particles/repelling/"
     end
     savename = name("$(folder)/particle_positions", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
 
     return fig
@@ -544,9 +544,9 @@ function plot_particle_positions_resolutions(sim1, sim2, sim4; invert=true, pape
     end
 
     savename = name("$(folder)/particle_positions_resolutions", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
 
     return fig
@@ -605,9 +605,9 @@ function plot_position_convord_interacting(sim1, sim2, sim4; paper=false)
     end
 
     savename = name("$(folder)/position_convord_interacting", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
 
     return fig
@@ -656,9 +656,9 @@ function plot_particle_velocities(sim1; paper=false)
         folder = "interacting_particles/repelling/"
     end
     savename = name("$(folder)/particle_velocities", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
 
     return fig
@@ -748,9 +748,9 @@ function plot_particle_velocities_resolutions(sim1, sim2, sim4; paper=false)
     end
 
     savename = name("$(folder)/particle_velocities_resolutions", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
 
     return fig
@@ -800,9 +800,9 @@ function plot_particle_masses(sim1; paper=false)
         folder = "interacting_particles/repelling/"
     end
     savename = name("$(folder)/particle_masses", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
 
     return fig
@@ -892,9 +892,9 @@ function plot_particle_masses_resolutions(sim1, sim2, sim4; paper=false)
         folder = "interacting_particles/repelling/"
     end
     savename = name("$(folder)/particle_masses_resolutions", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
 
     return fig
@@ -1277,9 +1277,9 @@ function plot_particle_kinetic_energy(sim1, sim2, sim4; ticklabelsize=20, paper=
         folder = "interacting_particles/repelling/"
     end
     savename = name("$(folder)/particle_kinetic_energy", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
@@ -1373,9 +1373,9 @@ function plot_particle_potential_energy(sim1; ticklabelsize=20, paper=false)
         folder = "interacting_particles/repelling/"
     end
     savename = name("$(folder)/particle_potential_energy", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
 
     return fig
@@ -1508,9 +1508,9 @@ function plot_particle_total_energy(sim1, sim2, sim4; ticklabelsize=20, paper=fa
     end
     # savename = name("$(folder)/particle_potential_energy", sim1)
     savename = name("$(folder)/particle_total_energy", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
 
     return fig
@@ -2251,9 +2251,9 @@ function plot_total_energy(sim1; ticklabelsize=10, paper=false)
         folder = "interacting_particles/repelling/"
     end
     savename = name("$(folder)/total_energy", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
@@ -2368,9 +2368,9 @@ function plot_field_energy(sim1, sim2, sim4; ticklabelsize=10, paper=false)
         folder = "interacting_particles/repelling/"
     end
     savename = name("$(folder)/field_energy_resolutions", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
@@ -2483,9 +2483,9 @@ function plot_half_field_momentum(sim1, sim2, sim4; ticklabelsize=20, paper=fals
         folder = "interacting_particles/repelling/"
     end
     savename = name("$(folder)/field_momentum_resolutions", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
@@ -2844,9 +2844,9 @@ function plot_total_energy2(sim1; ticklabelsize=10, paper=false)
         folder = "interacting_particles/repelling/"
     end
     savename = name("$(folder)/total_energy", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
@@ -2960,9 +2960,9 @@ function plot_total_energy22(sim1; ticklabelsize=10, paper=false)
         folder = "interacting_particles/repelling/"
     end
     savename = name("$(folder)/total_energy22", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end

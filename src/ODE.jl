@@ -8,160 +8,6 @@ using StaticArrays
 using Polyester
 using DataInterpolations
 
-function trapezoidal(y, h)
-    n = length(y) - 1
-    integral = zero(Float64)
-    @inbounds for i in 1:n
-        integral += y[i]
-    end
-    @inbounds integral += 0.5 * (y[1] + y[n + 1])  # Adjust endpoints
-    integral *= h
-    return integral
-end
-
-# # LaxWendroff schemes
-# function LxW!(dQ, Q, params, t)
-#     equation = params.equation
-#     # numerical_flux = params.numerical_flux
-#     flux_limiter = params.flux_limiter
-#     h = params.h
-#     N = params.N
-#     x = params.x
-#     cfl = params.cfl
-#     c = equation.velocity
-#     dt = params.dt
-
-#     half_h = h * 0.5
-#     _h = 1.0 / h
-#     r1 = @SVector [c, one(c)]
-#     r2 = @SVector [-c, one(c)]
-#     λp = c
-#     λm = -c
-#     _2c = 1.0 / (2c)
-#     @fastmath @inbounds begin
-#         @batch for i in 1:(N + 1)
-#             ## Left Face
-#             ΔΠl = (Q[i, 1] - Q[i - 1, 1]) * _2c
-#             ΔΨl = (Q[i, 2] - Q[i - 1, 2]) * 0.5
-#             a1l = ΔΠl + ΔΨl
-#             a2l = -ΔΠl + ΔΨl
-#             # W1l = a1l * r1 # left moving at left face
-#             W2l = a2l * r2 # right moving at left face
-
-#             ## Right Face
-#             ΔΠr = (Q[i + 1, 1] - Q[i, 1]) * _2c
-#             ΔΨr = (Q[i + 1, 2] - Q[i, 2]) * 0.5
-#             a1r = ΔΠr + ΔΨr
-#             a2r = -ΔΠr + ΔΨr
-#             W1r = a1r * r1 # left moving at right face
-#             # W2r = a2r * r2 # right moving at right face
-
-#             ### Higher resolution stuff - Limiters
-#             ## Left Face
-#             # for λ<0
-#             I = i + 1
-#             ΔΠlp = (Q[I, 1] - Q[I - 1, 1]) * _2c
-#             ΔΨlp = (Q[I, 2] - Q[I - 1, 2]) * 0.5
-#             a1lp = ΔΠlp + ΔΨlp
-#             a1lp == a1l ? θ1l = 1.0 : θ1l = a1lp / a1l
-
-#             a1l_tilde = flux_limiter(θ1l) * a1l
-#             W1l_tilde = a1l_tilde * r1
-#             # for λ>0
-#             I = i - 1
-#             ΔΠlm = (Q[I, 1] - Q[I - 1, 1]) * _2c
-#             ΔΨlm = (Q[I, 2] - Q[I - 1, 2]) * 0.5
-#             a2lm = -ΔΠlm + ΔΨlm
-#             a2lm == a2l ? θ2l = 1.0 : θ2l = a2lm / a2l
-
-#             a2l_tilde = flux_limiter(θ2l) * a2l
-#             W2l_tilde = a2l_tilde * r2
-
-#             ## Right Face
-#             # for λ<0
-#             I = i + 1
-#             ΔΠrp = (Q[I + 1, 1] - Q[I, 1]) * _2c
-#             ΔΨrp = (Q[I + 1, 2] - Q[I, 2]) * 0.5
-#             a1rp = ΔΠrp + ΔΨrp
-
-#             a1rp == a1r ? θ1r = 1.0 : θ1r = a1rp / a1r
-
-#             a1r_tilde = flux_limiter(θ1r) * a1r
-#             W1r_tilde = a1r_tilde * r1
-#             # for λ>0
-#             I = i - 1
-#             ΔΠrm = (Q[I + 1, 1] - Q[I, 1]) * _2c
-#             ΔΨrm = (Q[I + 1, 2] - Q[I, 2]) * 0.5
-#             a2rm = -ΔΠrm + ΔΨrm
-#             a2rm == a2r ? θ2r = 1.0 : θ2r = a2rm / a2r
-#             a2r_tilde = flux_limiter(θ2r) * a2r
-#             W2r_tilde = a2r_tilde * r2
-
-#             tmp = λp * (1.0 - cfl)
-
-#             Fl_tilde = tmp * (W1l_tilde + W2l_tilde)
-#             Fr_tilde = tmp * (W1r_tilde + W2r_tilde)
-
-#             dQ[i, :] .= -(λm * W1r + λp * W2l) * _h - 0.5(Fr_tilde - Fl_tilde) * _h
-#         end
-#     end
-#     return nothing
-# end
-
-@inline function get_stencil2(Q, i, N)
-    @inbounds begin
-        if i == 0
-            qi = Q[N, :]
-            ql = Q[N - 1, :]
-            qr = Q[1, :]
-        elseif i == 1
-            qi = Q[1, :]
-            ql = Q[N, :]
-            qr = Q[2, :]
-        elseif i == N
-            qi = Q[N, :]
-            ql = Q[N - 1, :]
-            qr = Q[1, :]
-        elseif i == N + 1
-            qi = Q[1, :]
-            ql = Q[N, :]
-            qr = Q[2, :]
-        else
-            qi = Q[i, :]
-            ql = Q[i - 1, :]
-            qr = Q[i + 1, :]
-        end
-    end
-    return qi, ql, qr
-end
-
-@inline function get_stencil(Q, i, N)
-    @inbounds begin
-        if i == 0
-            qi = Q[N]
-            ql = Q[N - 1]
-            qr = Q[1]
-        elseif i == 1
-            qi = Q[1]
-            ql = Q[N]
-            qr = Q[2]
-        elseif i == N
-            qi = Q[N]
-            ql = Q[N - 1]
-            qr = Q[1]
-        elseif i == N + 1
-            qi = Q[1]
-            ql = Q[N]
-            qr = Q[2]
-        else
-            qi = Q[i]
-            ql = Q[i - 1]
-            qr = Q[i + 1]
-        end
-    end
-    return qi, ql, qr
-end
-
 function muscl!(dQ, Q, params, t)
     equation = params.equation
     numerical_flux = params.numerical_flux
@@ -380,15 +226,12 @@ function field_rhs_forced!(dQ, Q, params, t)
     z, v, a = ParticleMotion.oscillator(t, z0, A, ω)
 
     dtΠ = @view dQ[:, 1]
-    # dtΨ = @view dQ[:, 2]
     dtΦ = @view dQ[:, 3]
 
-    # h2 = h / 2
     @inbounds for i in 1:N
         source_Π, source_Φ = _calculate_singular_sources(x[i], h, z, v, q, a)
-        @show source_Π, source_Φ
         dtΠ[i] -= source_Π
-        dtΦ[i] -= source_Φ
+        # dtΦ[i] -= source_Φ
     end
     return nothing
 end
@@ -422,23 +265,16 @@ function field_rhs!(dQ, Q, params, t)
     return nothing
 end
 
-# function coupled_rhs!(dQ, Q, params, t)
-#     particle_rhs!(dQ, Q, params, t)
-#     field_rhs!(dQ, Q, params, t)
-#     return nothing
-# end
-
-function particle_in_potential_rhs!(dQ, Q, params, t)
-    particle_with_potential_rhs!(dQ, Q, params, t)
+function radiation_reaction_rhs!(dQ, Q, params, t)
+    particle_rhs!(dQ, Q, params, t)
     field_rhs!(dQ, Q, params, t)
     return nothing
 end
 
-function particle_with_potential_rhs!(dQ, Q, params, t)
+function particle_rhs!(dQ, Q, params, t)
     Q_field = Q.x[1]
     Q_particle = Q.x[2]
     dQ_particle = dQ.x[2]
-    # dQ_field = dQ.x[1]
 
     q = params.q
     xs = params.x
@@ -567,6 +403,160 @@ end
 #     @inbounds dQ[1] = -q1 * v∇Φ1
 #     @inbounds dQ[2] = v1
 #     @inbounds dQ[3] = q1 * a12 * (v1 * Π1 + Ψ1) / m1
+#     return nothing
+# end
+
+# @inline function get_stencil2(Q, i, N)
+#     @inbounds begin
+#         if i == 0
+#             qi = Q[N, :]
+#             ql = Q[N - 1, :]
+#             qr = Q[1, :]
+#         elseif i == 1
+#             qi = Q[1, :]
+#             ql = Q[N, :]
+#             qr = Q[2, :]
+#         elseif i == N
+#             qi = Q[N, :]
+#             ql = Q[N - 1, :]
+#             qr = Q[1, :]
+#         elseif i == N + 1
+#             qi = Q[1, :]
+#             ql = Q[N, :]
+#             qr = Q[2, :]
+#         else
+#             qi = Q[i, :]
+#             ql = Q[i - 1, :]
+#             qr = Q[i + 1, :]
+#         end
+#     end
+#     return qi, ql, qr
+# end
+
+# @inline function get_stencil(Q, i, N)
+#     @inbounds begin
+#         if i == 0
+#             qi = Q[N]
+#             ql = Q[N - 1]
+#             qr = Q[1]
+#         elseif i == 1
+#             qi = Q[1]
+#             ql = Q[N]
+#             qr = Q[2]
+#         elseif i == N
+#             qi = Q[N]
+#             ql = Q[N - 1]
+#             qr = Q[1]
+#         elseif i == N + 1
+#             qi = Q[1]
+#             ql = Q[N]
+#             qr = Q[2]
+#         else
+#             qi = Q[i]
+#             ql = Q[i - 1]
+#             qr = Q[i + 1]
+#         end
+#     end
+#     return qi, ql, qr
+# end
+
+# function trapezoidal(y, h)
+#     n = length(y) - 1
+#     integral = zero(Float64)
+#     @inbounds for i in 1:n
+#         integral += y[i]
+#     end
+#     @inbounds integral += 0.5 * (y[1] + y[n + 1])  # Adjust endpoints
+#     integral *= h
+#     return integral
+# end
+
+# # LaxWendroff schemes
+# function LxW!(dQ, Q, params, t)
+#     equation = params.equation
+#     # numerical_flux = params.numerical_flux
+#     flux_limiter = params.flux_limiter
+#     h = params.h
+#     N = params.N
+#     x = params.x
+#     cfl = params.cfl
+#     c = equation.velocity
+#     dt = params.dt
+
+#     half_h = h * 0.5
+#     _h = 1.0 / h
+#     r1 = @SVector [c, one(c)]
+#     r2 = @SVector [-c, one(c)]
+#     λp = c
+#     λm = -c
+#     _2c = 1.0 / (2c)
+#     @fastmath @inbounds begin
+#         @batch for i in 1:(N + 1)
+#             ## Left Face
+#             ΔΠl = (Q[i, 1] - Q[i - 1, 1]) * _2c
+#             ΔΨl = (Q[i, 2] - Q[i - 1, 2]) * 0.5
+#             a1l = ΔΠl + ΔΨl
+#             a2l = -ΔΠl + ΔΨl
+#             # W1l = a1l * r1 # left moving at left face
+#             W2l = a2l * r2 # right moving at left face
+
+#             ## Right Face
+#             ΔΠr = (Q[i + 1, 1] - Q[i, 1]) * _2c
+#             ΔΨr = (Q[i + 1, 2] - Q[i, 2]) * 0.5
+#             a1r = ΔΠr + ΔΨr
+#             a2r = -ΔΠr + ΔΨr
+#             W1r = a1r * r1 # left moving at right face
+#             # W2r = a2r * r2 # right moving at right face
+
+#             ### Higher resolution stuff - Limiters
+#             ## Left Face
+#             # for λ<0
+#             I = i + 1
+#             ΔΠlp = (Q[I, 1] - Q[I - 1, 1]) * _2c
+#             ΔΨlp = (Q[I, 2] - Q[I - 1, 2]) * 0.5
+#             a1lp = ΔΠlp + ΔΨlp
+#             a1lp == a1l ? θ1l = 1.0 : θ1l = a1lp / a1l
+
+#             a1l_tilde = flux_limiter(θ1l) * a1l
+#             W1l_tilde = a1l_tilde * r1
+#             # for λ>0
+#             I = i - 1
+#             ΔΠlm = (Q[I, 1] - Q[I - 1, 1]) * _2c
+#             ΔΨlm = (Q[I, 2] - Q[I - 1, 2]) * 0.5
+#             a2lm = -ΔΠlm + ΔΨlm
+#             a2lm == a2l ? θ2l = 1.0 : θ2l = a2lm / a2l
+
+#             a2l_tilde = flux_limiter(θ2l) * a2l
+#             W2l_tilde = a2l_tilde * r2
+
+#             ## Right Face
+#             # for λ<0
+#             I = i + 1
+#             ΔΠrp = (Q[I + 1, 1] - Q[I, 1]) * _2c
+#             ΔΨrp = (Q[I + 1, 2] - Q[I, 2]) * 0.5
+#             a1rp = ΔΠrp + ΔΨrp
+
+#             a1rp == a1r ? θ1r = 1.0 : θ1r = a1rp / a1r
+
+#             a1r_tilde = flux_limiter(θ1r) * a1r
+#             W1r_tilde = a1r_tilde * r1
+#             # for λ>0
+#             I = i - 1
+#             ΔΠrm = (Q[I + 1, 1] - Q[I, 1]) * _2c
+#             ΔΨrm = (Q[I + 1, 2] - Q[I, 2]) * 0.5
+#             a2rm = -ΔΠrm + ΔΨrm
+#             a2rm == a2r ? θ2r = 1.0 : θ2r = a2rm / a2r
+#             a2r_tilde = flux_limiter(θ2r) * a2r
+#             W2r_tilde = a2r_tilde * r2
+
+#             tmp = λp * (1.0 - cfl)
+
+#             Fl_tilde = tmp * (W1l_tilde + W2l_tilde)
+#             Fr_tilde = tmp * (W1r_tilde + W2r_tilde)
+
+#             dQ[i, :] .= -(λm * W1r + λp * W2l) * _h - 0.5(Fr_tilde - Fl_tilde) * _h
+#         end
+#     end
 #     return nothing
 # end
 

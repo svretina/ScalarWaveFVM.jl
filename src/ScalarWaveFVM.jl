@@ -24,6 +24,5 @@ include("InteractingPlots.jl")
 include("ParticlePotentialPlots.jl")
 include("PreparePlots.jl")
 include("RetardedPotentialPlots.jl")
-include("PaperPlots.jl")
 
 end

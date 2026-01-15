@@ -7,7 +7,8 @@ using CairoMakie
 using LinearAlgebra
 using DataInterpolations
 
-@inline name(pre, sim, post=nothing) = name_forced(pre, sim, post)
+using ..RetardedPotentials
+using ..Run
 
 function trapezoidal(y, h)
     n = length(y) - 1
@@ -32,7 +33,15 @@ function deriv(y, h)
     return dy
 end
 
-function plot_particle_position(sim, paper=false)
+## Particle Motion
+function get_velocity(sim)
+    if hasproperty(sim.sol.prob.p, :equation)
+        return sim.sol.prob.p.equation.velocity
+    end
+    return 1.0
+end
+
+function plot_particle_position(sim; paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -41,8 +50,13 @@ function plot_particle_position(sim, paper=false)
     # Create figure and axis
 
     L = sim.params.L
-    x_range = (-L / 2, L / 2)
-    mask = (sim.params.x .>= -L / 2) .& (sim.params.x .<= L / 2)
+    c = get_velocity(sim)
+    if iszero(sim.sol.t[end])
+        x_range = (-L / 2, L / 2)
+    else
+        x_range = (-c * sim.sol.t[end], c * sim.sol.t[end])
+    end
+    mask = (sim.params.x .>= x_range[1]) .& (sim.params.x .<= x_range[2])
     x_filtered = sim.params.x[mask]
 
     # Filter sim1 data (640 points)
@@ -76,37 +90,34 @@ function plot_particle_position(sim, paper=false)
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    savename = name("forced_motion/particle_position", sim)
-    save(joinpath(FIG_PATH, savename), fig)
+    savename = simple_name("particle_position")
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
 
-function plot_pifield(i, sim1, paper=false)
+## Fields
+function plot_pifield(i, sim1; paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
-    # Get time points and assert equality
-    t1 = sim1.sol.t[i]
-    t = t1
-
-    # Create figure and axis
-
+    t = sim1.sol.t[i]
+    c = get_velocity(sim1)
     L = sim1.params.L
-    x_range = (-L / 2, L / 2)
-    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    if iszero(t)
+        x_range = (-L / 2, L / 2)
+    else
+        x_range = (-c * t, c * t)
+    end
+    mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     x_filtered = sim1.params.x[mask]
 
-    # Filter sim1 data (640 points)
-    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
-    x1_filtered = sim1.params.x[mask1]  # ~320 elements if symmetric around 0
-    y1_filtered = sim1.sol.u[i][mask1, 1]  # Matches x1_filtered length
+    y1_filtered = sim1.sol.u[i][mask, 1]
 
-    # Compute y-limits with padding
     y_min = minimum(y1_filtered)
     y_max = maximum(y1_filtered)
-    padding = 0.1 * (y_max - y_min)  # Add 10% padding
+    padding = 0.1 * (y_max - y_min)
     y_limits = (y_min - padding, y_max + padding)
 
     xp, _, _ = ParticleMotion.oscillator(t, sim1.params.z0, sim1.params.A, sim1.params.ω)
@@ -121,27 +132,27 @@ function plot_pifield(i, sim1, paper=false)
     lines!(ax, x_filtered, y1_filtered; label=L"\textrm{low}")
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
-    leg = Legend(fig[2, 1],
-                 ax;
-                 orientation=:horizontal,
-                 tellwidth=false,
-                 tellheight=true,)
+    # leg = Legend(fig[2, 1],
+    #              ax;
+    #              orientation=:horizontal,
+    #              tellwidth=false,
+    #              tellheight=true,)
 
     # Adjust layout to ensure proper spacing
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
-    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    # rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    savename = name("forced_motion/pifield_forced", sim1, "i=$(i)")
-    save(joinpath(FIG_PATH, savename), fig)
+    savename = simple_name("pifield_forced", t)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
 
-function plot_psifield(i, sim1, paper=false)
+function plot_psifield(i, sim1; paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -150,9 +161,14 @@ function plot_psifield(i, sim1, paper=false)
 
     # Create figure and axis
 
+    c = get_velocity(sim1)
     L = sim1.params.L
-    x_range = (-L / 2, L / 2)
-    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    if iszero(t)
+        x_range = (-L / 2, L / 2)
+    else
+        x_range = (-c * t, c * t)
+    end
+    mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     x_filtered = sim1.params.x[mask]
 
     # Filter sim1 data (640 points)
@@ -178,52 +194,57 @@ function plot_psifield(i, sim1, paper=false)
     lines!(ax, x_filtered, y1_filtered; label=L"\textrm{low}")
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
-    leg = Legend(fig[2, 1],
-                 ax;
-                 orientation=:horizontal,
-                 tellwidth=false,
-                 tellheight=true,)
+    # leg = Legend(fig[2, 1],
+    #              ax;
+    #              orientation=:horizontal,
+    #              tellwidth=false,
+    #              tellheight=true,)
 
     # Adjust layout to ensure proper spacing
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
-    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    # rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    savename = name("forced_motion/psifield_forced", sim1, "i=$(i)")
-    save(joinpath(FIG_PATH, savename), fig)
+    savename = simple_name("psifield_forced", t)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
 
-function plot_phifield(i, sim1, paper=false)
+function plot_phifield(i, sim1; paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     t1 = sim1.sol.t[i]
     t = t1
-
+    q = sim1.params.q
     # Create figure and axis
+    xp, vp, ap = ParticleMotion.oscillator(t, sim1.params.z0, sim1.params.A,
+                                           sim1.params.ω)
 
+    c = get_velocity(sim1)
     L = sim1.params.L
-    x_range = (-L / 2, L / 2)
-    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
+    if iszero(t)
+        x_range = (-L / 2, L / 2)
+    else
+        x_range = (-c * t, c * t)
+    end
+    mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     x_filtered = sim1.params.x[mask]
 
     # Filter sim1 data (640 points)
     mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
-    x1_filtered = sim1.params.x[mask1]  # ~320 elements if symmetric around 0
-    y1_filtered = sim1.sol.u[i][mask1, 3]  # Matches x1_filtered length
+    x1_filtered = sim1.params.x[mask1]
+    y1_filtered = sim1.sol.u[i][mask1, 3] .- 0ScalarField.Πs.(x_filtered, xp, vp, q)
 
     # Compute y-limits with padding
     y_min = minimum(y1_filtered)
     y_max = maximum(y1_filtered)
     padding = 0.1 * (y_max - y_min)  # Add 10% padding
     y_limits = (y_min - padding, y_max + padding)
-
-    xp, _, _ = ParticleMotion.oscillator(t, sim1.params.z0, sim1.params.A, sim1.params.ω)
 
     fig = Figure(; size=(253, 200))
     ax = Axis(fig[1, 1];
@@ -232,99 +253,32 @@ function plot_phifield(i, sim1, paper=false)
               title=L"t=%$(round(t, digits=3))",
               limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]),)
     # Plot the data
-    lines!(ax, x_filtered, y1_filtered; label=L"\textrm{low}")
+    lines!(ax, x_filtered, y1_filtered;
+           label=L"\textrm{low}")
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
-    leg = Legend(fig[2, 1],
-                 ax;
-                 orientation=:horizontal,
-                 tellwidth=false,
-                 tellheight=true,)
+    # leg = Legend(fig[2, 1],
+    #              ax;
+    #              orientation=:horizontal,
+    #              tellwidth=false,
+    #              tellheight=true,)
 
     # Adjust layout to ensure proper spacing
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
-    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    # rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    savename = name("forced_motion/phifield_forced", sim1, "i=$(i)")
-    save(joinpath(FIG_PATH, savename), fig)
+    savename = simple_name("phifield_forced", t)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
 
-function plot_pifield_resolutions(i, sim1, sim2, sim4, F=8, paper=false)
-    CairoMakie.activate!()
-    set_theme!(mytheme_aps())
-    # Get time points and assert equality
-    t1 = sim1.sol.t[i]
-    t2 = sim2.sol.t[2i - 1]
-    t4 = sim4.sol.t[4i - 3]
-    @assert t1 == t2
-    @assert t2 == t4
-    t = t1
-
-    # Create figure and axis
-
-    L = sim1.params.L
-    x_range = (-L / F, L / F)
-    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
-    x_filtered = sim1.params.x[mask]
-
-    # Filter sim1 data (640 points)
-    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
-    x1_filtered = sim1.params.x[mask1]  # ~320 elements if symmetric around 0
-    y1_filtered = sim1.sol.u[i][mask1, 1]  # Matches x1_filtered length
-
-    y2_raw = mymean(sim2.sol.u[2i - 1][:, 1])  # ~640 elements
-    y2_filtered = y2_raw[mask1]           # Should reduce to ~320 elements
-
-    y4_raw = mymean(mymean(sim4.sol.u[4i - 3][:, 1]))  # ~1280 elements
-    y4_filtered = y4_raw[mask1]   # Should reduce to ~320 elements
-
-    # Compute y-limits with padding
-    y_min = minimum([minimum(y1_filtered), minimum(y2_filtered), minimum(y4_filtered)])
-    y_max = maximum([maximum(y1_filtered), maximum(y2_filtered), maximum(y4_filtered)])
-    padding = 0.1 * (y_max - y_min)  # Add 10% padding
-    y_limits = (y_min - padding, y_max + padding)
-
-    xp, _, _ = ParticleMotion.oscillator(t, sim1.params.z0, sim1.params.A, sim1.params.ω)
-
-    fig = Figure(; size=(253, 200))
-    ax = Axis(fig[1, 1];
-              xlabel=L"x",
-              ylabel=L"\Pi_\mathrm{r}",
-              title=L"t=%$(round(t, digits=3))",
-              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]),)
-    # Plot the data
-    lines!(ax, x_filtered, y1_filtered; label=L"\textrm{low}")
-    lines!(ax, x_filtered, y2_filtered; label=L"\textrm{mid}")
-    lines!(ax, x_filtered, y4_filtered; label=L"\textrm{high}")
-    vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
-    # Add legend at the bottom
-    leg = Legend(fig[2, 1],
-                 ax;
-                 orientation=:horizontal,
-                 tellwidth=false,
-                 tellheight=true,)
-
-    # Adjust layout to ensure proper spacing
-    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
-    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
-    rowgap!(fig.layout, 0)  # Small gap between plot and legend
-    colsize!(fig.layout, 1, Relative(0.9))
-    # Save the figure
-    savename = name("forced_motion/pifield_res_forced", sim1, "i=$(i)")
-    save(joinpath(FIG_PATH, savename), fig)
-    if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
-    end
-    return fig
-end
-
-function plot_total_pifield(i, sim1, paper=false)
+## Total field
+function plot_total_pifield(i, sim1; paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -333,9 +287,13 @@ function plot_total_pifield(i, sim1, paper=false)
     # Create figure and axis
 
     L = sim1.params.L
-    F = 2
-    x_range = (-L / F, L / F)
-    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+    c = get_velocity(sim1)
+    if iszero(t)
+        x_range = (-L / 2, L / 2)
+    else
+        x_range = (-c * t, c * t)
+    end
+    mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     x_filtered = sim1.params.x[mask]
 
     xp, vp, _ = ParticleMotion.oscillator(t, sim1.params.z0, sim1.params.A, sim1.params.ω)
@@ -380,15 +338,15 @@ function plot_total_pifield(i, sim1, paper=false)
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    savename = name("forced_motion/pifield_forced", sim1, "i=$(i)")
-    save(joinpath(FIG_PATH, savename), fig)
+    savename = simple_name("pifield_forced", t)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
 
-function plot_total_psifield(i, sim1, F=2, paper=false)
+function plot_total_psifield(i, sim1; F=2, paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -396,9 +354,14 @@ function plot_total_psifield(i, sim1, F=2, paper=false)
 
     # Create figure and axis
 
+    c = get_velocity(sim1)
     L = sim1.params.L
-    x_range = (-L / F, L / F)
-    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+    if iszero(t)
+        x_range = (-L / 2, L / 2)
+    else
+        x_range = (-c * t, c * t)
+    end
+    mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     x_filtered = sim1.params.x[mask]
 
     xp, vp, _ = ParticleMotion.oscillator(t, sim1.params.z0, sim1.params.A, sim1.params.ω)
@@ -447,26 +410,30 @@ function plot_total_psifield(i, sim1, F=2, paper=false)
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    savename = name("forced_motion/psifield_forced", sim1, "i=$(i)")
-    save(joinpath(FIG_PATH, savename), fig)
+    savename = simple_name("psifield_forced", t)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
 
-function plot_total_phifield(i, sim1, paper=false)
+function plot_total_phifield(i, sim1; paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     t = sim1.sol.t[i]
 
     # Create figure and axis
-    F = 2
+    c = get_velocity(sim1)
     L = sim1.params.L
     @show L
-    x_range = (-L / F, L / F)
-    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+    if iszero(t)
+        x_range = (-L / 2, L / 2)
+    else
+        x_range = (-c * t, c * t)
+    end
+    mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     x_filtered = sim1.params.x[mask]
 
     xp, vp, _ = ParticleMotion.oscillator(t, sim1.params.z0, sim1.params.A, sim1.params.ω)
@@ -514,15 +481,16 @@ function plot_total_phifield(i, sim1, paper=false)
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    savename = name("forced_motion/phifield_forced", sim1, "i=$(i)")
-    save(joinpath(FIG_PATH, savename), fig)
+    savename = simple_name("phifield_forced", t)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
 
-function plot_total_pifield_resolutions(i, sim1, sim2, sim4, F=8, paper=false)
+## Resolutions  
+function plot_total_pifield_resolutions(i, sim1, sim2, sim4; F=8, paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -535,9 +503,14 @@ function plot_total_pifield_resolutions(i, sim1, sim2, sim4, F=8, paper=false)
 
     # Create figure and axis
 
+    c = get_velocity(sim1)
     L = sim1.params.L
-    x_range = (-L / F, L / F)
-    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+    if iszero(t)
+        x_range = (-L / F, L / F)
+    else
+        x_range = (-c * t, c * t)
+    end
+    mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     x_filtered = sim1.params.x[mask]
 
     xp, vp, _ = ParticleMotion.oscillator(t, sim1.params.z0, sim1.params.A, sim1.params.ω)
@@ -586,15 +559,15 @@ function plot_total_pifield_resolutions(i, sim1, sim2, sim4, F=8, paper=false)
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    savename = name("forced_motion/pifield_res_forced", sim1, "i=$(i)")
-    save(joinpath(FIG_PATH, savename), fig)
+    savename = simple_name("pifield_res_forced", t)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
 
-function plot_psifield_resolutions(i, sim1, sim2, sim4, F=8, paper=false)
+function plot_psifield_resolutions(i, sim1, sim2, sim4; F=8, paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -608,9 +581,14 @@ function plot_psifield_resolutions(i, sim1, sim2, sim4, F=8, paper=false)
 
     # Create figure and axis
 
+    c = get_velocity(sim1)
     L = sim1.params.L
-    x_range = (-L / F, L / F)
-    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+    if iszero(t)
+        x_range = (-L / F, L / F)
+    else
+        x_range = (-c * t, c * t)
+    end
+    mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     x_filtered = sim1.params.x[mask]
 
     # Filter sim1 data (640 points)
@@ -655,15 +633,15 @@ function plot_psifield_resolutions(i, sim1, sim2, sim4, F=8, paper=false)
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    savename = name("forced_motion/psifield_res_forced", sim1, "i=$(i)")
-    # save(joinpath(FIG_PATH, savename), fig)
+    savename = simple_name("psifield_res_forced", t)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
 
-function plot_pifield_diff(i, sim1, sim2, sim4, paper=false)
+function plot_pifield_resolutions(i, sim1, sim2, sim4; F=8, paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -675,12 +653,91 @@ function plot_pifield_diff(i, sim1, sim2, sim4, paper=false)
     t = t1
 
     # Create figure and axis
-    F = 2
+
+    c = get_velocity(sim1)
     L = sim1.params.L
-    x_range = (-L / F, L / F)
+    if iszero(t)
+        x_range = (-L / 2, L / 2)
+    else
+        x_range = (-c * t, c * t)
+    end
+    mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    x_filtered = sim1.params.x[mask]
+
+    # Filter sim1 data (640 points)
+    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    x1_filtered = sim1.params.x[mask1]  # ~320 elements if symmetric around 0
+    y1_filtered = sim1.sol.u[i][mask1, 1]  # Matches x1_filtered length
+
+    y2_raw = mymean(sim2.sol.u[2i - 1][:, 1])  # ~640 elements
+    y2_filtered = y2_raw[mask1]           # Should reduce to ~320 elements
+
+    y4_raw = mymean(mymean(sim4.sol.u[4i - 3][:, 1]))  # ~1280 elements
+    y4_filtered = y4_raw[mask1]   # Should reduce to ~320 elements
+
+    # Compute y-limits with padding
+    y_min = minimum([minimum(y1_filtered), minimum(y2_filtered), minimum(y4_filtered)])
+    y_max = maximum([maximum(y1_filtered), maximum(y2_filtered), maximum(y4_filtered)])
+    padding = 0.1 * (y_max - y_min)  # Add 10% padding
+    y_limits = (y_min - padding, y_max + padding)
+
+    xp, _, _ = ParticleMotion.oscillator(t, sim1.params.z0, sim1.params.A, sim1.params.ω)
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"x",
+              ylabel=L"\Pi_\mathrm{r}",
+              title=L"t=%$(round(t, digits=3))",
+              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]),)
+    # Plot the data
+    lines!(ax, x_filtered, y1_filtered; label=L"\textrm{low}")
+    lines!(ax, x_filtered, y2_filtered; label=L"\textrm{mid}")
+    lines!(ax, x_filtered, y4_filtered; label=L"\textrm{high}")
+    vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+    # Add legend at the bottom
+    leg = Legend(fig[2, 1],
+                 ax;
+                 orientation=:horizontal,
+                 tellwidth=false,
+                 tellheight=true,)
+
+    # Adjust layout to ensure proper spacing
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    # Save the figure
+    savename = simple_name("pifield_res_forced", t)
+    save(joinpath(get_fig_path(), savename), fig)
+    if paper
+        save(joinpath(get_paper_fig_path(), savename), fig)
+    end
+    return fig
+end
+
+## Differences
+function plot_pifield_diff(i, sim1, sim2, sim4; paper=false)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+    # Get time points and assert equality
+    t1 = sim1.sol.t[i]
+    t2 = sim2.sol.t[2i - 1]
+    t4 = sim4.sol.t[4i - 3]
+    @assert t1 == t2
+    @assert t2 == t4
+    t = t1
+
+    # Create figure and axis
+    c = get_velocity(sim1)
+    L = sim1.params.L
+    if iszero(t)
+        x_range = (-L / 2, L / 2)
+    else
+        x_range = (-c * t, c * t)
+    end
     @show x_range
 
-    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+    mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     x_filtered = sim1.params.x[mask]
 
     # Filter sim1 data (640 points)
@@ -730,15 +787,15 @@ function plot_pifield_diff(i, sim1, sim2, sim4, paper=false)
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    savename = name("forced_motion/pifield_diff_forced", sim1, "i=$(i)")
-    save(joinpath(FIG_PATH, savename), fig)
+    savename = simple_name("pifield_diff_forced", t)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
 
-function plot_psifield_diff(i, sim1, sim2, sim4, paper=false)
+function plot_psifield_diff(i, sim1, sim2, sim4; paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -750,10 +807,14 @@ function plot_psifield_diff(i, sim1, sim2, sim4, paper=false)
     t = t1
 
     # Create figure and axis
-    F = 2
+    c = get_velocity(sim1)
     L = sim1.params.L
-    x_range = (-L / F, L / F)
-    mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
+    if iszero(t)
+        x_range = (-L / 2, L / 2)
+    else
+        x_range = (-c * t, c * t)
+    end
+    mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     x_filtered = sim1.params.x[mask]
 
     # Filter sim1 data (640 points)
@@ -801,15 +862,16 @@ function plot_psifield_diff(i, sim1, sim2, sim4, paper=false)
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
-    savename = name("forced_motion/psifield_diff_forced", sim1, "i=$(i)")
-    save(joinpath(FIG_PATH, savename), fig)
+    savename = simple_name("psifield_diff_forced", t)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
 
-function plot_pifield_convfac(sim1, sim2, sim4, paper=false)
+## Convergence Factor
+function plot_pifield_convfac(sim1, sim2, sim4; paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -872,15 +934,15 @@ function plot_pifield_convfac(sim1, sim2, sim4, paper=false)
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
 
-    savename = name("forced_motion/pifield_convfac_forced", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    savename = simple_name("pifield_convfac_forced")
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
 
-function plot_psifield_convfac(sim1, sim2, sim4, paper=false)
+function plot_psifield_convfac(sim1, sim2, sim4; paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -942,15 +1004,16 @@ function plot_psifield_convfac(sim1, sim2, sim4, paper=false)
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
 
-    savename = name("forced_motion/psifield_convfac_forced", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    savename = simple_name("psifield_convfac_forced")
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
 
-function plot_pifield_convord(sim1, sim2, sim4, paper=false)
+## Convergence Order
+function plot_pifield_self_convergence_order(sim1, sim2, sim4; paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -1012,15 +1075,15 @@ function plot_pifield_convord(sim1, sim2, sim4, paper=false)
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
 
-    savename = name("forced_motion/pifield_convord_forced", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    savename = simple_name("pifield_convord_forced")
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
 
-function plot_psifield_convord(sim1, sim2, sim4, paper=false)
+function plot_psifield_self_convergence_order(sim1, sim2, sim4; paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -1092,20 +1155,20 @@ function plot_psifield_convord(sim1, sim2, sim4, paper=false)
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
 
-    savename = name("forced_motion/psifield_convord_forced", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    savename = simple_name("psifield_convord_forced")
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
 
-function plot_convergence_panel(sim1, sim2, sim4, paper=false)
+function plot_convergence_panel(sim1, sim2, sim4; paper=false)
     nt = length(sim1.sol.t)
-    fig1 = plot_pifield_resolutions(nt, sim1, sim2, sim4, paper)  # Your existing function
-    fig2 = plot_psifield_resolutions(nt, sim1, sim2, sim4, paper)  # Replace with your second function
-    fig3 = plot_pifield_convord(sim1, sim2, sim4, paper)  # Replace with your third function
-    fig4 = plot_psifield_convord(sim1, sim2, sim4, paper)  # Replace with your fourth function
+    fig1 = plot_pifield_resolutions(nt, sim1, sim2, sim4; paper=paper)  # Your existing function
+    fig2 = plot_psifield_resolutions(nt, sim1, sim2, sim4; paper=paper)  # Replace with your second function
+    fig3 = plot_pifield_self_convergence_order(sim1, sim2, sim4; paper=paper)  # Replace with your third function
+    fig4 = plot_psifield_self_convergence_order(sim1, sim2, sim4; paper=paper)  # Replace with your fourth function
 
     fig = Figure(; size=(600, 500))
 
@@ -1182,286 +1245,722 @@ function plot_convergence_panel(sim1, sim2, sim4, paper=false)
     colsize!(fig.layout, 2, Relative(0.45)) # Right column (45% of width, leaves 5% padding)
     # Save the combined figure
 
-    savename = name("forced_motion/convergence_pane_forced", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    savename = simple_name("convergence_pane_forced")
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
-        save(joinpath(PAPER_FIG_PATH, savename), fig)
+        save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
 
-function plot_balance_law(sim1)
+### Comparison with Retarded
+function plot_pifield_vs_retarded(i, sim; total=false)
     CairoMakie.activate!()
-    mytheme = mytheme_aps()
-    set_theme!(mytheme)
-    # Get time points and assert equality
+    set_theme!(mytheme_aps())
 
-    # Create figure and axis
-    # F = 6
+    t = sim.sol.t[i]
+
+    dx = sim.params.dx
+    L = sim.params.L
+    q = sim.params.q
+    A = sim.params.A
+    ω = sim.params.ω
+    z0 = sim.params.z0
+    z0 = sim.params.z0
+
+    c = get_velocity(sim)
+    if iszero(t)
+        x_range = (-L / 2, L / 2)
+    else
+        x_range = (-c * t, c * t)
+    end
+    mask = (sim.params.x .>= x_range[1]) .& (sim.params.x .<= x_range[2])
+    x = sim.params.x[mask]
+
+    z, v, _ = ParticleMotion.oscillator(t, z0, A, ω)
+    Pis = ScalarField.Πs.(x, Ref(z), Ref(v), Ref(q))
+
+    if total
+        y_sim = Pis .+ sim.sol.u[i][mask, 1]
+    else
+        y_sim = sim.sol.u[i][mask, 1] #.- 0Pis0
+    end
+
+    ## Lienard-Wiechert
+
+    if total
+        y_lw = Π_ret.(x, Ref(sim.params), Ref(t))
+    else
+        y_lw = Π_ret.(x, Ref(sim.params), Ref(t)) .- ScalarField.Πs.(x, z, v, q)
+    end
+
+    ymin1 = minimum(y_lw)
+    ymin2 = minimum(y_sim)
+
+    ymin = minimum([ymin1, ymin2])
+
+    ymax1 = maximum(y_lw)
+    ymax2 = maximum(y_sim)
+    ymax = maximum([ymax1, ymax2])
+
+    padding = round(0.1(ymax - ymin); digits=3)
+
+    y_limits = round.((ymin - padding, ymax + padding), digits=3)
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"x",
+              ylabel=L"\Pi",
+              title=L"t=%$(round(t, digits=3))",
+              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+
+    lines!(ax, x, y_sim; label="Simulation")
+    lines!(ax, x, y_lw; label="Retarded", linestyle=:dash)
+
+    vlines!(ax, [z]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+
+    leg = Legend(fig[2, 1],
+                 ax;
+                 orientation=:horizontal,
+                 tellwidth=false,
+                 tellheight=true,)
+
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    return fig
+end
+
+function plot_pifield_resolutions_vs_retarded(i, sim1, sim2; total=false, paper=false)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+
+    t = sim1.sol.t[i]
+
+    dx1 = sim1.params.dx
+    dx2 = sim2.params.dx
     L = sim1.params.L
-    Nosc = sim1.params.Nosc
-    ω = sim1.params.ω
+    q = sim1.params.q
     A = sim1.params.A
-    x0 = sim1.params.x0
-    T = 2π / ω
-    tf = Nosc * T
-    L0 = 2tf
-    x_range = (-L0 / 4, L0 / 4)
-    @show x_range
-    mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
-    x_filtered = sim1.params.x[mask]
+    ω = sim1.params.ω
+    z0 = sim1.params.z0
+
+    c = get_velocity(sim1)
+    if iszero(t)
+        x_range = (-L / 2, L / 2)
+    else
+        x_range = (-c * t, c * t)
+    end
+    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    mask2 = (sim2.params.x .>= x_range[1]) .& (sim2.params.x .<= x_range[2])
+
+    x1 = sim1.params.x[mask1]
+    x2 = sim2.params.x[mask2]
+
+    z, v, _ = ParticleMotion.oscillator(t, z0, A, ω)
+    Pis = ScalarField.Πs.(x1, Ref(z), Ref(v), Ref(q))
+
+    if total
+        y_sim = Pis .+ sim1.sol.u[i][mask1, 1]
+    else
+        # xp0, vp0, _ = ParticleMotion.oscillator(0.0, z0, A, ω)
+        # Pis0 = ScalarField.Πs.(x, Ref(xp0), Ref(vp0), Ref(q))
+        y_sim1 = sim1.sol.u[i][mask1, 1] #.- 0Pis0
+        y_sim2 = sim2.sol.u[2i - 1][mask2, 1]
+    end
+
+    ## Lienard-Wiechert
+
+    if total
+        y_lw = Π_ret.(x1, Ref(sim1.params), Ref(t))
+    else
+        y_lw = Π_ret.(x1, Ref(sim1.params), Ref(t)) .- ScalarField.Πs.(x1, z, v, q)
+    end
+
+    ymin1 = minimum(y_lw)
+    ymin2 = minimum(y_sim1)
+
+    ymin = minimum([ymin1, ymin2])
+
+    ymax1 = maximum(y_lw)
+    ymax2 = maximum(y_sim1)
+    ymax = maximum([ymax1, ymax2])
+
+    padding = round(0.1(ymax - ymin); digits=3)
+
+    y_limits = round.((ymin - padding, ymax + padding), digits=3)
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"x",
+              ylabel=L"\Pi_r",
+              title=L"t=%$(round(t, digits=3))",
+              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+
+    lines!(ax, x1, y_sim1; label="dx=$dx1")
+    lines!(ax, x2, y_sim2; label="dx=$dx2")
+    lines!(ax, x1, y_lw; label="Retarded", linestyle=:dash)
+
+    vlines!(ax, [z]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+
+    leg = Legend(fig[2, 1],
+                 ax;
+                 orientation=:horizontal,
+                 tellwidth=false,
+                 tellheight=true,)
+
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+
+    savename = simple_name("pifield_retarded_resolutions", t)
+    save(joinpath(get_fig_path(), savename), fig)
+    if paper
+        save(joinpath(get_paper_fig_path(), savename), fig)
+    end
+
+    return fig
+end
+
+function plot_psifield_resolutions_vs_retarded(i, sim1, sim2; total=false, paper=false)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+
+    t = sim1.sol.t[i]
+
+    dx1 = sim1.params.dx
+    dx2 = sim2.params.dx
+    L = sim1.params.L
+    q = sim1.params.q
+    A = sim1.params.A
+    ω = sim1.params.ω
+    z0 = sim1.params.z0
+
+    c = get_velocity(sim1)
+    if iszero(t)
+        x_range = (-L / 2, L / 2)
+    else
+        x_range = (-c * t, c * t)
+    end
+    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    mask2 = (sim2.params.x .>= x_range[1]) .& (sim2.params.x .<= x_range[2])
+
+    x1 = sim1.params.x[mask1]
+    x2 = sim2.params.x[mask2]
+
+    z, v, _ = ParticleMotion.oscillator(t, z0, A, ω)
+    Psis1 = ScalarField.Ψs.(x1, Ref(z), Ref(v), Ref(q))
+    Psis2 = ScalarField.Ψs.(x2, Ref(z), Ref(v), Ref(q))
+
+    if total
+        y_sim1 = Psis1 .+ sim1.sol.u[i][mask1, 2]
+        y_sim2 = Psis2 .+ sim2.sol.u[2i - 1][mask2, 2]
+    else
+        xp0, vp0, _ = ParticleMotion.oscillator(0.0, z0, A, ω)
+        Psis0_1 = ScalarField.Ψs.(x1, Ref(xp0), Ref(vp0), Ref(q))
+        Psis0_2 = ScalarField.Ψs.(x2, Ref(xp0), Ref(vp0), Ref(q))
+        y_sim1 = Psis1 .+ sim1.sol.u[i][mask1, 2] .- Psis0_1
+        y_sim2 = Psis2 .+ sim2.sol.u[2i - 1][mask2, 2] .- Psis0_2
+    end
+
+    ## Lienard-Wiechert
+
+    if total
+        y_lw = Ψ_ret.(x1, Ref(sim1.params), Ref(t))
+    else
+        y_lw = Ψ_ret.(x1, Ref(sim1.params), Ref(t)) .- ScalarField.Ψs.(x1, z, v, q)
+    end
+
+    ymin1 = minimum(y_lw)
+    ymin2 = minimum(y_sim1)
+
+    ymin = minimum([ymin1, ymin2])
+
+    ymax1 = maximum(y_lw)
+    ymax2 = maximum(y_sim1)
+    ymax = maximum([ymax1, ymax2])
+
+    padding = round(0.1(ymax - ymin); digits=3)
+
+    y_limits = round.((ymin - padding, ymax + padding), digits=3)
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"x",
+              ylabel=L"\Psi_r",
+              title=L"t=%$(round(t, digits=3))",
+              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+
+    lines!(ax, x1, y_sim1; label="dx=$dx1")
+    lines!(ax, x2, y_sim2; label="dx=$dx2")
+    lines!(ax, x1, y_lw; label="Retarded", linestyle=:dash)
+
+    vlines!(ax, [z]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+
+    leg = Legend(fig[2, 1],
+                 ax;
+                 orientation=:horizontal,
+                 tellwidth=false,
+                 tellheight=true,)
+
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+
+    savename = simple_name("psifield_retarded_resolutions", t)
+    save(joinpath(get_fig_path(), savename), fig)
+    if paper
+        save(joinpath(get_paper_fig_path(), savename), fig)
+    end
+
+    return fig
+end
+
+function plot_psifield_vs_retarded(i, sim; total=false)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+
+    t = sim.sol.t[i]
+
+    dx = sim.params.dx
+    L = sim.params.L
+    q = sim.params.q
+    A = sim.params.A
+    ω = sim.params.ω
+    z0 = sim.params.z0
+
+    x_range = (-L / 2, L / 2)
+    mask = (sim.params.x .>= x_range[1]) .& (sim.params.x .<= x_range[2])
+    x = sim.params.x[mask]
+
+    z, v, _ = ParticleMotion.oscillator(t, z0, A, ω)
+    Psis = ScalarField.Ψs.(x, Ref(z), Ref(v), Ref(q))
+
+    if total
+        y_sim = Psis .+ sim.sol.u[i][mask, 2]
+    else
+        xp0, vp0, _ = ParticleMotion.oscillator(0.0, z0, A, ω)
+        Psis0 = ScalarField.Ψs.(x, Ref(xp0), Ref(vp0), Ref(q))
+        y_sim = Psis .+ sim.sol.u[i][mask, 2] .- Psis0
+    end
+
+    ## Lienard-Wiechert
+
+    if total
+        y_lw = Ψ_ret.(x, Ref(sim.params), Ref(t))
+    else
+        y_lw = Ψ_ret.(x, Ref(sim.params), Ref(t)) .- ScalarField.Ψs.(x, z, v, q)
+    end
+
+    ymin1 = minimum(y_lw)
+    ymin2 = minimum(y_sim)
+
+    ymin = minimum([ymin1, ymin2])
+
+    ymax1 = maximum(y_lw)
+    ymax2 = maximum(y_sim)
+    ymax = maximum([ymax1, ymax2])
+
+    padding = round(0.1(ymax - ymin); digits=3)
+
+    y_limits = round.((ymin - padding, ymax + padding), digits=3)
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"x",
+              ylabel=L"\Psi",
+              title=L"t=%$(round(t, digits=3))",
+              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+
+    lines!(ax, x, y_sim; label="Simulation")
+    lines!(ax, x, y_lw; label="Retarded", linestyle=:dash)
+
+    vlines!(ax, [z]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+
+    leg = Legend(fig[2, 1],
+                 ax;
+                 orientation=:horizontal,
+                 tellwidth=false,
+                 tellheight=true,)
+
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    return fig
+end
+
+function plot_pifield_diff_vs_retarded(i, sim1, sim2; total=false)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+
+    dx1 = sim1.params.dx
+    dx2 = sim2.params.dx
+
+    L = sim1.params.L
+    q = sim1.params.q
+    A = sim1.params.A
+    ω = sim1.params.ω
+    z0 = sim1.params.z0
+
+    t1 = sim1.sol.t[i]
+    t2 = sim2.sol.t[2i - 1]
+    @assert t1 == t2
+    t = t1
+
+    c = get_velocity(sim1)
+    if iszero(t)
+        x_range = (-L / 2, L / 2)
+    else
+        x_range = (-c * t, c * t)
+    end
+
+    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    x = sim1.params.x[mask1]
+
+    c = get_velocity(sim1)
+    if iszero(t)
+        x_range = (-L / 2, L / 2)
+    else
+        x_range = (-c * t, c * t)
+    end
+
+    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+
+    z, v, _ = ParticleMotion.oscillator(t, z0, A, ω)
+    Pis = ScalarField.Πs.(x, Ref(z), Ref(v), Ref(q))
+    if total
+        y_sim1 = Pis .+ sim1.sol.u[i][mask1, 1]
+        y_sim2 = Pis .+ mymean(sim2.sol.u[2i - 1][:, 1])[mask1]
+    else
+        y_sim1 = sim1.sol.u[i][mask1, 1]
+        y_sim2 = mymean(sim2.sol.u[2i - 1][:, 1])[mask1]
+    end
+
+    ## Lienard-Wiechert
+
+    if total
+        y_lw = Π_ret.(x, Ref(sim1.params), Ref(t))
+    else
+        y_lw = Π_ret.(x, Ref(sim1.params), Ref(t)) .- ScalarField.Πs.(x, z, v, q)
+    end
+
+    diff1 = y_sim1 .- y_lw
+    diff2 = y_sim2 .- y_lw
+
+    convfac = diff1 ./ diff2
+    @show norm(convfac)
+    @show norm(diff1) / norm(diff2)
+    @show log2(norm(diff1, 1) / norm(diff2, 1))
+    # ymin = minimum(convfac)
+    # ymax = maximum(convfac)
+
+    # padding = round(0.1(ymax - ymin); digits=3)
+
+    # y_limits = round.((ymin - padding, ymax + padding), digits=3)
+    #y_limits = (0.0, 5.0)
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"x",
+              # yscale=log10,
+              # ylabel=L"",
+              title=L"\textrm{Differences \Pi for t=%$(round(t, digits=3)) }")
+    # ,
+    # limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+
+    # lines!(ax, x, convfac)
+    lines!(ax, x, diff1)
+    lines!(ax, x, diff2)
+
+    lines!(ax, x, y_lw; linestyle=:dash)
+    lines!(ax, x, y_sim1)
+    lines!(ax, x, y_sim2)
+
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    # rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    return fig
+end
+
+function plot_pifield_error_convergence(i, Nosc, dx0, cfl, vmax, q; total=false,
+                                        paper=false)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+
+    sim1 = Run.forced_motion(Nosc, dx0, cfl, vmax, q)
+
+    L = sim1.params.L
+    q = sim1.params.q
+    A = sim1.params.A
+    ω = sim1.params.ω
+    z0 = sim1.params.z0
 
     nt = length(sim1.sol.t)
-    particle_energy = zeros(nt)
-    potential = zeros(nt)
-    kinetic = zeros(nt)
-    self_potential = zeros(nt)
-    regular_field_energy = zeros(nt)
-    # total_energyr = zeros(nt)
-    # total_energys = zeros(nt)
-    flux = zeros(nt)
-    flux_analytic = zeros(nt)
-    bl = zeros(nt)
-    dxTi0 = zeros(nt, length(x_filtered))
-    Hfr = zeros(nt, length(x_filtered))
-    Hfr2 = zeros(nt, length(x_filtered))
-    dHpdt_analytic = zeros(nt)
-    dHfrdt_num = zeros(nt, length(x_filtered))
-    dHfrdt_analytic22 = zeros(nt, length(x_filtered))
-    dHfrdt_analytic12 = zeros(nt, length(x_filtered))
-    tmp = zeros(nt, length(x_filtered))
-    # fluxes2 = zeros(nt)
-    # fluxes3 = zeros(nt)
-    # fluxes4 = zeros(nt)
+    convfac = zeros(nt - 1)
 
-    dHfrdt_analytic = zeros(nt)
+    hs = [dx0, dx0 / 2, dx0 / 4, dx0 / 8, dx0 / 16]
+    errors = zeros(length(hs))
 
-    q = sim1.params.q
-    dx = sim1.params.dx
-    xs = sim1.params.x
-    cfl = sim1.params.cfl
-    dt = cfl * dx
+    sim2 = Run.forced_motion(Nosc, dx0 / 2, cfl, vmax, q)
+    sim4 = Run.forced_motion(Nosc, dx0 / 4, cfl, vmax, q)
+    sim8 = Run.forced_motion(Nosc, dx0 / 8, cfl, vmax, q)
+    sim16 = Run.forced_motion(Nosc, dx0 / 16, cfl, vmax, q)
 
-    function deriv(y, h)
-        n = length(y)
-        dy = zeros(eltype(y), n)
-        for i in 2:(n - 1)
-            dy[i] = (y[i + 1] - y[i - 1]) / (2h)
-        end
+    t1 = sim1.sol.t[i]
+    t2 = sim2.sol.t[2i - 1]
+    t4 = sim4.sol.t[4i - 3]
+    t8 = sim8.sol.t[8i - 7]
+    t16 = sim16.sol.t[16i - 15]
 
-        dy[1] = (y[1] - y[2]) / h
-        dy[n] = (y[n - 1] - y[n]) / h
-        return dy
-    end
-    function delta(x, z, h)
-        x_left = x - h / 2
-        x_right = x + h / 2
-        return (z >= x_left && z < x_right) ? 1.0 : 0.0
+    @assert t1 == t2
+    @assert t2 == t4
+    @assert t4 == t8
+    @assert t4 == t8
+    @assert t8 == t16
+
+    c = get_velocity(sim1)
+    if iszero(t1)
+        x_range = (-L / 2, L / 2)
+    else
+        x_range = (-c * t1, c * t1)
     end
 
-    for i in 1:nt
-        ### calculate Acceleration
-        ti = sim1.sol.t[i]
-        z, v, a = ParticleMotion.oscillator(ti, x0, A, ω)
-        ####
-        δ = delta.(x_filtered, z, dx)
-        ## This is with Φr and z as a generalized coordinate:
-        Φr = @view sim1.sol.u[i][mask, 3]
-        Πr = @view sim1.sol.u[i][mask, 1]
-        Ψr = @view sim1.sol.u[i][mask, 2]
+    # ### Method 1 (averaging)
+    # mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    # x1 = sim1.params.x[mask1]
 
-        interpolator_Φ = AkimaInterpolation(Φr, x_filtered;
-                                            extrapolation=ExtrapolationType.Extension)
-        interpolator_Π = AkimaInterpolation(Πr, x_filtered;
-                                            extrapolation=ExtrapolationType.Extension)
-        interpolator_Ψ = AkimaInterpolation(Ψr, x_filtered;
-                                            extrapolation=ExtrapolationType.Extension)
+    # z, v, _ = ParticleMotion.oscillator(t1, z0, A, ω)
+    # y_lw = Π_ret.(x1, Ref(sim1.params), Ref(t1)) .- ScalarField.Πs.(x1, z, v, q)
 
-        Φrz = interpolator_Φ(z)
-        Πrz = interpolator_Π(z)
-        Ψrz = interpolator_Ψ(z)
-        # Φrz = Φr .* δ
-        # Πrz = Πr .* δ
-        # Ψrz = Ψr .* δ
+    # y_sim1 = sim1.sol.u[i][mask1, 1]
+    # y_sim2 = mymean(sim2.sol.u[2i - 1][:, 1])[mask1]
+    # y_sim4 = mymean(mymean(sim4.sol.u[4i - 3][:, 1]))[mask1]
+    # y_sim8 = mymean(mymean(mymean(sim8.sol.u[8i - 7][:, 1])))[mask1]
+    # y_sim16 = mymean(mymean(mymean(mymean(sim16.sol.u[16i - 15][:, 1]))))[mask1]
 
-        Φs = ScalarField.Φs.(x_filtered, z, v, q)
-        Πs = ScalarField.Πs.(x_filtered, z, v, q)
-        Ψs = ScalarField.Ψs.(x_filtered, z, v, q)
+    # mode = 1
+    # errors[1] = norm(abs.(y_lw .- y_sim1), mode)
+    # errors[2] = norm(abs.(y_lw .- y_sim2), mode)
+    # errors[3] = norm(abs.(y_lw .- y_sim4), mode)
+    # errors[4] = norm(abs.(y_lw .- y_sim8), mode)
+    # errors[5] = norm(abs.(y_lw .- y_sim16), mode)
 
-        ∂vΦs = ScalarField.Φs001.(x_filtered, z, v, q)
-        ∂vΠs = ScalarField.Πs001.(x_filtered, z, v, q)
-        ∂vΨs = ScalarField.Ψs001.(x_filtered, z, v, q)
-        ∂zΠs = ScalarField.Πs010.(x_filtered, z, v, q)
-        ∂xΨs = ScalarField.Ψs100.(x_filtered, z, v, q)
+    ### Method 2
+    z, v, _ = ParticleMotion.oscillator(t1, z0, A, ω)
+    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    x1 = sim1.params.x[mask1]
 
-        dxΠr = deriv(Πr, dx)
-        dxΨr = deriv(Ψr, dx)
+    mask2 = (sim2.params.x .>= x_range[1]) .& (sim2.params.x .<= x_range[2])
+    x2 = sim2.params.x[mask2]
 
-        a2 = 1.0 - v * v
-        γ = 1.0 / sqrt(a2)
-        signxz = sign.(x_filtered .- z)
+    mask4 = (sim4.params.x .>= x_range[1]) .& (sim4.params.x .<= x_range[2])
+    x4 = sim4.params.x[mask4]
 
-        kinetic[i] = γ
-        self_potential[i] = γ * q * Φrz  #trapezoidal(sqrt(a2) * q * Φr .* δ, dx)
-        dHpdt_analytic[i] = q * Ψrz * v * γ + q * γ^3 * Φrz * v * a +
-                            q * γ * Πrz
-        Π = Πr .+ Πs
-        Ψ = Ψr .+ Ψs
-        Φ = Φr .+ Φs
+    mask8 = (sim8.params.x .>= x_range[1]) .& (sim8.params.x .<= x_range[2])
+    x8 = sim8.params.x[mask8]
 
-        Hfr[i, :] .= @. 0.5(Πr^2 + Ψr^2) + 0.5q * γ^3 * signxz * Ψr -
-                        0.5q * signxz * Πr * v * γ^3 - q * signxz * Ψr * v^2 * γ^3 -
-                        0.25 * q^2 * signxz^2 * v * a / (-1 + v^2)^3
-        # Hfr[i, :] .-= Hfr[i, 1]
-        regular_field_energy[i] = trapezoidal(Hfr[i, :], dx) +
-                                  2x_range[2] * 0.25 * q^2 * v * a / (-1 + v^2)^3
+    mask16 = (sim16.params.x .>= x_range[1]) .& (sim16.params.x .<= x_range[2])
+    x16 = sim16.params.x[mask16]
 
-        if i == 1
-            dHfrdt_num[i, :] .= @. (Hfr[1, :] - Hfr[2, :]) / (dt)
-        elseif i == nt
-            dHfrdt_num[i, :] .= @. (Hfr[nt - 1, :] - Hfr[nt, :]) / (dt)
-        else
-            dHfrdt_num[i, :] .= @. (Hfr[i + 1, :] - Hfr[i - 1, :]) / (2dt)
-        end
-        dHfrdt_analytic12[i, :] .= @. 0.25 * (2q * Πr * δ * v^2 * γ^3 +
-                                              2q * Ψr * δ * v * (-1 + 2v^2) * γ^3 -
-                                              2q * signxz * Ψr * v * a * γ^5 -
-                                              6q * signxz * Πr * v^2 * a * γ^5 -
-                                              4q * signxz * Ψr * v^3 * a * γ^5 +
-                                              4Ψr * dxΠr + 4Πr * dxΨr +
-                                              2q * signxz * dxΠr * γ^5 -
-                                              6q * signxz * v^2 * dxΠr * γ^5 +
-                                              4q * signxz * v^4 * dxΠr * γ^5 -
-                                              2q * signxz * v * dxΨr * γ^5 +
-                                              2q * signxz * v^3 * dxΨr * γ^5 +
-                                              1 * q^2 * signxz^2 * v * a / (-1 + v^2)^3)
+    y_lw1 = Π_ret.(x1, Ref(sim1.params), Ref(t1)) .- ScalarField.Πs.(x1, z, v, q)
+    y_lw2 = Π_ret.(x2, Ref(sim2.params), Ref(t1)) .- ScalarField.Πs.(x2, z, v, q)
+    y_lw4 = Π_ret.(x4, Ref(sim4.params), Ref(t1)) .- ScalarField.Πs.(x4, z, v, q)
+    y_lw8 = Π_ret.(x8, Ref(sim8.params), Ref(t1)) .- ScalarField.Πs.(x8, z, v, q)
+    y_lw16 = Π_ret.(x16, Ref(sim16.params), Ref(t1)) .- ScalarField.Πs.(x16, z, v, q)
 
-        # dHfrdt_analytic22[i, :] .= @. (2q * Πr * δ * (-1 + v^2)^2 +
-        #                                (signxz * (Πr + Ψr * v) - 2Φr * δ * v * a2) * a * q +
-        #                                2Ψr * sqrt(a2) * dxΠr - 2Ψr * v^2 * sqrt(a2) * dxΠr -
-        #                                q * a2 *
-        #                                (v * (Ψr * δ - 2Ψr * a2) - signxz * dxΠr) +
-        #                                2Πr * sqrt(a2) * dxΨr - 2Πr * v^2 * sqrt(a2) * dxΨr) /
-        #                               denom
+    y_sim1 = sim1.sol.u[i][mask1, 1]
+    y_sim2 = sim2.sol.u[2i - 1][mask2, 1]
+    y_sim4 = sim4.sol.u[4i - 3][mask4, 1]
+    y_sim8 = sim8.sol.u[8i - 7][mask8, 1]
+    y_sim16 = sim16.sol.u[16i - 15][mask16, 1]
 
-        # dHfrdt_analytic22[i, :] .= @. -0.5q * Ψr * δ * v * γ + Ψr * dxΠr + Πr * dxΨr +
-        #                               (q * signxz * ((Πr + Ψr * v) * a + a2 * dxΠr)) / denom
-        dHfrdt_analytic[i] = trapezoidal(dHfrdt_analytic12[i, :], dx)
+    mode = Inf
+    errors[1] = norm(abs.(y_lw1 .- y_sim1), mode)
+    errors[2] = norm(abs.(y_lw2 .- y_sim2)[begin:2:end], mode)
+    errors[3] = norm(abs.(y_lw4 .- y_sim4)[begin:4:end], mode)
+    errors[4] = norm(abs.(y_lw8 .- y_sim8)[begin:8:end], mode)
+    errors[5] = norm(abs.(y_lw16 .- y_sim16)[begin:16:end], mode)
 
-        ## dHfdt + dTi0dx
-        denom = 1 / (4 * a2^3.5)
-        temp = @. -q * (q * signxz^2 * v * sqrt(a2) * a +
-                        2signxz * v * a2 * (3Πr * v + Ψr * (1 + 2 * v^2)) *
-                        a -
-                        2 * (-1 + v^2)^2 *
-                        (Πr * δ * (-2 + 3v^2) +
-                         v * (Ψr * δ * (-1 + 2 * v^2) -
-                              signxz * (v * dxΠr + dxΨr)))) / denom
-        bl[i] = trapezoidal(temp, dx)
-        Ti0 = -Πr .* Ψ
-        dxTi0[i, :] .= deriv(Ti0, dx)
+    @show hs
+    @show errors
+    @show t1
 
-        tmp2 = @. -Ψ * dxΠr - Πr * (dxΨr + ∂xΨs)
-        flux_analytic[i] = Ti0[end] - Ti0[begin] # trapezoidal(tmp2, dx)
-        flux[i] = trapezoidal(tmp2, dx) # trapezoidal(dxTi0, dx)
-    end
-
-    Er = AkimaInterpolation(regular_field_energy, sim1.sol.t)
-    dEdtr(t) = DataInterpolations.derivative(Er, t, 1)
-
-    Ep = AkimaInterpolation(self_potential, sim1.sol.t)
-    dEdtp(t) = DataInterpolations.derivative(Ep, t, 1)
-
-    function time_derivative(y, h, ti)
-        nt, nx = size(y)
-        dy = zeros(eltype(y), nx)
-        if ti == -1
-            ti = nt
-        end
-
-        if ti == 1
-            dy[:] .= @. (y[1, :] - y[2, :]) / h
-        elseif ti == nt
-            dy[:] .= @. (y[nt - 1, :] - y[nt, :]) / h
-        else
-            dy[:] .= @. (y[ti + 1, :] - y[ti - 1, :]) / (2h)
-        end
-        return dy
-    end
-    fig = Figure(; size=(2 * 253, 2 * 200))
+    fig = Figure(; size=(253, 200))
     ax = Axis(fig[1, 1];
-              title=L"\textrm{Energy}")
-    # Plot the data
-    ti = 180
+              xlabel=L"h",
+              # ylabel=L"\Pi",
+              yscale=log10,
+              xscale=log10,
+              xreversed=true,
+              title=L"\Vert |\Pi_{\textrm{ret}}-\Pi_\textrm{h}| \Vert_{\infty}")
 
-    # lines!(ax, x_filtered, Hfr[ti, :];
-    #        label=L"\textrm{total_energy}")
-    # # lines!(ax, sim1.sol.t, flux_analytic; label=L"\textrm{fluxes}")
-    # ax.xlabel = L"x"
-    # N = 1300
-    # lines!(ax, sim1.sol.t[1:N], flux[1:N];
-    #        label=L"\textrm{dxTi0}")
-    # lines!(ax, sim1.sol.t[1:N], flux_analytic[1:N];
-    #        label=L"\textrm{dxTi0 analytic}")
+    lines!(ax, hs, errors)
+    scatter!(ax, hs, errors)
 
-    # lines!(ax, sim1.sol.t, flux_analytic;
-    #        label=L"\textrm{dxTi0 analytic}")
+    xref = hs[1:3]
+    yref1 = hs[1:3] .^ 1
+    shift1 = (errors[1] / yref1[1]) * 1.3
+    yref1 .*= shift1
 
-    # lines!(ax, sim1.sol.t, flux;
-    #        label=L"\textrm{dxTi0}")
-    # lines!(ax, x_filtered, time_derivative(Hfr, dx, ti);
-    #        label=L"\textrm{dHdt}")
-    # lines!(ax, x_filtered, dHfrdt_analytic12[ti, :];
-    #        label=L"\textrm{dHdt an1}")
-    # lines!(ax, x_filtered, dHfrdt_analytic22[ti, :];
-    #        label=L"\textrm{dHdt an2}")
+    lines!(ax, xref, yref1; linestyle=:dash, label=L"h^1")
+    # axislegend(ax; position=:rt)
 
-    # lines!(ax, sim1.sol.t, kinetic;
-    #        label=L"\textrm{kinetic}")
-    # lines!(ax, sim1.sol.t, self_potential;
-    #        label=L"\textrm{self}")
+    # leg = Legend(fig[1, 1],
+    #              ax;
+    #              orientation=:horizontal,
+    #              tellwidth=false,
+    #              tellheight=true,)
+    leg = Legend(fig[1, 1], ax; # Note: Same grid position as the Axis!
+                 halign=:right,
+                 valign=:top,
+                 tellwidth=false,      # Important: Don't shrink the axis to fit the legend
+                 tellheight=false,     # Important: Don't shrink the axis to fit the legend
+                 margin=(10, 10, 10, 10), # Optional: Add padding from the axis lines
+                 framevisible=false,
+                 labelsize=12)
 
-    # lines!(ax, sim1.sol.t, regular_field_energy;
-    #        label=L"\textrm{dHdt}")
-    # lines!(ax, sim1.sol.t, 0.25dHfrdt_analytic;
-    #        label=L"\textrm{dHdt an}")
-    # lines!(ax, sim1.sol.t, dEdtr.(sim1.sol.t);
-    #        label=L"\textrm{dHdt}")
-
-    # lines!(ax, sim1.sol.t, bl;
-    #        label=L"\textrm{bl}")
-
-    # lines!(ax, sim1.sol.t, dHfrdt_analytic;
-    #        label=L"\textrm{dHfdt an}")
-    # lines!(ax, sim1.sol.t, dEdtr.(sim1.sol.t);
-    #        label=L"\textrm{dHdt}")
-
-    # lines!(ax, sim1.sol.t, dEdtp.(sim1.sol.t);
-    #        label=L"\textrm{self-energy dt-interp}")
-    # lines!(ax, sim1.sol.t, deriv(self_potential, dt);
-    #        label=L"\textrm{self-energy dt}")
-    # lines!(ax, sim1.sol.t, dHpdt_analytic;
-    #        label=L"\textrm{analytic self-energy dt}")
-
-    dtEtot_analytic = dHfrdt_analytic .+ dHpdt_analytic
-    dtEtot_num = dEdtr.(sim1.sol.t) .+ dEdtp.(sim1.sol.t)
-    # lines!(ax, sim1.sol.t, dtEtot_analytic;
-    #        label=L"\textrm{analytic total energy dt}")
-    # lines!(ax, sim1.sol.t, dtEtot_num;
-    #        label=L"\textrm{numerical total energy}")
-    lines!(ax, sim1.sol.t, dtEtot_analytic .- dtEtot_num;
-           label=L"\textrm{analytic-num total energy dt}")
-
-    ax.xlabel = L"x"
-
-    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
-
-    # Adjust layout to ensure proper spacing
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    # rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
-    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
-    rowgap!(fig.layout, 0)                 # Gap between plot and legend
+
+    savename = simple_name("pifield_retarded_convergence", t1)
+    save(joinpath(get_fig_path(), savename), fig)
+    if paper
+        save(joinpath(get_paper_fig_path(), savename), fig)
+    end
+
     return fig
 end
 
+function plot_psifield_error_convergence(i, Nosc, dx0, cfl, vmax, q; total=false,
+                                         paper=false)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+
+    sim1 = Run.forced_motion(Nosc, dx0, cfl, vmax, q)
+
+    L = sim1.params.L
+    q = sim1.params.q
+    A = sim1.params.A
+    ω = sim1.params.ω
+    z0 = sim1.params.z0
+
+    nt = length(sim1.sol.t)
+    convfac = zeros(nt - 1)
+
+    hs = [dx0, dx0 / 2, dx0 / 4, dx0 / 8, dx0 / 16]
+    errors = zeros(length(hs))
+
+    sim2 = Run.forced_motion(Nosc, dx0 / 2, cfl, vmax, q)
+    sim4 = Run.forced_motion(Nosc, dx0 / 4, cfl, vmax, q)
+    sim8 = Run.forced_motion(Nosc, dx0 / 8, cfl, vmax, q)
+    sim16 = Run.forced_motion(Nosc, dx0 / 16, cfl, vmax, q)
+
+    t1 = sim1.sol.t[i]
+    t2 = sim2.sol.t[2i - 1]
+    t4 = sim4.sol.t[4i - 3]
+    t8 = sim8.sol.t[8i - 7]
+    t16 = sim16.sol.t[16i - 15]
+
+    @assert t1 == t2
+    @assert t2 == t4
+    @assert t4 == t8
+    @assert t4 == t8
+    @assert t8 == t16
+
+    c = get_velocity(sim1)
+    if iszero(t1)
+        x_range = (-L / 2, L / 2)
+    else
+        x_range = (-c * t1, c * t1)
+    end
+
+    ### Method 2
+    z, v, _ = ParticleMotion.oscillator(t1, z0, A, ω)
+    mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    x1 = sim1.params.x[mask1]
+
+    mask2 = (sim2.params.x .>= x_range[1]) .& (sim2.params.x .<= x_range[2])
+    x2 = sim2.params.x[mask2]
+
+    mask4 = (sim4.params.x .>= x_range[1]) .& (sim4.params.x .<= x_range[2])
+    x4 = sim4.params.x[mask4]
+
+    mask8 = (sim8.params.x .>= x_range[1]) .& (sim8.params.x .<= x_range[2])
+    x8 = sim8.params.x[mask8]
+
+    mask16 = (sim16.params.x .>= x_range[1]) .& (sim16.params.x .<= x_range[2])
+    x16 = sim16.params.x[mask16]
+
+    y_lw1 = Ψ_ret.(x1, Ref(sim1.params), Ref(t1)) .- ScalarField.Ψs.(x1, z, v, q)
+    y_lw2 = Ψ_ret.(x2, Ref(sim2.params), Ref(t1)) .- ScalarField.Ψs.(x2, z, v, q)
+    y_lw4 = Ψ_ret.(x4, Ref(sim4.params), Ref(t1)) .- ScalarField.Ψs.(x4, z, v, q)
+    y_lw8 = Ψ_ret.(x8, Ref(sim8.params), Ref(t1)) .- ScalarField.Ψs.(x8, z, v, q)
+    y_lw16 = Ψ_ret.(x16, Ref(sim16.params), Ref(t1)) .- ScalarField.Ψs.(x16, z, v, q)
+
+    y_sim1 = sim1.sol.u[i][mask1, 2]
+    y_sim2 = sim2.sol.u[2i - 1][mask2, 2]
+    y_sim4 = sim4.sol.u[4i - 3][mask4, 2]
+    y_sim8 = sim8.sol.u[8i - 7][mask8, 2]
+    y_sim16 = sim16.sol.u[16i - 15][mask16, 2]
+
+    mode = Inf
+    errors[1] = norm(abs.(y_lw1 .- y_sim1), mode)
+    errors[2] = norm(abs.(y_lw2 .- y_sim2)[begin:2:end], mode)
+    errors[3] = norm(abs.(y_lw4 .- y_sim4)[begin:4:end], mode)
+    errors[4] = norm(abs.(y_lw8 .- y_sim8)[begin:8:end], mode)
+    errors[5] = norm(abs.(y_lw16 .- y_sim16)[begin:16:end], mode)
+
+    @show hs
+    @show errors
+    @show t1
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"h",
+              # ylabel=L"\Psi",
+              yscale=log10,
+              xscale=log10,
+              xreversed=true,
+              title=L"\Vert |\Psi_{\textrm{ret}}-\Psi_\textrm{h}| \Vert_{\infty}")
+
+    lines!(ax, hs, errors)
+    scatter!(ax, hs, errors)
+
+    xref = hs[1:3]
+    yref1 = hs[1:3] .^ 1
+    shift1 = (errors[1] / yref1[1]) * 1.3
+    yref1 .*= shift1
+
+    lines!(ax, xref, yref1; linestyle=:dash, label=L"h^1")
+    # axislegend(ax; position=:rt)
+
+    leg = Legend(fig[1, 1], ax; # Note: Same grid position as the Axis!
+                 halign=:right,
+                 valign=:top,
+                 tellwidth=false,      # Important: Don't shrink the axis to fit the legend
+                 tellheight=false,     # Important: Don't shrink the axis to fit the legend
+                 margin=(10, 10, 10, 10), # Optional: Add padding from the axis lines
+                 framevisible=false,
+                 labelsize=12)
+
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    # rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+
+    savename = simple_name("psifield_retarded_convergence", t1)
+    save(joinpath(get_fig_path(), savename), fig)
+    if paper
+        save(joinpath(get_paper_fig_path(), savename), fig)
+    end
+
+    return fig
+end
 end
