@@ -918,7 +918,7 @@ function plot_pifield_convfac(sim1, sim2, sim4; paper=false)
     y_max = maximum(convfac)
     padding = 0.1 * (y_max - y_min)  # Add 10% padding
     y_limits = (y_min - padding, y_max + padding)
-    fig = Figure(; size=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
               xlabel=L"t",
               # ylabel=L"",
@@ -988,7 +988,7 @@ function plot_psifield_convfac(sim1, sim2, sim4; paper=false)
     y_max = maximum(convfac)
     padding = 0.1 * (y_max - y_min)  # Add 10% padding
     y_limits = (y_min - padding, y_max + padding)
-    fig = Figure(; ize=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
               xlabel=L"t",
               # ylabel=L"",
@@ -1059,7 +1059,7 @@ function plot_pifield_self_convergence_order(sim1, sim2, sim4; paper=false)
     # y_max = maximum(convfac)
     # padding = 0.1 * (y_max - y_min)  # Add 10% padding
     # y_limits = (y_min - padding, y_max + padding)
-    fig = Figure(; ize=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
               xlabel=L"t",
               # ylabel=L"",
@@ -1139,7 +1139,7 @@ function plot_psifield_self_convergence_order(sim1, sim2, sim4; paper=false)
     # y_max = maximum(convfac)
     # padding = 0.1 * (y_max - y_min)  # Add 10% padding
     # y_limits = (y_min - padding, y_max + padding)
-    fig = Figure(; ize=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
               xlabel=L"t",
               # ylabel=L"",
@@ -1391,7 +1391,7 @@ function plot_pifield_resolutions_vs_retarded(i, sim1, sim2; total=false, paper=
 
     y_limits = round.((ymin - padding, ymax + padding), digits=3)
 
-    fig = Figure(; size=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
               xlabel=L"x",
               ylabel=L"\Pi_r",
@@ -1486,7 +1486,7 @@ function plot_psifield_resolutions_vs_retarded(i, sim1, sim2; total=false, paper
 
     y_limits = round.((ymin - padding, ymax + padding), digits=3)
 
-    fig = Figure(; size=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
               xlabel=L"x",
               ylabel=L"\Psi_r",
@@ -1790,7 +1790,7 @@ function plot_pifield_error_convergence(i, Nosc, dx0, cfl, vmax, q; total=false,
     @show errors
     @show t1
 
-    fig = Figure(; size=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
               xlabel=L"h",
               # ylabel=L"\Pi",
@@ -1921,7 +1921,7 @@ function plot_psifield_error_convergence(i, Nosc, dx0, cfl, vmax, q; total=false
     @show errors
     @show t1
 
-    fig = Figure(; size=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
               xlabel=L"h",
               # ylabel=L"\Psi",

@@ -15,8 +15,8 @@ function muscl!(dQ, Q, params, t)
 
     h = params.h
     N = params.N
-    x = params.x
-    L0 = params.L0
+    # x = params.x
+    # L0 = params.L0
     # half_h = 0.5h
     _h = one(h) / h
     L = Equations.left_eigenmatrix(equation)
@@ -86,129 +86,261 @@ function muscl!(dQ, Q, params, t)
     return nothing
 end
 
-function _muscl!(dQ, Q, params, t)
+@inline function get_q_periodic(Q, idx, N)
+    # mod(idx - 1, N) maps 1..N to 0..N-1
+    # + 1 shifts it back to 1..N
+    i = mod(idx - 1, N) + 1
+    return SVector{2}(Q[i, 1], Q[i, 2])
+end
+
+# Helper: Purely stack-allocated reconstruction
+@inline function reconstruct_cell(Q, idx, N, L, R, slope_limiter)
+    # 1. Load data directly into registers (avoids SubArray views)
+    Qi = get_q_periodic(Q, idx, N)
+    Qim1 = get_q_periodic(Q, idx - 1, N)
+    Qip1 = get_q_periodic(Q, idx + 1, N)
+
+    # 2. Vector Math
+    Δminus = Qi - Qim1
+    Δplus = Qip1 - Qi
+
+    # 3. Characteristic jumps 
+    # specific dispatch ensures L is SMatrix, so this is allocation-free
+    aminus = L * Δminus
+    aplus = L * Δplus
+
+    # 4. Limiters
+    si = slope_limiter.(aminus, aplus)
+
+    # 5. Project back
+    σi = R * si
+
+    # 6. Reconstruct faces (Left Face, Right Face)
+    q_minus = Qi - 0.5 * σi
+    q_plus = Qi + 0.5 * σi
+
+    return q_minus, q_plus
+end
+
+function muscl_optimized!(dQ, Q, params, t)
     equation = params.equation
     numerical_flux = params.numerical_flux
     slope_limiter = params.slope_limiter
 
     h = params.h
     N = params.N
-    x = params.x
-    L0 = params.L0
-    half_h = 0.5h
-    _h = 1.0 / h
+    _h = one(h) / h
 
-    @fastmath @inbounds begin
-        Π = @view Q[:, 1]
-        Ψ = @view Q[:, 2]
-        # @batch for i in 1:N
+    # These return @SMatrix directly based on our definition.
+    L = Equations.left_eigenmatrix(equation)
+    R = Equations.right_eigenmatrix(equation)
+
+    @inbounds begin
+        # --- Startup: Interface 1/2 ---
+        # We need the Right face of ghost cell '0' and Left face of cell '1'
+        _, q_0_plus = reconstruct_cell(Q, 0, N, L, R, slope_limiter)
+        q_1_minus, q_1_plus = reconstruct_cell(Q, 1, N, L, R, slope_limiter)
+
+        # Compute Flux at first interface
+        Fl = numerical_flux(q_0_plus, q_1_minus, equation)
+
+        # Save the "Right face of current cell" state for the loop
+        q_i_plus = q_1_plus
+
+        # --- Main Loop: Sliding Window ---
         for i in 1:N
-            # if abs(x[i]) > L0 / 2
-            #     continue
-            # end
-            #
-            # Calculating slopes for Π
-            I = i - 1
-            qi, ql, qr = get_stencil(Π, I, N)
-            σ_im1 = compute_limited_slope(qi, ql, qr, h, slope_limiter)
+            # We already have Fl (Flux on Left). 
+            # We need Fr (Flux on Right).
 
-            I = i + 1
-            qi, ql, qr = get_stencil(Π, I, N)
-            σ_ip1 = compute_limited_slope(qi, ql, qr, h, slope_limiter)
+            # Reconstruct the NEXT cell (i+1) to get its Left Face
+            q_ip1_minus, q_ip1_plus = reconstruct_cell(Q, i + 1, N, L, R, slope_limiter)
 
-            I = i
-            qi, ql, qr = get_stencil(Π, I, N)
-            σ_i = compute_limited_slope(qi, ql, qr, h, slope_limiter)
+            # Compute Flux
+            Fr = numerical_flux(q_i_plus, q_ip1_minus, equation)
 
-            # reconstruct Π values at faces
-            πlr = qi - σ_i * half_h
-            πrl = qi + σ_i * half_h
-            πll = ql + σ_im1 * half_h
-            πrr = qr - σ_ip1 * half_h
+            # Update dQ
+            # Manual indexing avoids allocating a view for dQ[i, 1:2]
+            diff_flux = -(Fr - Fl) * _h
+            dQ[i, 1] = diff_flux[1]
+            dQ[i, 2] = diff_flux[2]
 
-            ## Calculating slopes for Ψ
-            I = i - 1
-            qi, ql, qr = get_stencil(Ψ, I, N)
-            σ_im1 = compute_limited_slope(qi, ql, qr, h, slope_limiter)
-
-            I = i + 1
-            qi, ql, qr = get_stencil(Ψ, I, N)
-            σ_ip1 = compute_limited_slope(qi, ql, qr, h, slope_limiter)
-
-            I = i
-            qi, ql, qr = get_stencil(Ψ, I, N)
-            σ_i = compute_limited_slope(qi, ql, qr, h, slope_limiter)
-
-            # reconstruct Ψ values at faces
-            ψlr = qi - σ_i * half_h
-            ψrl = qi + σ_i * half_h
-            ψll = ql + σ_im1 * half_h
-            ψrr = qr - σ_ip1 * half_h
-
-            qll = @SVector [πll, ψll]
-            qlr = @SVector [πlr, ψlr]
-
-            qrl = @SVector [πrl, ψrl]
-            qrr = @SVector [πrr, ψrr]
-
-            ## Fl: flux on the left face, accounts for incoming right going flux
-            ## Fr: flux on the right face, accounts for incoming left going flux
-
-            Fl = numerical_flux(qll, qlr, equation)
-            Fr = numerical_flux(qrl, qrr, equation)
-
-            dQ[i, 1:2] .= -(Fr - Fl) * _h
-            dQ[i, 3] = Π[i]
+            # Slide window: Current Right Flux becomes Next Left Flux
+            Fl = Fr
+            # Current i+1 reconstruction becomes i for next step
+            q_i_plus = q_ip1_plus
         end
+        dQ[:, 3] .= @view Q[:, 1]
     end
     return nothing
 end
 
-@inline function _calculate_singular_sources(x, h, z, v, q, a)
-    left_face = x - h / 2
-    right_face = x + h / 2
+# Pure scalar WENO-5 reconstruction
+# Reconstructs value at right face (i+1/2) using stencil (i-2, i-1, i, i+1, i+2)
+@inline function weno5_scalar(v1, v2, v3, v4, v5)
+    epsilon = 1e-6 # To avoid division by zero
 
-    Δr = right_face - z
-    Δl = left_face - z
+    # 1. Smoothness Indicators (Jiang & Shu)
+    # beta0 corresponds to stencil {i-2, i-1, i}
+    beta0 = 13 / 12 * (v1 - 2 * v2 + v3)^2 + 1 / 4 * (v1 - 4 * v2 + 3 * v3)^2
+    # beta1 corresponds to stencil {i-1, i, i+1}
+    beta1 = 13 / 12 * (v2 - 2 * v3 + v4)^2 + 1 / 4 * (v2 - v4)^2
+    # beta2 corresponds to stencil {i, i+1, i+2}
+    beta2 = 13 / 12 * (v3 - 2 * v4 + v5)^2 + 1 / 4 * (3 * v3 - 4 * v4 + v5)^2
 
-    absΔr = abs(Δr)
-    absΔl = abs(Δl)
+    # 2. Linear Weights
+    d0 = 0.1
+    d1 = 0.6
+    d2 = 0.3
 
-    σr = sign(Δr)
-    σl = sign(Δl)
+    # 3. Alpha Weights (Non-linear)
+    alpha0 = d0 / (epsilon + beta0)^2
+    alpha1 = d1 / (epsilon + beta1)^2
+    alpha2 = d2 / (epsilon + beta2)^2
+    sum_alpha = alpha0 + alpha1 + alpha2
 
-    den_r = (one(v) - v * σr)^2
-    den_l = (one(v) - v * σl)^2
+    # 4. Normalized Weights
+    w0 = alpha0 / sum_alpha
+    w1 = alpha1 / sum_alpha
+    w2 = alpha2 / sum_alpha
 
-    frac_r = absΔr / den_r
-    frac_l = absΔl / den_l
+    # 5. Stencil Reconstructions (q_k)
+    q0 = 1 / 3 * v1 - 7 / 6 * v2 + 11 / 6 * v3
+    q1 = -1 / 6 * v2 + 5 / 6 * v3 + 1 / 3 * v4
+    q2 = 1 / 3 * v3 + 5 / 6 * v4 - 1 / 6 * v5
 
-    term_Π = -0.5q * (frac_r - frac_l)
-    term_Φ = 0.25q * (Δr * frac_r - Δl * frac_l)
-    return a * term_Π / h, a * term_Φ / h
+    # 6. Final Combination
+    return w0 * q0 + w1 * q1 + w2 * q2
 end
 
-@inline function _calculate_singular_source_Π(x, h, z, v, q, a)
-    left_face = x - h / 2
-    right_face = x + h / 2
+# Characteristic-wise WENO5 Reconstruction
+@inline function reconstruct_cell_weno5(Q, idx, N, L, R)
+    # 1. Load Stencil (5 points: i-2 to i+2)
+    Q_mm = get_q_periodic(Q, idx - 2, N) # i-2
+    Q_m = get_q_periodic(Q, idx - 1, N) # i-1
+    Q_c = get_q_periodic(Q, idx, N) # i (Center)
+    Q_p = get_q_periodic(Q, idx + 1, N) # i+1
+    Q_pp = get_q_periodic(Q, idx + 2, N) # i+2
 
-    Δr = right_face - z
-    Δl = left_face - z
+    # 2. Project to Characteristic Variables (W = L * Q)
+    #    L is SMatrix, so this is non-allocating.
+    W_mm = L * Q_mm
+    W_m = L * Q_m
+    W_c = L * Q_c
+    W_p = L * Q_p
+    W_pp = L * Q_pp
 
-    absΔr = abs(Δr)
-    absΔl = abs(Δl)
+    # 3. Perform WENO5 on each component independently
+    #    We assume a 2-component system (Wave Equation)
 
-    σr = sign(Δr)
-    σl = sign(Δl)
+    # --- Component 1 ---
+    w1_plus = weno5_scalar(W_mm[1], W_m[1], W_c[1], W_p[1], W_pp[1])
+    # To get Left Face (i-1/2), we reverse the stencil inputs
+    w1_minus = weno5_scalar(W_pp[1], W_p[1], W_c[1], W_m[1], W_mm[1])
 
-    den_r = (one(v) - v * σr)^2
-    den_l = (one(v) - v * σl)^2
+    # --- Component 2 ---
+    w2_plus = weno5_scalar(W_mm[2], W_m[2], W_c[2], W_p[2], W_pp[2])
+    w2_minus = weno5_scalar(W_pp[2], W_p[2], W_c[2], W_m[2], W_mm[2])
 
-    frac_r = absΔr / den_r
-    frac_l = absΔl / den_l
+    # 4. Assemble Characteristic Vectors
+    W_plus = SVector{2}(w1_plus, w2_plus)
+    W_minus = SVector{2}(w1_minus, w2_minus)
 
-    term_Π = -0.5q * (frac_r - frac_l)
-    return a * term_Π / h
+    # 5. Project back to Physical Space (Q = R * W)
+    q_plus = R * W_plus
+    q_minus = R * W_minus
+
+    return q_minus, q_plus
+end
+
+function muscl_weno5!(dQ, Q, params, t)
+    equation = params.equation
+    numerical_flux = params.numerical_flux
+    # slope_limiter is NOT used for WENO (it has built-in limiting)
+
+    h = params.h
+    N = params.N
+    _h = one(h) / h
+
+    L = Equations.left_eigenmatrix(equation)
+    R = Equations.right_eigenmatrix(equation)
+
+    @inbounds begin
+        # --- Startup Phase ---
+        # We need fluxes at the first few interfaces. 
+        # Since the stencil is wider, we just rely on the periodic helper 
+        # to handle the wrapping logic at i=0, i=1.
+
+        # Get q_plus (Right Face) of cell 0 (Left neighbor of cell 1)
+        _, q_0_plus = reconstruct_cell_weno5(Q, 0, N, L, R)
+
+        # Get q_minus (Left Face) of cell 1
+        q_1_minus, q_1_plus = reconstruct_cell_weno5(Q, 1, N, L, R)
+
+        # Compute first Flux at interface 1/2
+        Fl = numerical_flux(q_0_plus, q_1_minus, equation)
+
+        # Save state
+        q_i_plus = q_1_plus
+
+        # --- Main Loop ---
+        for i in 1:N
+            # 1. Reconstruct neighbor (i+1)
+            q_ip1_minus, q_ip1_plus = reconstruct_cell_weno5(Q, i + 1, N, L, R)
+
+            # 2. Compute Flux (Flux at i + 1/2)
+            Fr = numerical_flux(q_i_plus, q_ip1_minus, equation)
+
+            # 3. Update dQ
+            diff_flux = -(Fr - Fl) * _h
+            dQ[i, 1] = diff_flux[1]
+            dQ[i, 2] = diff_flux[2]
+
+            # 4. Slide Window
+            Fl = Fr
+            q_i_plus = q_ip1_plus
+        end
+        dQ[:, 3] .= @view Q[:, 1]
+    end
+    return nothing
+end
+
+# Helper: purely scalar math, updates dQ in place
+@inline function add_singular_sources!(dQ, idx, x_i, half_h, _h, z, v, q, a)
+    # Pre-calculate faces
+    left_face = x_i - half_h
+    right_face = x_i + half_h
+
+    base_val = -0.5 * q * a
+    val_L = -base_val / (1.0 + v)^2
+    val_R = base_val / (1.0 - v)^2
+    if z >= right_face
+        # CASE A: Particle is to the right. 
+        # Entire cell is in the Left Regime (x < z).
+        # Integral = h * val_L. 
+        # (Multiplication by _h in the update cancels the h)
+        @inbounds dQ[idx, 1] -= val_L
+
+    elseif z <= left_face
+        # CASE B: Particle is to the left.
+        # Entire cell is in the Right Regime (x > z).
+        @inbounds dQ[idx, 1] -= val_R
+
+    else
+        # CASE C: Particle is Inside (Split Domain).
+        # We sum the contributions from both sides.
+
+        # Fraction of cell to the left of z: (z - left_face) / h
+        frac_L = (z - left_face) * _h
+
+        # Fraction of cell to the right of z
+        frac_R = 1.0 - frac_L
+
+        # Weighted Average of the densities
+        term_weighted = frac_L * val_L + frac_R * val_R
+
+        @inbounds dQ[idx, 1] -= term_weighted
+    end
+    return nothing
 end
 
 function field_rhs_forced!(dQ, Q, params, t)
@@ -221,17 +353,16 @@ function field_rhs_forced!(dQ, Q, params, t)
     A = params.A
     ω = params.ω
 
-    muscl!(dQ, Q, params, t)
+    muscl_optimized!(dQ, Q, params, t)
 
     z, v, a = ParticleMotion.oscillator(t, z0, A, ω)
 
     dtΠ = @view dQ[:, 1]
     dtΦ = @view dQ[:, 3]
-
+    _h = one(h) / h
+    half_h = 0.5 * h
     @inbounds for i in 1:N
-        source_Π, source_Φ = _calculate_singular_sources(x[i], h, z, v, q, a)
-        dtΠ[i] -= source_Π
-        # dtΦ[i] -= source_Φ
+        add_singular_sources!(dQ, i, x[i], half_h, _h, z, v, q, a)
     end
     return nothing
 end
@@ -251,17 +382,16 @@ function field_rhs!(dQ, Q, params, t)
     z = Q_particle[2]
     v = Q_particle[3] ### ASK ERIK dQ or Q ?
 
-    muscl!(dQ_field, Q_field, params, t)
+    muscl_optimized!(dQ_field, Q_field, params, t)
 
     dtΠ = @view dQ_field[:, 1]
     dtΦ = @view dQ_field[:, 3]
 
+    _h = one(h) / h
+    half_h = 0.5 * h
     @inbounds for i in 1:N
-        source_Π, source_Φ = _calculate_singular_sources(x[i], h, z, v, q, a)
-        dtΠ[i] -= source_Π
-        dtΦ[i] -= source_Φ
+        add_singular_sources!(dQ_field, i, x[i], half_h, _h, z, v, q, a)
     end
-
     return nothing
 end
 

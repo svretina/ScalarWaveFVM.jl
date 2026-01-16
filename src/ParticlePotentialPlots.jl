@@ -580,7 +580,7 @@ function plot_pifield_resolutions(i, sim1, sim2, sim4; paper=false)
 
     xp = sim1.sol.u[i].x[2][2]
 
-    fig = Figure(; size=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
               xlabel=L"x",
               ylabel=L"\Pi_\mathrm{r}",
@@ -718,7 +718,7 @@ function plot_psifield_resolutions(i, sim1, sim2, sim4; paper=false)
 
     xp = sim1.sol.u[i].x[2][2]
 
-    fig = Figure(; size=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
               xlabel=L"x",
               ylabel=L"\Psi_\mathrm{r}",
@@ -749,7 +749,9 @@ function plot_psifield_resolutions(i, sim1, sim2, sim4; paper=false)
 end
 
 function plot_pifield_self_convergence_order(sim1, sim2, sim4; paper=false)
-    set_theme!(mytheme_aps())
+    CairoMakie.activate!()
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
     nt = length(sim1.sol.t)
     L = sim1.params.L
     x_range = (-L / 2, L / 2)
@@ -768,7 +770,7 @@ function plot_pifield_self_convergence_order(sim1, sim2, sim4; paper=false)
         t = t1
 
         if iszero(t)
-            # x_range = (-L / 2, L / 2)
+            x_range = (-L / 2, L / 2)
             continue
         else
             x_range = (-c * t, c * t)
@@ -789,7 +791,7 @@ function plot_pifield_self_convergence_order(sim1, sim2, sim4; paper=false)
         diff2 = y2_filtered .- y4_filtered
         convfac[i] = norm(diff1, 1) / norm(diff2, 1)
     end
-    fig = Figure(; ize=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
               xlabel=L"t",
               # ylabel=L"",
@@ -805,7 +807,7 @@ function plot_pifield_self_convergence_order(sim1, sim2, sim4; paper=false)
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
 
-    savename = simple_name("pifield_convfac_potential")
+    savename = simple_name("pifield_convord_potential")
     save(joinpath(get_fig_path(), savename), fig)
     if paper
         save(joinpath(get_paper_fig_path(), savename), fig)
@@ -814,7 +816,9 @@ function plot_pifield_self_convergence_order(sim1, sim2, sim4; paper=false)
 end
 
 function plot_psifield_self_convergence_order(sim1, sim2, sim4; paper=false)
-    set_theme!(mytheme_aps())
+    CairoMakie.activate!()
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
     nt = length(sim1.sol.t)
     L = sim1.params.L
     x_range = (-L / 2, L / 2)
@@ -833,7 +837,7 @@ function plot_psifield_self_convergence_order(sim1, sim2, sim4; paper=false)
         t = t1
 
         if iszero(t)
-            # x_range = (-L / 2, L / 2)
+            x_range = (-L / 2, L / 2)
             continue
         else
             x_range = (-c * t, c * t)
@@ -853,7 +857,7 @@ function plot_psifield_self_convergence_order(sim1, sim2, sim4; paper=false)
         diff2 = y2_filtered .- y4_filtered
         convfac[i] = norm(diff1, 1) / norm(diff2, 1)
     end
-    fig = Figure(; ize=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
               xlabel=L"t",
               # ylabel=L"",
@@ -869,7 +873,7 @@ function plot_psifield_self_convergence_order(sim1, sim2, sim4; paper=false)
     colsize!(fig.layout, 1, Relative(0.9))
     # Save the figure
 
-    savename = simple_name("psifield_convfac_potential")
+    savename = simple_name("psifield_convord_potential")
     save(joinpath(get_fig_path(), savename), fig)
     if paper
         save(joinpath(get_paper_fig_path(), savename), fig)
@@ -880,7 +884,8 @@ end
 ## Particle
 function plot_particle_position(sim1; invert=true, paper=false)
     CairoMakie.activate!()
-    set_theme!(mytheme_aps())
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
     # Get time points and assert equality
 
     nt = length(sim1.sol.t)
@@ -896,7 +901,7 @@ function plot_particle_position(sim1; invert=true, paper=false)
         xa[i] = A * sin(ω * sim1.sol.t[i])
     end
 
-    fig = Figure(; size=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
               title=L"\textrm{Particle Position}",
               xticks=LinearTicks(5),
@@ -938,7 +943,8 @@ end
 
 function plot_particle_velocity(sim1; paper=false)
     CairoMakie.activate!()
-    set_theme!(mytheme_aps())
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
     # Get time points and assert equality
 
     # Create figure and axis
@@ -953,7 +959,7 @@ function plot_particle_velocity(sim1; paper=false)
         xs1[i] = sim1.sol.u[i].x[2][3]
     end
 
-    fig = Figure(; size=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1]; title=L"\textrm{Particle Velocity}")
     # Plot the data
     # lines!(ax, sim1.sol.t, xs1; label=L"\textrm{particle 1}")
@@ -1105,7 +1111,7 @@ function plot_particle_position_resolutions(sim1, sim2, sim4;
     A = v0 / ω
     analytic(t) = ParticleMotion.oscillator(t, z0, A, ω)[1]
 
-    fig = Figure(; size=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     plt = fig[1, 1] = GridLayout()
     leg1 = fig[2, 1] = GridLayout()
 
@@ -1256,7 +1262,7 @@ function plot_particle_position_diff_scaled(sim1, sim2, sim4; paper=false)
         diff2_scaled[i] = 2^1 * abs(y2 - y4) # Assuming 2nd order
     end
 
-    fig = Figure(; size=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     # No colsize restriction
     ax = Axis(fig[1, 1];
               xlabel=L"t",
@@ -1304,7 +1310,7 @@ function plot_particle_velocity_diff_scaled(sim1, sim2, sim4; paper=false)
         diff2_scaled[i] = 2^1 * abs(y2 - y4) # Assuming 2nd order
     end
 
-    fig = Figure(; size=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     # No colsize restriction
     ax = Axis(fig[1, 1];
               xlabel=L"t",
@@ -1350,7 +1356,7 @@ function plot_particle_position_self_convergence_order(sim1, sim2, sim4; paper=f
         diff2 = abs(y2 - y4)
         convfac[i] = diff1 / (diff2 + eps(Float64))
     end
-    fig = Figure(; size=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
               xlabel=L"t",
               title=L"\textrm{Convergence order of } z(t)")
@@ -1387,7 +1393,7 @@ function plot_particle_velocity_self_convergence_order(sim1, sim2, sim4; paper=f
         diff2 = abs(y2 - y4)
         convfac[i] = diff1 / (diff2 + eps(Float64))
     end
-    fig = Figure(; size=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
               xlabel=L"t",
               title=L"\textrm{Convergence order of } v(t)")
@@ -1487,7 +1493,7 @@ function plot_energy(sim1; paper=false)
 
     V0 = q * V(sim1.sol.u[1].x[2][2])
     @show V0
-    fig = Figure(; size=(253, 200))
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
               title=L"\textrm{Energy}")
 

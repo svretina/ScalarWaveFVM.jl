@@ -57,6 +57,7 @@ end
     return @SMatrix [-c zero(c)
                      zero(c) c]
 end
+
 @inline function right_eigenmatrix(equation::LinearScalarWaveEquation1D)
     c = equation.velocity
     # return @SMatrix [one(c)/c one(c)

@@ -17,33 +17,24 @@ using DataInterpolations
 
 abstract type SimulationParameters{T} end
 
-struct SimulationParametersPotential{T} <: SimulationParameters{T}
+struct SimulationParameters1D{T} <: SimulationParameters{T}
     L::Int64
     N::Int64
     dx::T
+    dt::T
     x::Vector{T}
     q::T
     m::T
-    x0::T
+    z0::T
     v0::T
+    vmax::T
+    A::T
+    ω::T
+    k::T
+    direction::Int
+    Nosc::T
     sf::Bool
-    xpot::T
     cfl::T
-end
-
-struct SimulationParametersForced <: SimulationParameters{Any}
-    L::Any
-    N::Any
-    dx::Any
-    x::Any
-    q::Any
-    z0::Any
-    A::Any
-    ω::Any
-    vmax::Any
-    direction::Any
-    Nosc::Any
-    cfl::Any
 end
 
 struct SimulationParametersInteracting{T} <: SimulationParameters{T}
@@ -62,21 +53,6 @@ struct SimulationParametersInteracting{T} <: SimulationParameters{T}
     cfl::T
 end
 
-struct SimulationParametersAnalyticPotential{T} <: SimulationParameters{T}
-    L::Int64
-    dx::T
-    dt::T
-    x::Vector{T}
-    q::T
-    m::T
-    z0::T
-    v0::T
-    k::T
-    sf::Bool
-    cfl::T
-    Nosc::T
-end
-
 struct Simulation{T}
     params::SimulationParameters{T}
     sol::SciMLBase.ODESolution
@@ -89,6 +65,46 @@ function print_simulation_info(title; params...)
     for (key, value) in params
         println(rpad(string(key), 20) * ": " * string(value))
     end
+    println("="^50 * "\n")
+end
+
+function print_simulation_info(sim::SimulationParameters1D; title="")
+    println("\n" * "="^50)
+    if isempty(title)
+        if sim.k == 0.0
+            println("Running Simulation: Forced Motion")
+            SimType = "Forced Motion"
+        else
+            println("Running Simulation: Particle in Potential")
+            SimType = "Harmonic Potential"
+        end
+    else
+        println("Running Simulation: $title")
+        SimType = title
+    end
+    println("-"^50)
+
+    T = 2π / sim.ω
+    tf = sim.Nosc * T
+
+    println(rpad("SimType", 20) * ": " * SimType)
+    println(rpad("L", 20) * ": " * string(sim.L))
+    println(rpad("N", 20) * ": " * string(sim.N))
+    println(rpad("dx", 20) * ": " * string(sim.dx))
+    println(rpad("dt", 20) * ": " * string(sim.dt))
+    println(rpad("cfl", 20) * ": " * string(sim.cfl))
+    println(rpad("Nosc", 20) * ": " * string(sim.Nosc))
+    println(rpad("tf", 20) * ": " * string(tf))
+    println(rpad("T", 20) * ": " * string(T))
+    println(rpad("vmax", 20) * ": " * string(sim.vmax))
+    println(rpad("q", 20) * ": " * string(sim.q))
+    println(rpad("A", 20) * ": " * string(sim.A))
+    println(rpad("omega", 20) * ": " * string(sim.ω))
+    if sim.k != 0.0
+        println(rpad("k", 20) * ": " * string(sim.k))
+        println(rpad("m", 20) * ": " * string(sim.m))
+    end
+
     println("="^50 * "\n")
 end
 
@@ -134,19 +150,17 @@ function forced_motion(Nosc, dx, cfl, vmax, q, sf=true, muscl=true)
 
         tspan = (0.0, tf)
         t = 0.0:dt:(tf + dt)
-        sim = SimulationParametersForced(L, N, dx, x,
-                                         q, z0, A,
-                                         ω, vmax, direction, Nosc,
-                                         cfl)
+        sim = SimulationParameters1D(Int64(L), Int64(N), float(dx), float(dt),
+                                     convert(Vector{Float64}, x), float(q), 1.0, float(z0),
+                                     float(vmax), float(vmax), float(A), float(ω),
+                                     0.0, direction, float(Nosc), sf, float(cfl))
 
         params = (equation=equation, numerical_flux=numerical_flux,
                   slope_limiter=slope_limiter, flux_limiter=flux_limiter,
                   h=dx, N=N, x=x, cfl=cfl, L=L0, L0=L0, vmax=vmax, A=A,
                   dt=dt, z0=z0, ω=ω, q=q)
 
-        print_simulation_info("Forced Motion"; Nosc, L, dx, cfl, vmax, q, A, omega=ω, T, tf,
-                              N,
-                              dt, SimType="Forced Motion")
+        print_simulation_info(sim; title="Forced Motion")
         if muscl
             alg = SSPRK54()
             if sf
@@ -248,9 +262,13 @@ function particle_in_potential(Nosc, dx, cfl, vmax, q, sf=true)
                   m0=m0,
                   L0=L0)#, acc=Number[0.0])
 
-        print_simulation_info("Particle in Potential"; Nosc, L, dx, cfl, vmax, q, A,
-                              omega=ω, T,
-                              tf, N, dt, k, SimType="Harmonic Potential")
+        sim = SimulationParameters1D(Int64(L), Int64(N), float(dx), float(dt),
+                                     convert(Vector{Float64}, x), float(q), float(m0),
+                                     float(z0),
+                                     float(v0), float(vmax), float(A), float(ω),
+                                     float(k), 0, float(Nosc), sf, float(cfl))
+
+        print_simulation_info(sim; title="Particle in Potential")
 
         alg = SSPRK54()
 
@@ -265,9 +283,7 @@ function particle_in_potential(Nosc, dx, cfl, vmax, q, sf=true)
 
         if integrator.sol.retcode == :Success ||
            integrator.sol.retcode == ReturnCode.Success
-            sim = SimulationParametersAnalyticPotential(L, dx, dt, x, float(q),
-                                                        m0, z0, v0,
-                                                        k, sf, cfl, float(Nosc))
+            # sim defined earlier
 
             res = Simulation(sim, integrator.sol)
             return res
@@ -340,8 +356,10 @@ end
 #     ode = ODEProblem{true}(ODE.particle_rhs_interpolation!, statevector,
 #                            tspan, params; saveat=t)
 #     sol = solve(ode, alg; adaptive=false, dt=dt)
-#     sim = SimulationParametersAnalyticPotential(L, dx, dt, collect(x), q1, m10, x10, v10,
-#                                                 Float64(k))
+#     sim = SimulationParameters1D(Int64(L), Int64(length(x)), float(dx), float(dt), 
+#                                  convert(Vector{Float64}, collect(x)), float(q1), float(m10), float(x10), 
+#                                  float(v10), float(v10), 0.0, 0.0, 
+#                                  float(k), 0, float(Nosc), true, 0.0)
 #     res = Simulation(sim, sol)
 #     return res
 # end
@@ -448,9 +466,10 @@ end
 #     #     # set_proposed_dt!(integrator, dt_new)
 #     # end
 #     # sol = solve(ode, alg; dt=dt, adaptive=false)
-#     sim = SimulationParametersAnalyticPotential(L, dx, dt, x, q,
-#                                                 m10, x10, v10,
-#                                                 k, sf, cfl, float(Nosc))
+#     sim = SimulationParameters1D(Int64(L), Int64(length(x)), float(dx), float(dt), 
+#                                  convert(Vector{Float64}, x), float(q), float(m10), float(x10), 
+#                                  float(v10), float(v10), 0.0, 0.0, 
+#                                  float(k), 0, float(Nosc), sf, float(cfl))
 
 #     res = Simulation(sim, field_integrator.sol)
 #     return res
@@ -587,10 +606,10 @@ end
 #     tspan = (0.0, tf)
 #     t = 0.0:dt:(tf + dt)
 #     @show length(t)
-#     sim = SimulationParametersForced(L, N, dx, x,
-#                                      q, x10, A,
-#                                      ω, vmax, direction, Nosc,
-#                                      cfl)
+#     sim = SimulationParameters1D(Int64(L), Int64(N), float(dx), float(dt), 
+#                                  convert(Vector{Float64}, x), float(q), 1.0, float(x10), 
+#                                  float(vmax), float(vmax), float(A), float(ω), 
+#                                  0.0, direction, float(Nosc), true, float(cfl))
 
 #     params = (equation=equation, numerical_flux=numerical_flux,
 #               slope_limiter=slope_limiter, flux_limiter=flux_limiter,

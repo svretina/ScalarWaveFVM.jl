@@ -53,7 +53,6 @@ end
     return derivative(vv -> Ψs001(x, z, vv, q), v)
 end
 
-## Π = ∂ₜΦ
 @inline function Πs001(x, z, v, q)
     # return -0.5q * cosh(v)^3 * sign(x - z)
     return derivative(vv -> Πs(x, z, vv, q), v)
