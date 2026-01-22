@@ -19,6 +19,102 @@ const RUN_NAME_REF = Ref("")
 export mytheme_aps, mymean, simple_name
 export get_fig_path, set_experiment_path!, reset_fig_path!
 export get_paper_fig_path
+export apply_scientific_notation_if_needed!
+
+"""
+    apply_scientific_notation_if_needed!(ax)
+
+Checks if the y-axis limits have 3 or more decimal places. If so, applies scientific
+notation by scaling the y-ticks to simple integers and adding a scale indicator label
+at the top of the y-axis.
+"""
+function apply_scientific_notation_if_needed!(ax)
+    # Most reliable way to get data bounds before the scene is fully rendered
+    # is to iterate over the plots and collect their data limits.
+    ymin = Inf
+    ymax = -Inf
+
+    plots_to_check = ax.scene.plots
+    # Some axes have a background or other non-data plots, 
+    # but Makie.data_limits usually handles them.
+    for p in plots_to_check
+        # We only care about data plots (Lines, Scatter, etc.)
+        # Skip labels/text if any were added
+        if p isa Makie.Text || p isa Makie.Annotations
+            continue
+        end
+
+        bb = Makie.data_limits(p)
+        if !isnothing(bb) && isfinite(bb.origin[2]) && isfinite(bb.widths[2])
+            ymin = min(ymin, bb.origin[2])
+            ymax = max(ymax, bb.origin[2] + bb.widths[2])
+        end
+    end
+
+    if !isfinite(ymin) || !isfinite(ymax) || ymin >= ymax
+        return
+    end
+
+    range_val = ymax - ymin
+
+    # Trigger if range implies multiple decimal places (e.g., range < 0.5)
+    if range_val < 0.5 && range_val > 0
+        exponent = floor(Int, log10(range_val))
+        scale = 10.0^exponent
+
+        scaled_min = ymin / scale
+        scaled_max = ymax / scale
+
+        # We want integer ticks in the scaled space
+        s_min = floor(Int, scaled_min)
+        s_max = ceil(Int, scaled_max)
+
+        tick_vals_scaled = collect(s_min:s_max)
+
+        if length(tick_vals_scaled) > 8
+            step = ceil(Int, length(tick_vals_scaled) / 5)
+            tick_vals_scaled = tick_vals_scaled[1:step:end]
+        elseif length(tick_vals_scaled) < 4
+            # Fallback to a few nice points if range is too narrow for many integers
+            tick_vals_scaled = unique(round.(Int, range(scaled_min, scaled_max; length=5)))
+        end
+
+        tick_values = tick_vals_scaled .* scale
+        mask = (tick_values .>= ymin - 1e-10) .& (tick_values .<= ymax + 1e-10)
+
+        if any(mask)
+            ax.yticks = (tick_values[mask],
+                         [string(round(Int, s)) for s in tick_vals_scaled[mask]])
+
+            # Use the approach suggested by the USER for scientific notation scale label
+            scale_text = L"\times 10^{%$exponent}"
+
+            # Placing it in the Top() side of the layout position where the axis is located
+            try
+                # In Makie 0.19+, blocks have layoutmain.gridcontent
+                # we can find the parent GridLayout and the span
+                gc = ax.layoutmain.gridcontent[]
+                if !isnothing(gc)
+                    Label(gc.parent[gc.span.rows, gc.span.cols, Top()], scale_text;
+                          halign=:left, tellwidth=false, tellheight=false,
+                          padding=(0, 0, 2, 0), fontsize=10, font=:bold)
+                else
+                    # Fallback to text! if gridcontent is not found
+                    text!(ax, 0, 1; text=scale_text, align=(:left, :bottom),
+                          space=:relative, offset=(0, 2), fontsize=10, font=:bold,
+                          overdraw=true)
+                end
+            catch
+                # Defensive fallback
+                text!(ax, 0, 1; text=scale_text, align=(:left, :bottom),
+                      space=:relative, offset=(0, 2), fontsize=10, font=:bold,
+                      overdraw=true)
+            end
+        end
+    end
+
+    return nothing
+end
 
 function format_val(x)
     # Round to 4 digits to remove floating point noise like 1.250000002 -> 1.25

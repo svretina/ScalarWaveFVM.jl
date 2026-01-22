@@ -249,7 +249,7 @@ function particle_in_potential(Nosc, dx, cfl, vmax, q, sf=true)
         numerical_flux = NumericalFluxes.flux_rusanov
         slope_limiter = Limiters.MC
         flux_limiter = Limiters.MC
-        interpolation_method = AkimaInterpolation # QuadraticInterpolation # LinearInterpolation # QuadraticInterpolation
+        interpolation_method = AkimaInterpolation #LinearInterpolation # QuadraticInterpolation
 
         params = (equation=equation, numerical_flux=numerical_flux,
                   slope_limiter=slope_limiter, flux_limiter=flux_limiter,

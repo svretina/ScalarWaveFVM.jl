@@ -401,12 +401,17 @@ function radiation_reaction_rhs!(dQ, Q, params, t)
     return nothing
 end
 
+@inline function find_cell_index(x, dx, grid_origin)
+    return floor(Int64, (x - grid_origin) / dx) + 1
+end
+
 function particle_rhs!(dQ, Q, params, t)
     Q_field = Q.x[1]
     Q_particle = Q.x[2]
     dQ_particle = dQ.x[2]
 
     q = params.q
+    h = params.h
     xs = params.x
     dxV = params.dxPotential
     sf = params.sf
@@ -435,6 +440,10 @@ function particle_rhs!(dQ, Q, params, t)
         # Πrz = interpolator_Π(z)
         Ψrz = interpolator_Ψ(z)
 
+        # i = find_cell_index(z, h, xs[1])
+        # @show i
+        # Φrz = Φr[i]
+        # Ψrz = Ψr[i]
         # @inbounds dQ_particle[1] = -q * (v * Ψrz + Πrz)
         @inbounds dQ_particle[2] = v
 

@@ -383,6 +383,7 @@ function plot_phifield(i, sim1; paper=false)
     #        label=L"\Phi_s")
     # lines!(ax, x_filtered, y1_filtered .+ ScalarField.Φs.(x_filtered, xp, vp, q);
     #        label=L"\Phi")
+    apply_scientific_notation_if_needed!(ax)
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
     leg = Legend(fig[2, 1], ax; orientation=:horizontal,
@@ -448,6 +449,7 @@ function plot_pifield(i, sim1; paper=false)
 
     lines!(ax, x_filtered, y_filtered; label=L"\Pi_r")
 
+    apply_scientific_notation_if_needed!(ax)
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
     # leg = Legend(fig[2, 1], ax; orientation=:horizontal,
@@ -658,6 +660,7 @@ function plot_psifield(i, sim1; paper=false)
     # lines!(ax, x1_filtered, y1_filtered .+ ScalarField.Ψs.(x1_filtered, q, xp, vp);
     #        linestyle=:dash, label=L"\Psi")
 
+    apply_scientific_notation_if_needed!(ax)
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
     leg = Legend(fig[2, 1], ax; orientation=:horizontal,
@@ -1279,7 +1282,8 @@ function plot_particle_position_diff_scaled(sim1, sim2, sim4; paper=false)
            label=L"2 \cdot |z_{\mathrm{mid}} - z_{\mathrm{high}}|", color=color2,
            linestyle=:dash)
 
-    axislegend(ax; position=:lt) # Top-right legend
+    # apply_scientific_notation_if_needed!(ax)
+    axislegend(ax; position=:lt, labelsize=10, rowgap=0.2) # Top-left legend
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
     colsize!(fig.layout, 1, Relative(0.9))
     # rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
@@ -1327,7 +1331,8 @@ function plot_particle_velocity_diff_scaled(sim1, sim2, sim4; paper=false)
            label=L"2 \cdot |v_{\mathrm{mid}} - v_{\mathrm{high}}|", color=color2,
            linestyle=:dash)
 
-    axislegend(ax; position=:lt)
+    # apply_scientific_notation_if_needed!(ax)
+    axislegend(ax; position=:lt, labelsize=10, rowgap=0.1)
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
     colsize!(fig.layout, 1, Relative(0.9))
     # rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)

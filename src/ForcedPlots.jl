@@ -770,16 +770,20 @@ function plot_pifield_diff(i, sim1, sim2, sim4; paper=false)
 
     # Plot the data
     lines!(ax, x_filtered, diff1; label=L"\textrm{low-mid}")
-    lines!(ax, x_filtered, 2^2 * diff2; label=L"\textrm{2^2\cdot(mid-high)}",
-           linestyle=:dash)
-    # lines!(ax, x_filtered, y4_filtered; label=L"\textrm{high}")
+    lines!(ax, x_filtered, 2^2 * diff2; label=L"2^2\cdot(mid-high)",
+           linestyle=:dot)
+
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+
+    apply_scientific_notation_if_needed!(ax)
+
     # Add legend at the bottom
     leg = Legend(fig[2, 1],
                  ax;
                  orientation=:horizontal,
                  tellwidth=false,
-                 tellheight=true,)
+                 tellheight=true,
+                 colgap=2.5)
 
     # Adjust layout to ensure proper spacing
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
@@ -846,16 +850,19 @@ function plot_psifield_diff(i, sim1, sim2, sim4; paper=false)
               limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]),)
     # Plot the data
     lines!(ax, x_filtered, diff1; label=L"\textrm{low-mid}")
-    lines!(ax, x_filtered, 2^2 * diff2; label=L"\textrm{2^2\cdot(mid-high)}",
-           linestyle=:dot)
-    # lines!(ax, x_filtered, y4_filtered; label=L"\textrm{high}")
+    lines!(ax, x_filtered, 2^2 * diff2; label=L"2^2\cdot(mid-high)",
+           linestyle=:dash)
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+
+    apply_scientific_notation_if_needed!(ax)
+
     # Add legend at the bottom
     leg = Legend(fig[2, 1],
                  ax;
                  orientation=:horizontal,
                  tellwidth=false,
-                 tellheight=true,)
+                 tellheight=true,
+                 colgap=2.5)
 
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
     rowsize!(fig.layout, 2, Relative(0.1))  # Allocate 15% of height for legend
@@ -1394,7 +1401,7 @@ function plot_pifield_resolutions_vs_retarded(i, sim1, sim2; total=false, paper=
     fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
               xlabel=L"x",
-              ylabel=L"\Pi_r",
+              ylabel=L"\Pi_\mathrm{r}",
               title=L"t=%$(round(t, digits=3))",
               limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
 
@@ -1489,7 +1496,7 @@ function plot_psifield_resolutions_vs_retarded(i, sim1, sim2; total=false, paper
     fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
               xlabel=L"x",
-              ylabel=L"\Psi_r",
+              ylabel=L"\Psi_\mathrm{r}",
               title=L"t=%$(round(t, digits=3))",
               limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
 
