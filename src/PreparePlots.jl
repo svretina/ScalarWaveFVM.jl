@@ -268,7 +268,7 @@ function get_line_points(P1, P2; len=100.0)
     return [start_pt[1], end_pt[1]], [start_pt[2], end_pt[2]]
 end
 
-function get_parabola_points(Focus, DirP1, DirP2; t_range)
+function get_parabola_geometry(Focus, DirP1, DirP2)
     d_vec = DirP2 - DirP1
     n = [-d_vec[2], d_vec[1]] / norm(d_vec)
     dist = dot(n, Focus - DirP1)
@@ -276,10 +276,21 @@ function get_parabola_points(Focus, DirP1, DirP2; t_range)
     p = abs(dist) / 2
     axis_dir = n * sign(dist)
     tangent_dir = [-axis_dir[2], axis_dir[1]]
+    return V, p, axis_dir, tangent_dir
+end
 
+function get_parabola_pt_tangent(t, V, p, axis_dir, tangent_dir)
+    pt = V + t .* tangent_dir + (t^2 / (4 * p)) .* axis_dir
+    # Tangent vector: T(t) = tangent_dir + (2t / 4p) * axis_dir = tangent_dir + (t / 2p) * axis_dir
+    tangent_vec = tangent_dir + (t / (2 * p)) .* axis_dir
+    return pt, tangent_vec
+end
+
+function get_parabola_points(Focus, DirP1, DirP2; t_range)
+    V, p, axis_dir, tangent_dir = get_parabola_geometry(Focus, DirP1, DirP2)
     xs, ys = Float64[], Float64[]
     for t in t_range
-        pt = V + t .* tangent_dir + (t^2 / (4 * p)) .* axis_dir
+        pt, _ = get_parabola_pt_tangent(t, V, p, axis_dir, tangent_dir)
         push!(xs, pt[1])
         push!(ys, pt[2])
     end
@@ -312,41 +323,57 @@ function plot_trajectory_makie(; paper=false)
     hidedecorations!(ax)
     hidespines!(ax)
 
-    # -- Draw Gray Dashed Lines --
-    hx, hy = get_line_points(F, G; len=150)
-    lines!(ax, hx, hy; color=:gray, linestyle=:dash, linewidth=0.8)
-
-    gx, gy = get_line_points(D, E; len=150)
-    lines!(ax, gx, gy; color=:gray, linestyle=:dash, linewidth=0.8)
-
     # -- Draw Trajectory (Thin) --
+    V, p, axis_dir, tangent_dir = get_parabola_geometry(A, B, C)
     px, py = get_parabola_points(A, B, C; t_range=range(-65, 65; length=300))
     lines!(ax, px, py; color=:black, linewidth=1.0)
 
+    # -- Calculate Points and Tangents for Velocity Vectors --
+    # We choose t values that roughly correspond to the original F and D locations
+    t_F = -25.0
+    t_D = 10.0
+
+    pt_F, tan_F = get_parabola_pt_tangent(t_F, V, p, axis_dir, tangent_dir)
+    pt_D, tan_D = get_parabola_pt_tangent(t_D, V, p, axis_dir, tangent_dir)
+
+    # Normalize tangents and scale for visualization if needed, 
+    # but here we use them for the dashed line direction too.
+    unit_tan_F = tan_F / norm(tan_F)
+    unit_tan_D = tan_D / norm(tan_D)
+
+    # -- Draw Gray Dashed Lines (Tangents) --
+    len_dash = 50.0
+    hx, hy = [pt_F[1] - len_dash * unit_tan_F[1], pt_F[1] + len_dash * unit_tan_F[1]],
+             [pt_F[2] - len_dash * unit_tan_F[2], pt_F[2] + len_dash * unit_tan_F[2]]
+    lines!(ax, hx, hy; color=:gray, linestyle=:dash, linewidth=0.8)
+
+    gx, gy = [pt_D[1] - len_dash * unit_tan_D[1], pt_D[1] + len_dash * unit_tan_D[1]],
+             [pt_D[2] - len_dash * unit_tan_D[2], pt_D[2] + len_dash * unit_tan_D[2]]
+    lines!(ax, gx, gy; color=:gray, linestyle=:dash, linewidth=0.8)
+
     # -- Draw Velocity Vectors (Thick) --
-    # Makie arrows!: x, y, u, v
-    # Arrow 1: v_i
-    arrows!(ax, [F[1]], [F[2]], [G[1] - F[1]], [G[2] - F[2]];
+    # Scale tangents for the arrow length
+    v_scale = 15.0
+    arrows!(ax, [pt_F[1]], [pt_F[2]], [v_scale * unit_tan_F[1]], [v_scale * unit_tan_F[2]];
             color=:black,
             linewidth=1.0,
             arrowsize=5)
 
-    # Arrow 2: v_{i+1}
-    arrows!(ax, [D[1]], [D[2]], [E[1] - D[1]], [E[2] - D[2]];
+    arrows!(ax, [pt_D[1]], [pt_D[2]], [v_scale * unit_tan_D[1]], [v_scale * unit_tan_D[2]];
             color=:black,
             linewidth=1.0,
             arrowsize=5)
 
     # -- Draw Points (Small) --
-    scatter!(ax, [F[1], D[1]], [F[2], D[2]];
+    scatter!(ax, [pt_F[1], pt_D[1]], [pt_F[2], pt_D[2]];
              color=:black,
              markersize=5)
 
     # -- Annotations --
-    text!(ax, F[1] - 6.5, F[2] + 8; text=L"v_p^i(t_i)",
+    text!(ax, pt_F[1] - 7.5, pt_F[2] + 8; text=L"v_p^i(t_i\,)",
           align=(:center, :center), color=:black)
 
-    text!(ax, D[1] + 2, D[2] + 8; text=L"v_p^{i}(t_{i+1})",
+    text!(ax, pt_D[1] + 0, pt_D[2] + 8; text=L"v_p^{i}(t_{i+1})",
           align=(:center, :center), color=:black)
 
     # Set Limits

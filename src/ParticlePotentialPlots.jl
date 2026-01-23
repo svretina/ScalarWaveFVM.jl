@@ -1270,7 +1270,7 @@ function plot_particle_position_diff_scaled(sim1, sim2, sim4; paper=false)
     ax = Axis(fig[1, 1];
               xlabel=L"t",
               ylabel=L"\Delta z",
-              title=L"\textrm{Position Differences}")
+              title=L"\textrm{Scalled Position Error}")
 
     palette = mytheme.palette
     color1 = palette.color[][1]
@@ -1319,7 +1319,7 @@ function plot_particle_velocity_diff_scaled(sim1, sim2, sim4; paper=false)
     ax = Axis(fig[1, 1];
               xlabel=L"t",
               ylabel=L"\Delta v",
-              title=L"\textrm{Velocity Differences}")
+              title=L"\textrm{Scaled Velocity Error}")
 
     palette = mytheme.palette
     color1 = palette.color[][1]
