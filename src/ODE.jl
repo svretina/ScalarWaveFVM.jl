@@ -384,8 +384,8 @@ function field_rhs!(dQ, Q, params, t)
 
     muscl_optimized!(dQ_field, Q_field, params, t)
 
-    dtΠ = @view dQ_field[:, 1]
-    dtΦ = @view dQ_field[:, 3]
+    # dtΠ = @view dQ_field[:, 1]
+    # dtΦ = @view dQ_field[:, 3]
 
     _h = one(h) / h
     half_h = 0.5 * h
@@ -397,6 +397,12 @@ end
 
 function radiation_reaction_rhs!(dQ, Q, params, t)
     particle_rhs!(dQ, Q, params, t)
+    field_rhs!(dQ, Q, params, t)
+    return nothing
+end
+
+function radiation_reaction_rhs_test!(dQ, Q, params, t)
+    particle_rhs_test!(dQ, Q, params, t)
     field_rhs!(dQ, Q, params, t)
     return nothing
 end
@@ -465,6 +471,7 @@ function particle_rhs_test!(dQ, Q, params, t)
     h = params.h
     xs = params.x
     dxV = params.dxPotential
+    V = params.Potential
     sf = params.sf
     m0 = params.m0
 
@@ -494,12 +501,12 @@ function particle_rhs_test!(dQ, Q, params, t)
     # @show i
     # Φrz = Φr[i]
     # Ψrz = Ψr[i]
-    @inbounds dQ_particle[1] = -q * (dxV(z) * v + v * Ψrz + Πrz)
+    @inbounds dQ_particle[1] = -q * (0 * dxV(z) * v + v * Ψrz + Πrz)
     @inbounds dQ_particle[2] = v
 
     ##relativistic
-    @inbounds dQ_particle[3] = -(q * (1 - v^2) * (dxV(z) + Ψrz + v * Πrz)) /
-                               (m0 + q * (V(z) + Φrz))
+    @inbounds dQ_particle[3] = -(q * (1 - v^2) * (0 * dxV(z) + Ψrz + v * Πrz)) /
+                               (m0 + q * (0 * V(z) + Φrz))
     return nothing
 end
 

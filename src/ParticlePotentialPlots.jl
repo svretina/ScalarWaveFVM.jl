@@ -1074,8 +1074,8 @@ function plot_particle_mass(sim1; paper=false)
 
     # Save the figure
     # Save the figure
-    savename = name("particle_potential/particle_mass", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    savename = simple_name("particle_mass")
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
         save(joinpath(get_paper_fig_path(), savename), fig)
     end

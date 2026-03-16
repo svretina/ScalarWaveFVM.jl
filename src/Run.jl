@@ -294,6 +294,112 @@ function particle_in_potential(Nosc, dx, cfl, vmax, q, sf=true)
     error("Simulation failed after $max_retries attempts")
 end
 
+function particle_in_potential_test(Nosc, dx, cfl, vmax, q, sf=true)
+    c = 1.0
+    equation = LinearScalarWaveEquation1D(c)
+
+    max_retries = 5
+    for attempt in 1:max_retries
+        println("==========================================")
+        println("Attempt $attempt / $max_retries (cfl = $cfl)")
+
+        A = 0.01
+        ω = round(vmax / A; digits=9)
+        T = 2π / ω
+
+        tf = Nosc * T
+        L0 = 2tf
+        L = Int(ceil(L0))
+        tf = Nosc * T
+        L0 = 2tf
+        L = Int(ceil(L0))
+        @assert L >= L0
+
+        tspan = (0.0, tf)
+        dt = cfl * dx / c
+        t = 0.0:dt:tf
+        tspan = (0.0, tf)
+        dt = cfl * dx / c
+        t = 0.0:dt:tf
+
+        N = Int64(2L / dx)
+
+        grid = UniformStaggeredGrid1D(Float64[-L, L], N)
+        x = coords(grid) # cell centers
+
+        @assert spacing(grid) == dx
+
+        N = length(x)
+
+        Φ = zeros(Float64, length(x))
+        Π = zeros(Float64, length(x))
+        Ψ = zeros(Float64, length(x))
+
+        field_statevector = hcat(Π, Ψ, Φ)
+
+        ## Particle 1
+        m0 = 1.0
+        z0 = 0.0
+        v0 = vmax
+        # z0 = 0.0
+        # v0 = 0.6283185307179586
+
+        k = (m0 / q) * ω^2
+
+        V(x) = InitialData.Harmonic(x, k)
+        dxV(x) = InitialData.dxHarmonic(x, k)
+
+        particle_statevector = [m0, z0, v0]
+        statevector = ArrayPartition(field_statevector, particle_statevector)
+
+        numerical_flux = NumericalFluxes.flux_rusanov
+        slope_limiter = Limiters.MC
+        flux_limiter = Limiters.MC
+        interpolation_method = AkimaInterpolation #LinearInterpolation # QuadraticInterpolation
+
+        params = (equation=equation, numerical_flux=numerical_flux,
+                  slope_limiter=slope_limiter, flux_limiter=flux_limiter,
+                  h=dx, N=N, x=x, dx=dx, cfl=cfl, L=L,
+                  dt=dt, z0=z0,
+                  q=q, sf=sf,
+                  Potential=V,
+                  dxPotential=dxV,
+                  interpolation_method=interpolation_method,
+                  m0=m0,
+                  L0=L0)#, acc=Number[0.0])
+
+        sim = SimulationParameters1D(Int64(L), Int64(N), float(dx), float(dt),
+                                     convert(Vector{Float64}, x), float(q), float(m0),
+                                     float(z0),
+                                     float(v0), float(vmax), float(A), float(ω),
+                                     float(k), 0, float(Nosc), sf, float(cfl))
+
+        print_simulation_info(sim; title="Particle in Potential")
+
+        alg = SSPRK54()
+
+        ode = ODEProblem{true}(ODE.radiation_reaction_rhs_test!, statevector, tspan,
+                               params; saveat=t)
+        integrator = init(ode, alg; adaptive=false, dt=dt, p=params)
+        for (uprev, tprev, u, t) in intervals(integrator)
+            if iszero(t % 10)
+                @show t
+            end
+        end
+
+        if integrator.sol.retcode == :Success ||
+           integrator.sol.retcode == ReturnCode.Success
+            # sim defined earlier
+
+            res = Simulation(sim, integrator.sol)
+            return res
+        else
+            println("Warning: Instability detected (retcode: $(integrator.sol.retcode)). Retrying...")
+        end
+    end
+    error("Simulation failed after $max_retries attempts")
+end
+
 # function particle_given_potential(tf, dt)
 #     tspan = (0.0, tf)
 #     t = 0.0:dt:tf
