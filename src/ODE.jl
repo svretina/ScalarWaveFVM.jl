@@ -426,39 +426,80 @@ function particle_rhs!(dQ, Q, params, t)
     vel = 0.999999
     abs(v) <= vel || throw("v=$v > $(vel), at t=$(t), a = $(dQ_particle[3])")
 
-    if sf
-        # Πr = @view Q_field[:, 1]
-        Ψr = @view Q_field[:, 2]
-        Φr = @view Q_field[:, 3]
-        interpolator_Ψ = interpolation_method(Ψr, xs;
-                                              extrapolation=ExtrapolationType.Extension)
-        # interpolator_Π = interpolation_method(Πr, xs;
-        #                                       extrapolation=ExtrapolationType.Extension)
-        interpolator_Φ = interpolation_method(Φr, xs;
-                                              extrapolation=ExtrapolationType.Extension)
-        Φrz = interpolator_Φ(z)
-        # Πrz = interpolator_Π(z)
-        Ψrz = interpolator_Ψ(z)
+    # Πr = @view Q_field[:, 1]
+    Ψr = @view Q_field[:, 2]
+    Φr = @view Q_field[:, 3]
+    interpolator_Ψ = interpolation_method(Ψr, xs;
+                                          extrapolation=ExtrapolationType.Extension)
+    # interpolator_Π = interpolation_method(Πr, xs;
+    #                                       extrapolation=ExtrapolationType.Extension)
+    interpolator_Φ = interpolation_method(Φr, xs;
+                                          extrapolation=ExtrapolationType.Extension)
+    Φrz = interpolator_Φ(z)
+    # Πrz = interpolator_Π(z)
+    Ψrz = interpolator_Ψ(z)
 
-        # i = find_cell_index(z, h, xs[1])
-        # @show i
-        # Φrz = Φr[i]
-        # Ψrz = Ψr[i]
-        # @inbounds dQ_particle[1] = -q * (v * Ψrz + Πrz)
-        @inbounds dQ_particle[2] = v
+    # i = find_cell_index(z, h, xs[1])
+    # @show i
+    # Φrz = Φr[i]
+    # Ψrz = Ψr[i]
+    # @inbounds dQ_particle[1] = -q * (v * Ψrz + Πrz)
+    @inbounds dQ_particle[2] = v
 
-        ##relativistic
-        # @inbounds dQ_particle[3] = (q * (-1 + v^2) *
-        #                             (-dxV(z) * (-1 + v^2)^2 + 2Πrz * v * (1 + v^2) +
-        #                              Ψrz * (1 + v^2)^2)) /
-        #                            (2(m0 + q * Φrz) * (1 + 3v^2))#(m0 + 2q * Φrz * (1 + 3v^2))
-        ## non relativistic
-        @inbounds dQ_particle[3] = -q * (Ψrz + dxV(z)) / (m0 + q * Φrz)
-    else
-        @inbounds dQ_particle[1] = 0.0
-        @inbounds dQ_particle[2] = v
-        @inbounds dQ_particle[3] = q * (1.0 - v * v)^1.5 * dxV(z) / m
-    end
+    ##relativistic
+    # @inbounds dQ_particle[3] = (q * (-1 + v^2) *
+    #                             (-dxV(z) * (-1 + v^2)^2 + 2Πrz * v * (1 + v^2) +
+    #                              Ψrz * (1 + v^2)^2)) /
+    #                            (2(m0 + q * Φrz) * (1 + 3v^2))#(m0 + 2q * Φrz * (1 + 3v^2))
+    ## non relativistic
+    @inbounds dQ_particle[3] = -q * (Ψrz + dxV(z)) / (m0 + q * Φrz)
+    return nothing
+end
+
+function particle_rhs_test!(dQ, Q, params, t)
+    Q_field = Q.x[1]
+    Q_particle = Q.x[2]
+    dQ_particle = dQ.x[2]
+
+    q = params.q
+    h = params.h
+    xs = params.x
+    dxV = params.dxPotential
+    sf = params.sf
+    m0 = params.m0
+
+    interpolation_method = params.interpolation_method
+
+    # m = Q_particle[1]
+    z = Q_particle[2]
+    v = Q_particle[3]
+
+    vel = 0.999999
+    abs(v) <= vel || throw("v=$v > $(vel), at t=$(t), a = $(dQ_particle[3])")
+
+    Πr = @view Q_field[:, 1]
+    Ψr = @view Q_field[:, 2]
+    Φr = @view Q_field[:, 3]
+    interpolator_Ψ = interpolation_method(Ψr, xs;
+                                          extrapolation=ExtrapolationType.Extension)
+    interpolator_Π = interpolation_method(Πr, xs;
+                                          extrapolation=ExtrapolationType.Extension)
+    interpolator_Φ = interpolation_method(Φr, xs;
+                                          extrapolation=ExtrapolationType.Extension)
+    Φrz = interpolator_Φ(z)
+    Πrz = interpolator_Π(z)
+    Ψrz = interpolator_Ψ(z)
+
+    # i = find_cell_index(z, h, xs[1])
+    # @show i
+    # Φrz = Φr[i]
+    # Ψrz = Ψr[i]
+    @inbounds dQ_particle[1] = -q * (dxV(z) * v + v * Ψrz + Πrz)
+    @inbounds dQ_particle[2] = v
+
+    ##relativistic
+    @inbounds dQ_particle[3] = -(q * (1 - v^2) * (dxV(z) + Ψrz + v * Πrz)) /
+                               (m0 + q * (V(z) + Φrz))
     return nothing
 end
 

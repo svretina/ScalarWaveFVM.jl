@@ -30,10 +30,8 @@ end
 
 @inline function principal_part(equation::LinearScalarWaveEquation1D)
     c = equation.velocity
-    A = zeros(typeof(c), 2, 2)
-    A[1, 2] = -c * c
-    A[2, 1] = -one(c)
-    return A
+    return @SMatrix [zero(c) -c * c
+                     -one(c) zero(c)]
 end
 
 # @inline function right_eigenvectors(equation::LinearScalarWaveEquation1D)
