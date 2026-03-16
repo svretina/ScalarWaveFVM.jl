@@ -9,15 +9,15 @@ import DiffEqBase: __solve
 using OrdinaryDiffEq       # Implicit solvers for source, includes solve and ODEProblem
 using OrdinaryDiffEqCore
 import OrdinaryDiffEqCore: get_fsalfirstlast
-import OrdinaryDiffEq: OrdinaryDiffEqAlgorithm, OrdinaryDiffEqMutableCache, issplit,
-                       OrdinaryDiffEqConstantCache, alg_order, alg_cache, initialize!,
-                       perform_step!, trivial_limiter! #, constvalue, @muladd, @unpack, @cache
+import OrdinaryDiffEqCore: OrdinaryDiffEqAlgorithm, OrdinaryDiffEqMutableCache, issplit,
+                           OrdinaryDiffEqConstantCache, alg_order, alg_cache, initialize!,
+                           perform_step!, trivial_limiter! #, constvalue, @muladd, @unpack, @cache
 
 # Define splitting method
 @enum SplittingMethod LieTrotter Strang Yoshida
 
 # Custom solver struct, subtyping OrdinaryDiffEqAlgorithm
-struct MyCustomSolver{S1,S2} <: OrdinaryDiffEq.OrdinaryDiffEqAlgorithm
+struct MyCustomSolver{S1,S2} <: OrdinaryDiffEqAlgorithm
     flux_solver::S1    # Solver for flux term (L)
     source_solver::S2  # Solver for source term (S)
     splitting_method::SplittingMethod
@@ -34,7 +34,7 @@ mutable struct OperatorSplittingIntegrator{I1,I2} #<: DiffEqBase.AbstractODEInte
 end
 
 # Define a minimal cache for MyCustomSolver
-OrdinaryDiffEq.@cache struct MyCustomSolverCache{C1,C2} <: OrdinaryDiffEqMutableCache
+OrdinaryDiffEqCore.@cache struct MyCustomSolverCache{C1,C2} <: OrdinaryDiffEqMutableCache
     flux_cache::C1    # Cache for flux solver
     source_cache::C2  # Cache for source solver
 end
@@ -85,7 +85,7 @@ end
 # end
 
 ## this is wrong!
-function OrdinaryDiffEq.get_fsalfirstlast(cache::MyCustomSolverCache, u)
+function OrdinaryDiffEqCore.get_fsalfirstlast(cache::MyCustomSolverCache, u)
     (cache.source_cache.fsalfirst, cache.source_cache.k)
 end
 

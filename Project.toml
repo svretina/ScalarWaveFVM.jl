@@ -26,6 +26,9 @@ RegularizationTools = "29dad682-9a27-4bc3-9c72-016788665182"
 Roots = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
+[sources]
+GridFunctions = {rev = "master", url = "https://github.com/svretina/GridFunctions.jl.git"}
+
 [compat]
 CairoMakie = "0.13.2"
 DiffEqBase = "6.168.0"
