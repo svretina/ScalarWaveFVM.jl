@@ -481,9 +481,6 @@ function particle_rhs_test!(dQ, Q, params, t)
     z = Q_particle[2]
     v = Q_particle[3]
 
-    vel = 0.999999
-    abs(v) <= vel || throw("v=$v > $(vel), at t=$(t), a = $(dQ_particle[3])")
-
     Πr = @view Q_field[:, 1]
     Ψr = @view Q_field[:, 2]
     Φr = @view Q_field[:, 3]
@@ -497,16 +494,16 @@ function particle_rhs_test!(dQ, Q, params, t)
     Πrz = interpolator_Π(z)
     Ψrz = interpolator_Ψ(z)
 
-    # i = find_cell_index(z, h, xs[1])
-    # @show i
-    # Φrz = Φr[i]
-    # Ψrz = Ψr[i]
-    @inbounds dQ_particle[1] = -q * (0 * dxV(z) * v + v * Ψrz + Πrz)
+    vel = 0.999999
+    abs(v) <= vel ||
+        throw("v=$v > $(vel), at t=$(t), a = $(dQ_particle[3]), den= $(m0 - q * Φrz)")
+
+    @inbounds dQ_particle[1] = q * (v * Ψrz + Πrz)
     @inbounds dQ_particle[2] = v
 
-    ##relativistic
-    @inbounds dQ_particle[3] = -(q * (1 - v^2) * (0 * dxV(z) + Ψrz + v * Πrz)) /
-                               (m0 + q * (0 * V(z) + Φrz))
+    num = -dxV(z) * (1 - v * v)^1.5 - q * (1 - v * v) * (v * Πrz + Ψrz)
+    den = m0 + q * Φrz
+    @inbounds dQ_particle[3] = num / den
     return nothing
 end
 
