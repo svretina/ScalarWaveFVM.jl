@@ -8,14 +8,13 @@ using ..PlottingUtils
 using ..Run
 using LaTeXStrings
 using CairoMakie
-using GLMakie
 using LinearAlgebra
 using JLD2
 
 function run_radiation_sims(Nosc, dx0, cfl, vmax, q)
-    sim1 = Run.particle_in_potential(Nosc, dx0, cfl, vmax, q)
-    sim2 = Run.particle_in_potential(Nosc, dx0 / 2, cfl, vmax, q)
-    sim4 = Run.particle_in_potential(Nosc, dx0 / 4, cfl, vmax, q)
+    sim1 = Run.particle_in_potential_relativistic(Nosc, dx0, cfl, vmax, q)
+    sim2 = Run.particle_in_potential_relativistic(Nosc, dx0 / 2, cfl, vmax, q)
+    sim4 = Run.particle_in_potential_relativistic(Nosc, dx0 / 4, cfl, vmax, q)
     return sim1, sim2, sim4
 end
 
@@ -95,12 +94,12 @@ function prepare_potential_plots(sim1, sim2, sim4; paper=true)
     ## 8) Velocity Resolutions
     ParticlePotentialPlots.plot_particle_velocity_resolutions(sim1, sim2, sim4;
                                                               paper=paper)
-    ## 9) Position Self Convergence
-    ParticlePotentialPlots.plot_particle_position_self_convergence_order(sim1, sim2, sim4;
-                                                                         paper=paper)
-    ## 10) Velocity Self Convergence
-    ParticlePotentialPlots.plot_particle_velocity_self_convergence_order(sim1, sim2, sim4;
-                                                                         paper=paper)
+    # ## 9) Position Self Convergence
+    # ParticlePotentialPlots.plot_particle_position_self_convergence_order(sim1, sim2, sim4;
+    #                                                                      paper=paper)
+    # ## 10) Velocity Self Convergence
+    # ParticlePotentialPlots.plot_particle_velocity_self_convergence_order(sim1, sim2, sim4;
+    #                                                                      paper=paper)
     ## 11) Energy
     ParticlePotentialPlots.plot_energy(sim4; paper=paper)
     ## 12) Scaled Differences (Position)
@@ -110,17 +109,16 @@ function prepare_potential_plots(sim1, sim2, sim4; paper=true)
     return nothing
 end
 
-function prepare_all_plots(; paper=true)
+function prepare_all_plots(; paper=true, q=1.0)
     ## forced motion case
     println("\n" * "="^50)
     println("PREPARING PLOTS: Forced Motion")
     println("="^50)
-    q = 1.0
-    vmax = 0.1
+    vmax = 0.2
     cfl = 0.1
     Nosc = 4
 
-    dx = 0.1 / 2
+    dx = 0.05
     # Create experiment folder
     PlottingUtils.set_experiment_path!("forced_motion", q, vmax, Nosc, dx, cfl)
 
@@ -131,20 +129,19 @@ function prepare_all_plots(; paper=true)
     println("\n" * "="^50)
     println("PREPARING PLOTS: Particle in harmonic potential")
     println("="^50)
-    q = 1
     # Create experiment folder
     PlottingUtils.set_experiment_path!("radiation_reaction", q, vmax, Nosc, dx, cfl)
 
     sim1, sim2, sim4 = run_radiation_sims(Nosc, dx, cfl, vmax, q)
     prepare_potential_plots(sim1, sim2, sim4; paper=paper)
-    plot_source_kink_harmonic(; paper=paper)
+    plot_source_kink_harmonic(; q=q, paper=paper)
     plot_trajectory_makie(; paper=paper)
     # Reset path (optional, but good practice)
     PlottingUtils.reset_fig_path!()
     return nothing
 end
 
-function plot_source_kink_harmonic(; n_crossings=4, paper=false)
+function plot_source_kink_harmonic(; n_crossings=4, q=1.0, paper=false)
     CairoMakie.activate!()
 
     mytheme = mytheme_aps()
@@ -153,8 +150,6 @@ function plot_source_kink_harmonic(; n_crossings=4, paper=false)
     # --- Physics Parameters ---
     h = 1.0
     x_cell = 0.0
-    q = 1.0
-
     # Motion Setup
     Ampl = 1.2
     ω = 0.1 / Ampl

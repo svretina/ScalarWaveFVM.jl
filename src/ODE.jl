@@ -310,20 +310,36 @@ end
     left_face = x_i - half_h
     right_face = x_i + half_h
 
-    base_val = -0.5 * q * a
-    val_L = -base_val / (1.0 + v)^2
-    val_R = base_val / (1.0 - v)^2
+    one_v = one(v)
+    inv_L = inv((one_v + v)^2)
+    inv_R = inv((one_v - v)^2)
+
+    # -a * ∂ᵥΠs and -a * ∂ₓ∂ᵥΦs = -a * ∂ᵥΨs are piecewise constant.
+    pi_val_L = -0.5 * q * a * inv_L
+    pi_val_R = 0.5 * q * a * inv_R
+    psi_val_L = -0.5 * q * a * inv_L
+    psi_val_R = -0.5 * q * a * inv_R
+
+    # -a * ∂ᵥΦs is piecewise linear, so we keep exact cell averages.
+    phi_slope_L = 0.5 * q * a * inv_L
+    phi_slope_R = -0.5 * q * a * inv_R
     if z >= right_face
         # CASE A: Particle is to the right. 
         # Entire cell is in the Left Regime (x < z).
-        # Integral = h * val_L. 
-        # (Multiplication by _h in the update cancels the h)
-        @inbounds dQ[idx, 1] -= val_L
+        @inbounds begin
+            dQ[idx, 1] += pi_val_L
+            dQ[idx, 2] += psi_val_L
+            dQ[idx, 3] += phi_slope_L * (z - x_i)
+        end
 
     elseif z <= left_face
         # CASE B: Particle is to the left.
         # Entire cell is in the Right Regime (x > z).
-        @inbounds dQ[idx, 1] -= val_R
+        @inbounds begin
+            dQ[idx, 1] += pi_val_R
+            dQ[idx, 2] += psi_val_R
+            dQ[idx, 3] += phi_slope_R * (x_i - z)
+        end
 
     else
         # CASE C: Particle is Inside (Split Domain).
@@ -333,12 +349,16 @@ end
         frac_L = (z - left_face) * _h
 
         # Fraction of cell to the right of z
-        frac_R = 1.0 - frac_L
+        frac_R = one(frac_L) - frac_L
 
-        # Weighted Average of the densities
-        term_weighted = frac_L * val_L + frac_R * val_R
+        dx_L = z - left_face
+        dx_R = right_face - z
 
-        @inbounds dQ[idx, 1] -= term_weighted
+        @inbounds begin
+            dQ[idx, 1] += frac_L * pi_val_L + frac_R * pi_val_R
+            dQ[idx, 2] += frac_L * psi_val_L + frac_R * psi_val_R
+            dQ[idx, 3] += 0.5 * _h * (phi_slope_L * dx_L^2 + phi_slope_R * dx_R^2)
+        end
     end
     return nothing
 end
@@ -401,8 +421,8 @@ function radiation_reaction_rhs!(dQ, Q, params, t)
     return nothing
 end
 
-function radiation_reaction_rhs_test!(dQ, Q, params, t)
-    particle_rhs_test!(dQ, Q, params, t)
+function radiation_reaction_rhs_relativistic!(dQ, Q, params, t)
+    particle_rhs_relativistic!(dQ, Q, params, t)
     field_rhs!(dQ, Q, params, t)
     return nothing
 end
@@ -432,37 +452,21 @@ function particle_rhs!(dQ, Q, params, t)
     vel = 0.999999
     abs(v) <= vel || throw("v=$v > $(vel), at t=$(t), a = $(dQ_particle[3])")
 
-    # Πr = @view Q_field[:, 1]
     Ψr = @view Q_field[:, 2]
     Φr = @view Q_field[:, 3]
     interpolator_Ψ = interpolation_method(Ψr, xs;
                                           extrapolation=ExtrapolationType.Extension)
-    # interpolator_Π = interpolation_method(Πr, xs;
-    #                                       extrapolation=ExtrapolationType.Extension)
     interpolator_Φ = interpolation_method(Φr, xs;
                                           extrapolation=ExtrapolationType.Extension)
     Φrz = interpolator_Φ(z)
-    # Πrz = interpolator_Π(z)
     Ψrz = interpolator_Ψ(z)
 
-    # i = find_cell_index(z, h, xs[1])
-    # @show i
-    # Φrz = Φr[i]
-    # Ψrz = Ψr[i]
-    # @inbounds dQ_particle[1] = -q * (v * Ψrz + Πrz)
     @inbounds dQ_particle[2] = v
-
-    ##relativistic
-    # @inbounds dQ_particle[3] = (q * (-1 + v^2) *
-    #                             (-dxV(z) * (-1 + v^2)^2 + 2Πrz * v * (1 + v^2) +
-    #                              Ψrz * (1 + v^2)^2)) /
-    #                            (2(m0 + q * Φrz) * (1 + 3v^2))#(m0 + 2q * Φrz * (1 + 3v^2))
-    ## non relativistic
     @inbounds dQ_particle[3] = -q * (Ψrz + dxV(z)) / (m0 + q * Φrz)
     return nothing
 end
 
-function particle_rhs_test!(dQ, Q, params, t)
+function particle_rhs_relativistic!(dQ, Q, params, t)
     Q_field = Q.x[1]
     Q_particle = Q.x[2]
     dQ_particle = dQ.x[2]
@@ -471,8 +475,8 @@ function particle_rhs_test!(dQ, Q, params, t)
     h = params.h
     xs = params.x
     dxV = params.dxPotential
-    V = params.Potential
-    sf = params.sf
+    # V = params.Potential
+    # sf = params.sf
     m0 = params.m0
 
     interpolation_method = params.interpolation_method
@@ -501,8 +505,8 @@ function particle_rhs_test!(dQ, Q, params, t)
     @inbounds dQ_particle[1] = q * (v * Ψrz + Πrz)
     @inbounds dQ_particle[2] = v
 
-    num = -dxV(z) * (1 - v * v)^1.5 - q * (1 - v * v) * (v * Πrz + Ψrz)
-    den = m0 + q * Φrz
+    num = -q * dxV(z) * (1 - v * v)^1.5 + q * (1 - v * v) * (v * Πrz + Ψrz)
+    den = m0 - q * Φrz
     @inbounds dQ_particle[3] = num / den
     return nothing
 end

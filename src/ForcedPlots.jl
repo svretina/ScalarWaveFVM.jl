@@ -61,7 +61,8 @@ function plot_particle_position(sim; paper=false)
 
     # Filter sim1 data (640 points)
     mask1 = (sim.params.x .>= x_range[1]) .& (sim.params.x .<= x_range[2])
-    dt = sim.params.dx * sim.params.cfl
+    h = sim.params.dx
+    dt = h * sim.params.cfl
     pos = zeros(nt)
     for i in 1:nt
         pos[i], _, _ = ParticleMotion.oscillator(sim.sol.t[i], sim.params.z0, sim.params.A,
@@ -1267,7 +1268,7 @@ function plot_pifield_vs_retarded(i, sim; total=false)
 
     t = sim.sol.t[i]
 
-    dx = sim.params.dx
+    h = sim.params.dx
     L = sim.params.L
     q = sim.params.q
     A = sim.params.A
@@ -1345,8 +1346,8 @@ function plot_pifield_resolutions_vs_retarded(i, sim1, sim2; total=false, paper=
 
     t = sim1.sol.t[i]
 
-    dx1 = sim1.params.dx
-    dx2 = sim2.params.dx
+    h1 = sim1.params.dx
+    h2 = sim2.params.dx
     L = sim1.params.L
     q = sim1.params.q
     A = sim1.params.A
@@ -1405,9 +1406,9 @@ function plot_pifield_resolutions_vs_retarded(i, sim1, sim2; total=false, paper=
               title=L"t=%$(round(t, digits=3))",
               limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
 
-    lines!(ax, x1, y_sim1; label="dx=$dx1")
-    lines!(ax, x2, y_sim2; label="dx=$dx2")
-    lines!(ax, x1, y_lw; label="Retarded", linestyle=:dash)
+    lines!(ax, x1, y_lw; label="Retarded")
+    lines!(ax, x2, y_sim2; label="h=$h2")
+    lines!(ax, x1, y_sim1; label="h=$h1")
 
     vlines!(ax, [z]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
 
@@ -1437,8 +1438,8 @@ function plot_psifield_resolutions_vs_retarded(i, sim1, sim2; total=false, paper
 
     t = sim1.sol.t[i]
 
-    dx1 = sim1.params.dx
-    dx2 = sim2.params.dx
+    h1 = sim1.params.dx
+    h2 = sim2.params.dx
     L = sim1.params.L
     q = sim1.params.q
     A = sim1.params.A
@@ -1500,9 +1501,9 @@ function plot_psifield_resolutions_vs_retarded(i, sim1, sim2; total=false, paper
               title=L"t=%$(round(t, digits=3))",
               limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
 
-    lines!(ax, x1, y_sim1; label="dx=$dx1")
-    lines!(ax, x2, y_sim2; label="dx=$dx2")
-    lines!(ax, x1, y_lw; label="Retarded", linestyle=:dash)
+    lines!(ax, x1, y_lw; label="Retarded")
+    lines!(ax, x2, y_sim2; label="h=$h2")
+    lines!(ax, x1, y_sim1; label="h=$h1")
 
     vlines!(ax, [z]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
 
@@ -1532,7 +1533,7 @@ function plot_psifield_vs_retarded(i, sim; total=false)
 
     t = sim.sol.t[i]
 
-    dx = sim.params.dx
+    h = sim.params.dx
     L = sim.params.L
     q = sim.params.q
     A = sim.params.A
@@ -1604,8 +1605,8 @@ function plot_pifield_diff_vs_retarded(i, sim1, sim2; total=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
 
-    dx1 = sim1.params.dx
-    dx2 = sim2.params.dx
+    h1 = sim1.params.dx
+    h2 = sim2.params.dx
 
     L = sim1.params.L
     q = sim1.params.q
@@ -1810,11 +1811,11 @@ function plot_pifield_error_convergence(i, Nosc, dx0, cfl, vmax, q; total=false,
     scatter!(ax, hs, errors)
 
     xref = hs[1:3]
-    yref1 = hs[1:3] .^ 1
+    yref1 = hs[1:3] .^ 1.5
     shift1 = (errors[1] / yref1[1]) * 1.3
     yref1 .*= shift1
 
-    lines!(ax, xref, yref1; linestyle=:dash, label=L"h^1")
+    lines!(ax, xref, yref1; linestyle=:dash, label=L"h^{1.5}")
     # axislegend(ax; position=:rt)
 
     # leg = Legend(fig[1, 1],
@@ -1941,11 +1942,11 @@ function plot_psifield_error_convergence(i, Nosc, dx0, cfl, vmax, q; total=false
     scatter!(ax, hs, errors)
 
     xref = hs[1:3]
-    yref1 = hs[1:3] .^ 1
+    yref1 = hs[1:3] .^ 1.5
     shift1 = (errors[1] / yref1[1]) * 1.3
     yref1 .*= shift1
 
-    lines!(ax, xref, yref1; linestyle=:dash, label=L"h^1")
+    lines!(ax, xref, yref1; linestyle=:dash, label=L"h^{1.5}")
     # axislegend(ax; position=:rt)
 
     leg = Legend(fig[1, 1], ax; # Note: Same grid position as the Axis!

@@ -13,6 +13,7 @@ include("FractionalStepMethods.jl")
 include("RetardedPotentials.jl")
 
 include("ODE.jl")
+include("Types.jl")
 include("Run.jl")
 
 include("Convergence.jl")

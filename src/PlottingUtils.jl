@@ -147,9 +147,9 @@ function reset_fig_path!()
     return nothing
 end
 
-function set_experiment_path!(experiment_type, q, vmax, Nosc, dx, cfl)
+function set_experiment_path!(experiment_type, q, vmax, Nosc, h, cfl)
     EXPERIMENT_TYPE_REF[] = experiment_type
-    run_name = "run_q=$(format_val(q))_vmax=$(format_val(vmax))_Nosc=$(format_val(Nosc))_dx=$(format_val(dx))_cfl=$(format_val(cfl))"
+    run_name = "run_q=$(format_val(q))_vmax=$(format_val(vmax))_Nosc=$(format_val(Nosc))_h=$(format_val(h))_cfl=$(format_val(cfl))"
     RUN_NAME_REF[] = run_name
     new_path = joinpath(DEFAULT_FIG_PATH, experiment_type, run_name)
     if !isdir(new_path)
@@ -298,16 +298,6 @@ function mytheme_aps()
                                                 RGBAf(0.392157, 0.709804, 0.803922, 1.0)]),
                  # PolarAxis attributes
                  PolarAxis=Attributes(; spinewidth=1.1))
-end
-
-function opposite_charges(sim)
-    q1 = sim.params.q1
-    q2 = sim.params.q2
-    if q1 == q2
-        return false
-    else
-        return true
-    end
 end
 
 end # end of module

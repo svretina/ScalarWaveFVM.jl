@@ -8,9 +8,9 @@ using CairoMakie
 function plot_retarded_Φ(t, sim)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
-    dx = sim.params.dx
+    h = sim.params.dx
     L = sim.params.L
-    x = (-L / 2):dx:(L / 2)
+    x = (-L / 2):h:(L / 2)
     q = sim.params.q
     A = sim.params.A
     w = sim.params.ω
@@ -34,10 +34,10 @@ end
 function plot_retarded_Π(t, sim)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
-    dx = sim.params.dx
+    h = sim.params.dx
     L = sim.params.L
     x_range = (-L / 2, L / 2)
-    x = (-L / 2):dx:(L / 2)
+    x = (-L / 2):h:(L / 2)
     # y = Π_ret.(x, Ref(sim.params), Ref(t)) .- 0Π_ret.(x, Ref(sim.params), Ref(0.0))
     # y[div(length(y), 2) + 1] = 0.0
     # y = RetardedPotentials.Π_ret_autodiff.(x, Ref(sim.params), Ref(t)) .-
@@ -74,10 +74,10 @@ end
 function plot_retarded_Π2(t, sim)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
-    dx = sim.params.dx
+    h = sim.params.dx
     L = sim.params.L
     x_range = (-L / 2, L / 2)
-    x = (-L / 2):dx:(L / 2)
+    x = (-L / 2):h:(L / 2)
     # y = Π_ret.(x, Ref(sim.params), Ref(t)) .- 0Π_ret.(x, Ref(sim.params), Ref(0.0))
 
     y = RetardedPotentials.Π_ret2.(x, Ref(sim.params), Ref(t)) .-
@@ -109,10 +109,10 @@ end
 function plot_retarded_Ψ(t, sim)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
-    dx = sim.params.dx
+    h = sim.params.dx
     L = sim.params.L
     x_range = (-L / 2, L / 2)
-    x = (-L / 2):dx:(L / 2)
+    x = (-L / 2):h:(L / 2)
 
     # y = Ψ_ret.(x, Ref(sim.params), Ref(t)) # 0Ψ_ret.(x, Ref(sim.params), Ref(0.0))
 
@@ -154,10 +154,10 @@ end
 function plot_retarded_Ψ2(t, sim)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
-    dx = sim.params.dx
+    h = sim.params.dx
     L = sim.params.L
     x_range = (-L / 2, L / 2)
-    x = (-L / 2):dx:(L / 2)
+    x = (-L / 2):h:(L / 2)
 
     q = sim.params.q
     A = sim.params.A

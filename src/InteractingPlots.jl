@@ -4,12 +4,32 @@ using CairoMakie: linewidth
 using ..PlottingUtils
 using CairoMakie
 using LinearAlgebra
-using GLMakie
 using DataInterpolations
 using ..ScalarField
 using ..Energies
 
 @inline name(pre, sim, post=nothing) = simple_name(pre * (post === nothing ? "" : "_$post"))
+
+const GLMAKIE_PKGID = Base.PkgId(Base.UUID("e9467ef8-e4e7-5192-8a1a-b1aee30e663a"), "GLMakie")
+
+function glmakie_module()
+    if isdefined(@__MODULE__, :GLMakie)
+        return getfield(@__MODULE__, :GLMakie)
+    end
+
+    try
+        return Base.require(GLMAKIE_PKGID)
+    catch err
+        throw(ArgumentError("GLMakie is only required for the interactive interacting-particle plots. Add GLMakie to the active environment and try again. Original error: $(err)"))
+    end
+end
+
+function activate_glmakie!()
+    # Delay GLMakie import until an interactive plot is requested so the package
+    # can precompile and load without a display.
+    glmakie_module().activate!()
+    return nothing
+end
 
 function plot_pifield(i, sim1; paper=false)
     CairoMakie.activate!()
@@ -901,7 +921,7 @@ function plot_particle_masses_resolutions(sim1, sim2, sim4; paper=false)
 end
 
 function plot_panel(sim1, ticklabelsize=20)
-    GLMakie.activate!()
+    activate_glmakie!()
     t = sim1.sol.t
     mytheme = mytheme_aps()
     set_theme!(mytheme)
@@ -1517,7 +1537,7 @@ function plot_particle_total_energy(sim1, sim2, sim4; ticklabelsize=20, paper=fa
 end
 
 function plot_particle_panel(sim1, sim2, sim4, ticklabelsize=20)
-    GLMakie.activate!()
+    activate_glmakie!()
     t = sim1.sol.t
     mytheme = mytheme_aps()
     set_theme!(mytheme)
@@ -1716,7 +1736,7 @@ function plot_particle_panel(sim1, sim2, sim4, ticklabelsize=20)
 end
 
 function plot_field_panel(sim1; ticklabelsize=20)
-    GLMakie.activate!()
+    activate_glmakie!()
     t = sim1.sol.t
     mytheme = mytheme_aps()
     set_theme!(mytheme)
@@ -1839,7 +1859,7 @@ function plot_field_panel(sim1; ticklabelsize=20)
 end
 
 function plot_energy_panel(sim1, sim2, sim4; ticklabelsize=20)
-    GLMakie.activate!()
+    activate_glmakie!()
     t = sim1.sol.t
     mytheme = mytheme_aps()
     set_theme!(mytheme)
@@ -2491,7 +2511,7 @@ function plot_half_field_momentum(sim1, sim2, sim4; ticklabelsize=20, paper=fals
 end
 
 function plot_energy_densities(sim1; ticklabelsize=20)
-    GLMakie.activate!()
+    activate_glmakie!()
     t = sim1.sol.t
     mytheme = mytheme_aps()
     set_theme!(mytheme)
@@ -2634,7 +2654,7 @@ function plot_energy_densities(sim1; ticklabelsize=20)
 end
 
 function plot_energy_panel2(sim1; ticklabelsize=20)
-    GLMakie.activate!()
+    activate_glmakie!()
     t = sim1.sol.t
 
     nt = length(sim1.sol.t)
@@ -2739,7 +2759,7 @@ function plot_total_energy2(sim1; ticklabelsize=10, paper=false)
 
     ke1 = zeros(nt)
     ke2 = zeros(nt)
-    dx = sim1.params.dx
+    h = sim1.params.dx
     q1 = sim1.params.q1
     q2 = sim1.params.q2
     L = sim1.params.L
@@ -2766,10 +2786,10 @@ function plot_total_energy2(sim1; ticklabelsize=10, paper=false)
         Φs2(x) = ScalarField.Φs(x, q2, xp2, vp2)
 
         Hfr, Hfi, Hfs, Hp1, Hp2 = Energies.total_hamiltonian_density(i, sim1)
-        regular_energy[i] = Energies.newton_cotes(Hfr[mask1], dx; order=1)
-        interaction_energy[i] = Energies.newton_cotes(Hfi[mask1], dx; order=1)
-        particle1[i] = Energies.newton_cotes(Hp1[mask1], dx; order=1)
-        particle2[i] = Energies.newton_cotes(Hp2[mask1], dx; order=1)
+        regular_energy[i] = Energies.newton_cotes(Hfr[mask1], h; order=1)
+        interaction_energy[i] = Energies.newton_cotes(Hfi[mask1], h; order=1)
+        particle1[i] = Energies.newton_cotes(Hp1[mask1], h; order=1)
+        particle2[i] = Energies.newton_cotes(Hp2[mask1], h; order=1)
 
         γ1 = 1.0 / sqrt(1.0 - vp1^2)
         γ2 = 1.0 / sqrt(1.0 - vp2^2)
@@ -2868,7 +2888,7 @@ function plot_total_energy22(sim1; ticklabelsize=10, paper=false)
     ke1 = zeros(nt)
     ke2 = zeros(nt)
 
-    dx = sim1.params.dx
+    h = sim1.params.dx
     q1 = sim1.params.q1
     q2 = sim1.params.q2
     

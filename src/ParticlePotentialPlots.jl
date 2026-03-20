@@ -32,11 +32,32 @@ function deriv(y, h)
     return dy
 end
 
+function cumulative_trapezoidal(t, y)
+    n = length(t)
+    out = zeros(promote_type(eltype(t), eltype(y)), n)
+    @inbounds for i in 2:n
+        dt = t[i] - t[i - 1]
+        out[i] = out[i - 1] + 0.5 * dt * (y[i - 1] + y[i])
+    end
+    return out
+end
+
 function get_velocity(sim)
     if hasproperty(sim.sol.prob.p, :equation)
         return sim.sol.prob.p.equation.velocity
     end
     return 1.0
+end
+
+function harmonic_reference_motion(sim, t)
+    q = sim.params.q
+    m = sim.params.m
+    k = sim.params.k
+    v0 = sim.params.v0
+    z0 = sim.params.z0
+    ω = sqrt(k * q / m)
+    A = v0 / ω
+    return ParticleMotion.oscillator(t, z0, A, ω)
 end
 
 function plot_total_phifield(i, sim1; paper=false)
@@ -368,7 +389,7 @@ function plot_phifield(i, sim1; paper=false)
     y_limits = (y_min - padding, y_max + padding)
 
     q = sim1.params.q
-    dx = sim1.params.dx
+    h = sim1.params.dx
     xp = sim1.sol.u[i].x[2][2]
     vp = sim1.sol.u[i].x[2][3]
     fig = Figure(; size=(253, 200))
@@ -431,7 +452,7 @@ function plot_pifield(i, sim1; paper=false)
     y_filtered = sim1.sol.u[i].x[1][mask, 1]  # Matches x1_filtered length
 
     q = sim1.params.q
-    dx = sim1.params.dx
+    h = sim1.params.dx
     xp = sim1.sol.u[i].x[2][2]
     vp = sim1.sol.u[i].x[2][3]
 
@@ -498,7 +519,7 @@ function plot_total_pifield(i, sim1; paper=false)
     y_filtered = sim1.sol.u[i].x[1][mask, 1]  # Matches x1_filtered length
 
     q = sim1.params.q
-    dx = sim1.params.dx
+    h = sim1.params.dx
     xp = sim1.sol.u[i].x[2][2]
     vp = sim1.sol.u[i].x[2][3]
 
@@ -895,13 +916,9 @@ function plot_particle_position(sim1; invert=true, paper=false)
     xs1 = zeros(nt)
     xa = zeros(nt)
 
-    A = 0.01
-    vmax = sim1.sol.u[1].x[2][3]
-    ω = round(vmax / A; digits=9)
-
     for i in 1:nt
         xs1[i] = sim1.sol.u[i].x[2][2]
-        xa[i] = A * sin(ω * sim1.sol.t[i])
+        xa[i] = harmonic_reference_motion(sim1, sim1.sol.t[i])[1]
     end
 
     fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
@@ -1015,7 +1032,7 @@ function plot_particle_mass(sim1; paper=false)
     k = sim1.params.k
     q = sim1.params.q
     xs = sim1.params.x
-    dx = sim1.params.dx
+    h = sim1.params.dx
     V(x) = InitialData.Harmonic(x, k)
     m0 = sim1.sol.u[1].x[2][1]
     for i in 1:nt
@@ -1084,6 +1101,7 @@ end
 
 function plot_particle_position_resolutions(sim1, sim2, sim4;
                                             invert=true, paper=false)
+    CairoMakie.activate!()
     mytheme = mytheme_aps()
     set_theme!(mytheme)
     # Get time points and assert equality
@@ -1105,14 +1123,7 @@ function plot_particle_position_resolutions(sim1, sim2, sim4;
         xs4[i] = sim4.sol.u[4i - 3].x[2][2]
     end
 
-    q = sim1.params.q
-    m = sim1.params.m
-    k = sim1.params.k
-    v0 = sim1.params.v0
-    z0 = sim1.params.z0
-    ω = sqrt(k * q / m)
-    A = v0 / ω
-    analytic(t) = ParticleMotion.oscillator(t, z0, A, ω)[1]
+    analytic(t) = harmonic_reference_motion(sim1, t)[1]
 
     fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     plt = fig[1, 1] = GridLayout()
@@ -1121,16 +1132,21 @@ function plot_particle_position_resolutions(sim1, sim2, sim4;
     ax = Axis(plt[1, 1]; title=L"\textrm{Particle Position}",
               limits=(-0.025, 0.025, 0, sim1.sol.t[end]))
     palette = mytheme.palette
-    color1 = palette.color[][1]
-    color2 = palette.color[][2]
-    res_styles = [palette.linestyle[][1], palette.linestyle[][2], palette.linestyle[][3]]  # Solid, Dash, Dot
+    color_ref = palette.color[][1]
+    color_low = palette.color[][2]
+    color_mid = palette.color[][3]
+    color_high = palette.color[][4]
+    low_style = :solid
+    mid_style = :dash
+    high_style = :dot
 
     # Plot the data
     if invert
-        lines!(ax, xs1, sim1.sol.t; color=color2, linestyle=res_styles[3])
-        lines!(ax, xs2, sim1.sol.t; color=color2, linestyle=res_styles[2])
-        lines!(ax, xs4, sim1.sol.t; color=color2, linestyle=res_styles[1])
-        lines!(ax, analytic.(sim1.sol.t), sim1.sol.t; color=color1, linestyle=:solid)
+        lines!(ax, analytic.(sim1.sol.t), sim1.sol.t; color=color_ref, linestyle=:solid,
+               linewidth=1.2)
+        lines!(ax, xs4, sim1.sol.t; color=color_high, linestyle=high_style, linewidth=1.4)
+        lines!(ax, xs2, sim1.sol.t; color=color_mid, linestyle=mid_style, linewidth=1.4)
+        lines!(ax, xs1, sim1.sol.t; color=color_low, linestyle=low_style, linewidth=1.6)
 
         ax.xlabel = L"z(t)"
         ax.ylabel = L"t"
@@ -1144,10 +1160,10 @@ function plot_particle_position_resolutions(sim1, sim2, sim4;
 
     # # 2. Resolution legend
     res_legend = Legend(leg1[1, 1],
-                        [LineElement(; color=color2, linestyle=res_styles[3]),
-                         LineElement(; color=color2, linestyle=res_styles[2]),
-                         LineElement(; color=color2, linestyle=res_styles[1]),
-                         LineElement(; color=color1, linestyle=:solid)],
+                        [LineElement(; color=color_low, linestyle=low_style),
+                         LineElement(; color=color_mid, linestyle=mid_style),
+                         LineElement(; color=color_high, linestyle=high_style),
+                         LineElement(; color=color_ref, linestyle=:solid)],
                         [L"\textrm{low res}", L"\textrm{mid res}", L"\textrm{high res}",
                          L"\textrm{no radiation}"];
                         halign=:center,
@@ -1190,14 +1206,7 @@ function plot_particle_velocity_resolutions(sim1, sim2, sim4; invert=true, paper
         xs4[i] = sim4.sol.u[4i - 3].x[2][3]
     end
 
-    q = sim1.params.q
-    m = sim1.params.m
-    k = sim1.params.k
-    v0 = sim1.params.v0
-    z0 = sim1.params.z0
-    ω = sqrt(k * q / m)
-    A = v0 / ω
-    analytic(t) = ParticleMotion.oscillator(t, z0, A, ω)[2]
+    analytic(t) = harmonic_reference_motion(sim1, t)[2]
 
     fig = Figure(; size=(253, 200))
     plt = fig[1, 1] = GridLayout()
@@ -1205,26 +1214,31 @@ function plot_particle_velocity_resolutions(sim1, sim2, sim4; invert=true, paper
 
     ax = Axis(plt[1, 1]; title=L"\textrm{Particle Velocity}")
     palette = mytheme.palette
-    color1 = palette.color[][1]  # Blue-ish for Particle 1
-    color2 = palette.color[][2]  # Orange-ish for Particle 2
-    res_styles = [palette.linestyle[][1], palette.linestyle[][2], palette.linestyle[][3]]  # Solid, Dash, Dot
+    color_ref = palette.color[][1]
+    color_low = palette.color[][2]
+    color_mid = palette.color[][3]
+    color_high = palette.color[][4]
+    low_style = :solid
+    mid_style = :dash
+    high_style = :dot
 
     # Plot the data
-    lines!(ax, sim1.sol.t, xs1; color=color2, linestyle=res_styles[3])
-    lines!(ax, sim1.sol.t, xs2; color=color2, linestyle=res_styles[2])
-    lines!(ax, sim1.sol.t, xs4; color=color2, linestyle=res_styles[1])
-    lines!(ax, sim1.sol.t, analytic.(sim1.sol.t); color=color1, linestyle=:solid)
+    lines!(ax, sim1.sol.t, analytic.(sim1.sol.t); color=color_ref, linestyle=:solid,
+           linewidth=1.2)
+    lines!(ax, sim1.sol.t, xs4; color=color_high, linestyle=high_style, linewidth=1.4)
+    lines!(ax, sim1.sol.t, xs2; color=color_mid, linestyle=mid_style, linewidth=1.4)
+    lines!(ax, sim1.sol.t, xs1; color=color_low, linestyle=low_style, linewidth=1.6)
 
     ax.ylabel = L"v(t)"
     ax.xlabel = L"t"
 
     # # 2. Resolution legend (Low, Med, High Res)
     res_legend = Legend(leg1[1, 1],
-                        [LineElement(; color=color2, linestyle=res_styles[3]),
-                         LineElement(; color=color2, linestyle=res_styles[2]),
-                         LineElement(; color=color2, linestyle=res_styles[1]),
-                         LineElement(; color=color1, linestyle=:solid)],
-                        [L"\textrm{low res}", L"\textrm{med res}", L"\textrm{high res}",
+                        [LineElement(; color=color_low, linestyle=low_style),
+                         LineElement(; color=color_mid, linestyle=mid_style),
+                         LineElement(; color=color_high, linestyle=high_style),
+                         LineElement(; color=color_ref, linestyle=:solid)],
+                        [L"\textrm{low res}", L"\textrm{mid res}", L"\textrm{high res}",
                          L"\textrm{no radiation}"];
                         halign=:center,
                         valign=:top,
@@ -1431,73 +1445,33 @@ function plot_energy(sim1; paper=false)
     x_filtered = sim1.params.x[mask]
 
     nt = length(sim1.sol.t)
-    energy = zeros(nt)
 
     q = sim1.params.q
-    sf = sim1.params.sf
-    dx = sim1.params.dx
+    h = sim1.params.dx
 
     k = sim1.params.k
     V(x) = InitialData.Harmonic(x, k)
-    ts2plot = [0.0]
-    field_energy = [0.0]
-    potential_energy = [q * V(sim1.sol.u[1].x[2][2])]
-    vold = sign(sim1.sol.u[2].x[2][3])
-    m0 = sim1.sol.u[1].x[2][1]
-    for i in 10:nt
+    ts2plot = sim1.sol.t
+    field_energy = zeros(nt)
+    potential_energy = zeros(nt)
+    kinetic_energy = zeros(nt)
+    for i in 1:nt
         m = sim1.sol.u[i].x[2][1]
         z = sim1.sol.u[i].x[2][2]
         v = sim1.sol.u[i].x[2][3]
+        Πr = @view sim1.sol.u[i].x[1][mask, 1]
+        Ψr = @view sim1.sol.u[i].x[1][mask, 2]
+        Πs = ScalarField.Πs.(x_filtered, z, v, q)
+        Ψs = ScalarField.Ψs.(x_filtered, z, v, q)
 
-        if (vold * v < 0)
-            vold = v
-            vs = [sim1.sol.u[(i - 5)].x[2][3],
-                  sim1.sol.u[(i - 4)].x[2][3],
-                  sim1.sol.u[(i - 3)].x[2][3],
-                  sim1.sol.u[(i - 2)].x[2][3],
-                  sim1.sol.u[(i - 1)].x[2][3],
-                  sim1.sol.u[i].x[2][3],
-                  sim1.sol.u[(i + 1)].x[2][3],
-                  sim1.sol.u[(i + 2)].x[2][3],
-                  sim1.sol.u[(i + 3)].x[2][3],
-                  sim1.sol.u[(i + 4)].x[2][3],
-                  sim1.sol.u[(i + 5)].x[2][3]]
-            zs = [sim1.sol.u[(i - 5)].x[2][2],
-                  sim1.sol.u[(i - 4)].x[2][2],
-                  sim1.sol.u[(i - 3)].x[2][2],
-                  sim1.sol.u[(i - 2)].x[2][2],
-                  sim1.sol.u[(i - 1)].x[2][2],
-                  sim1.sol.u[i].x[2][2],
-                  sim1.sol.u[(i + 1)].x[2][2],
-                  sim1.sol.u[(i + 2)].x[2][2],
-                  sim1.sol.u[(i + 3)].x[2][2],
-                  sim1.sol.u[(i + 4)].x[2][2],
-                  sim1.sol.u[(i + 5)].x[2][2]]
-            vin = PCHIPInterpolation(vs, sim1.sol.t[(i - 5):(i + 5)];
-                                     extrapolation=ExtrapolationType.Extension)
-            zin = PCHIPInterpolation(zs,
-                                     sim1.sol.t[(i - 5):(i + 5)];
-                                     extrapolation=ExtrapolationType.Extension)
-            tzero = find_zero(vin, (sim1.sol.t[i - 5], sim1.sol.t[i + 5]))
-            zzero = zin(tzero)
-            @show z
-            @show zzero
-            # zzero = z
-            # Φr = @view sim1.sol.u[i].x[1][mask, 3]
-            Πr = @view sim1.sol.u[i].x[1][mask, 1]
-            Ψr = @view sim1.sol.u[i].x[1][mask, 2]
+        Hf = @. 0.5 * ((Πr + Πs)^2 + (Ψr + Ψs)^2)
+        field_energy[i] = trapezoidal(Hf, h)
+        potential_energy[i] = V(z)
 
-            # particle_energy[i] = kinetic[i] + potential[i] + self_potential[i]
-            ## This is with Φr and z as a generalized coordinate:
-            Hfr = @. (Πr^2 + Ψr^2) / 2 #+ (q / 8) * q * sign(x_filtered - z)^2
-            append!(potential_energy, q * V(zzero))
-            append!(field_energy, trapezoidal(Hfr, dx))
-            append!(ts2plot, sim1.sol.t[i])
-        end
+        γ = inv(sqrt(1.0 - v * v))
+        kinetic_energy[i] = m * (γ - 1.0)
     end
 
-    V0 = q * V(sim1.sol.u[1].x[2][2])
-    @show V0
     fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
               title=L"\textrm{Energy}")
@@ -1506,13 +1480,16 @@ function plot_energy(sim1; paper=false)
     color1 = palette.color[][1]
     color2 = palette.color[][2]
     color3 = palette.color[][3]
+    color4 = palette.color[][4]
 
     # Plot the data
-    total_energy = -0V0 + 0m0 .+ field_energy .+ potential_energy
+    total_energy = field_energy .+ potential_energy .+ kinetic_energy
 
     ymin = minimum([minimum(field_energy), minimum(potential_energy),
+                    minimum(kinetic_energy),
                     minimum(total_energy)])
     ymax = maximum([maximum(field_energy), maximum(potential_energy),
+                    maximum(kinetic_energy),
                     maximum(total_energy)])
 
     yrange = ymax - ymin
@@ -1522,12 +1499,14 @@ function plot_energy(sim1; paper=false)
 
     ylims!(ax, ymin - 0.1 * yrange, ymax + 0.1 * yrange)
 
-    scatter!(ax, ts2plot, field_energy; label=L"E_{\mathrm{field}}", color=color1,
-             markersize=5)
-    scatter!(ax, ts2plot, potential_energy; label=L"E_{\mathrm{potential}}", color=color2,
-             markersize=5)
-    scatter!(ax, ts2plot, total_energy;
-             label=L"E_{\mathrm{total}}", color=color3, markersize=5)
+    lines!(ax, ts2plot, field_energy; label=L"E_{\mathrm{field}}", color=color1,
+           linewidth=1.2)
+    lines!(ax, ts2plot, potential_energy; label=L"E_{\mathrm{potential}}", color=color2,
+           linewidth=1.2)
+    lines!(ax, ts2plot, kinetic_energy; label=L"E_{\mathrm{kinetic}}", color=color3,
+           linewidth=1.2)
+    lines!(ax, ts2plot, total_energy;
+           label=L"E_{\mathrm{total}}", color=color4, linewidth=1.2)
 
     # ax.ylabel = L""
     ax.xlabel = L"t"
@@ -1541,6 +1520,119 @@ function plot_energy(sim1; paper=false)
     rowgap!(fig.layout, 0)                 # Gap between plot and legend
     # Save the figure
     savename = simple_name("energy_conservation")
+    save(joinpath(get_fig_path(), savename), fig)
+    if paper
+        save(joinpath(get_paper_fig_path(), savename), fig)
+    end
+    return fig
+end
+
+function plot_raw_energy_balance(sim1; paper=false)
+    CairoMakie.activate!()
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    ts = sim1.sol.t
+    tf = ts[end]
+    mask = (sim1.params.x .>= -tf) .& (sim1.params.x .<= tf)
+    x_filtered = sim1.params.x[mask]
+
+    nt = length(ts)
+    q = sim1.params.q
+    h = sim1.params.dx
+    k = sim1.params.k
+    V(x) = InitialData.Harmonic(x, k)
+
+    particle_energy = zeros(nt)
+    field_energy = zeros(nt)
+    inside_energy = zeros(nt)
+    outward_flux = zeros(nt)
+
+    for i in 1:nt
+        m = sim1.sol.u[i].x[2][1]
+        z = sim1.sol.u[i].x[2][2]
+        v = sim1.sol.u[i].x[2][3]
+
+        Πr = @view sim1.sol.u[i].x[1][mask, 1]
+        Ψr = @view sim1.sol.u[i].x[1][mask, 2]
+        Πs = ScalarField.Πs.(x_filtered, z, v, q)
+        Ψs = ScalarField.Ψs.(x_filtered, z, v, q)
+
+        # The raw finite-domain balance uses the physical total field, not only the
+        # regular piece, so we reconstruct Π = Πr + Πs and Ψ = Ψr + Ψs everywhere.
+        Πtot = Πr .+ Πs
+        Ψtot = Ψr .+ Ψs
+
+        γ = inv(sqrt(1.0 - v * v))
+        particle_energy[i] = (γ - 1.0) * m + V(z)
+
+        Hfield = @. 0.5 * (Πtot^2 + Ψtot^2)
+        field_energy[i] = trapezoidal(Hfield, h)
+        inside_energy[i] = particle_energy[i] + field_energy[i]
+
+        # On a finite interval, energy that leaves through xL/xR must be accounted
+        # for explicitly through the outward boundary flux.
+        outward_flux[i] = -Πtot[end] * Ψtot[end] + Πtot[1] * Ψtot[1]
+    end
+
+    cumulative_flux = cumulative_trapezoidal(ts, outward_flux)
+
+    # This residual measures the discrete interior balance:
+    # change of energy inside the domain + accumulated outward flux.
+    balance_residual = inside_energy .- inside_energy[1] .+ cumulative_flux
+    inside_energy_change = inside_energy .- inside_energy[1]
+
+    fig = Figure(; size=(253, 360), figure_padding=(1, 5, 5, 1))
+    ax_energy = Axis(fig[1, 1];
+                     title=L"\textrm{Raw Interior Energy}",
+                     ylabel=L"E")
+    ax_balance = Axis(fig[3, 1];
+                      title=L"\textrm{Finite-Domain Balance}",
+                      xlabel=L"t",
+                      ylabel=L"\Delta E,\ I_{\mathrm{flux}},\ R")
+
+    palette = mytheme.palette
+    color1 = palette.color[][1]
+    color2 = palette.color[][2]
+    color3 = palette.color[][3]
+    color4 = palette.color[][4]
+    color5 = palette.color[][5]
+    color6 = palette.color[][6]
+
+    lines!(ax_energy, ts, inside_energy; linestyle=:dot, label=L"E_{\mathrm{inside}}",
+           color=color1,
+           linewidth=1.2)
+    lines!(ax_energy, ts, particle_energy; linestyle=:dot, label=L"E_{\mathrm{particle}}",
+           color=color2,
+           linewidth=1.2)
+    lines!(ax_energy, ts, field_energy; linestyle=:dot, label=L"E_{\mathrm{field}}",
+           color=color3,
+           linewidth=1.2)
+
+    lines!(ax_balance, ts, inside_energy_change;
+           label=L"E_{\mathrm{inside}}(t)-E_{\mathrm{inside}}(0)", color=color4,
+           linewidth=1.2)
+    lines!(ax_balance, ts, cumulative_flux; label=L"I_{\mathrm{flux}}", color=color5,
+           linewidth=1.2)
+    lines!(ax_balance, ts, balance_residual; label=L"R_{\mathrm{balance}}", color=color6,
+           linewidth=1.2)
+
+    apply_scientific_notation_if_needed!(ax_energy)
+    apply_scientific_notation_if_needed!(ax_balance)
+
+    leg_energy = Legend(fig[2, 1], ax_energy; orientation=:horizontal,
+                        tellwidth=false, tellheight=true)
+    leg_balance = Legend(fig[4, 1], ax_balance; orientation=:horizontal,
+                         tellwidth=false, tellheight=true)
+
+    rowsize!(fig.layout, 1, Auto())
+    rowsize!(fig.layout, 2, Relative(0.1))
+    rowsize!(fig.layout, 3, Auto())
+    rowsize!(fig.layout, 4, Relative(0.1))
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowgap!(fig.layout, 0)
+
+    savename = simple_name("raw_energy_balance")
     save(joinpath(get_fig_path(), savename), fig)
     if paper
         save(joinpath(get_paper_fig_path(), savename), fig)
@@ -1570,7 +1662,7 @@ function plot_fluxes(r, sim1; paper=false)
 
     q = sim1.params.q
     sf = sim1.params.sf
-    dx = sim1.params.dx
+    h = sim1.params.dx
     xs = sim1.params.x
 
     for i in 1:nt
