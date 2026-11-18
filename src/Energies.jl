@@ -16,20 +16,18 @@ function newton_cotes(y::AbstractVector{T}, h::T; order::Int=1) where {T}
     integral = zero(T)
 
     if order == 1  # Trapezoidal Rule
-        @inbounds for i in 1:n
+        integral = 0.5 * (y[1] + y[end])
+        @inbounds for i in 2:n
             integral += y[i]
         end
-        @inbounds integral += 0.5 * (y[1] + y[n + 1])  # Adjust endpoints
         integral *= h
 
     elseif order == 2  # Simpson's Rule
-        @inbounds for i in 1:(n ÷ 2)
-            j = 2 * i - 1  # Index of odd terms (4 coefficient)
-            integral += 4.0 * y[j + 1]  # Middle point
-            integral += y[j]            # Even point (coefficient 1 or 2 from next iteration)
+        integral = y[1] + y[end]
+        @inbounds for i in 2:n
+            integral += (iseven(i) ? 4 : 2) * y[i]
         end
-        @inbounds integral += y[n + 1]  # Add the last point (coefficient 1)
-        integral *= h / 3.0
+        integral *= h / 3
 
     elseif order == 3  # Simpson's 3/8 Rule
         @inbounds for i in 0:(n ÷ 3 - 1)

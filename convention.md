@@ -1,409 +1,92 @@
-# Scalar Particle Coupled to a 1+1D Scalar Field: Choice A vs Choice B
-
-## Setup
-
-Worldline:
-$$
-z=z(t),\qquad v=\dot z(t),\qquad \gamma=\frac{1}{\sqrt{1-v^2}}.
-$$
-
-Point-particle source:
-$$
-\rho(t,x)=\frac{q}{\gamma}\,\delta(x-z(t)).
-$$
-
-External mechanical potential:
-$$
--\,V(z)
-$$
-inside the particle Lagrangian.
-
-If a split field is used:
-$$
-\Phi=\Phi_s+\Phi_r,
-$$
-where $\Phi_s$ is the prescribed singular/lab-frame piece and $\Phi_r$ is the evolved remainder field.
-
----
-
-## Choice A: action-field convention
-
-This is the convention with a **plus** interaction term.
-
-### Lagrangian
-$$
-L
-=
-\int dx\,\frac12\big(\Phi_t^2-\Phi_x^2\big)
-+\int dx\,\rho\,\Phi
--m_0\sqrt{1-v^2}
--V(z).
-$$
-
-Equivalent particle form:
-$$
-L_{\rm part}=-(m_0-q\Phi(t,z))\sqrt{1-v^2}-V(z).
-$$
-
-### Field equation
-$$
-\Phi_{tt}-\Phi_{xx}=\rho.
-$$
-
-### Static / Poisson equation
-$$
--\Phi_{xx}=\rho,
-\qquad\text{equivalently}\qquad
-\Phi_{xx}=-\rho.
-$$
-
-### Particle energy
-$$
-E_p=(m_0-q\Phi)\gamma+V(z).
-$$
-
-With a split $\Phi=\Phi_s+\Phi_r$:
-$$
-E_p=(m_0-q\Phi_s-q\Phi_r)\gamma+V(z).
-$$
-
-### Effective-mass form
-If the singular piece is absorbed into an effective mass:
-$$
-m_{\rm eff}=m_0-q\Phi_s^{\rm reg}(z),
-$$
-then
-$$
-E_p=m_{\rm eff}\gamma-q\Phi_r(z)\gamma+V(z).
-$$
-
-### Potential-energy interpretation
-$$
-U_\Phi=-q\Phi.
-$$
-
-For $q>0$, larger $\Phi$ means **lower** particle potential energy.
-
-### Particle momentum equation
-$$
-\frac{d}{dt}\Big[(m_0-q\Phi)\gamma v\Big]
-=
--\,V'(z)+\frac{q}{\gamma}\Phi_x(t,z).
-$$
-
-### Particle acceleration equation
-$$
-\ddot z
-=
-\frac{
--\,V'(z)(1-v^2)^{3/2}
-+q(1-v^2)\big(\Phi_x+v\Phi_t\big)
-}{m_0-q\Phi(t,z)}.
-$$
-
-If first-order variables are used,
-$$
-\Pi=\Phi_t,\qquad \Psi=\Phi_x,
-$$
-then
-$$
-\ddot z
-=
-\frac{
--\,V'(z)(1-v^2)^{3/2}
-+q(1-v^2)\big(\Psi+v\Pi\big)
-}{m_0-q\Phi}.
-$$
-
-### Static nonrelativistic limit
-$$
-m_0\ddot z\approx -V'(z)+q\Phi_x.
-$$
-
-### Particle energy-rate law
-$$
-\frac{dE_p}{dt}=-\frac{q}{\gamma}\,\Phi_t(t,z(t)).
-$$
-
-With remainder variables:
-$$
-\dot E_p\supset -\frac{q}{\gamma}\Pi_r(z)
-$$
-for the regular-field contribution.
-
-### Field energy
-$$
-E_{\rm field}=\int dx\,\frac12\big(\Phi_t^2+\Phi_x^2\big).
-$$
-
-### Field energy flux
-For
-$$
-\Pi=\Phi_t,\qquad \Psi=\Phi_x,
-$$
-the 1D energy flux is
-$$
-\mathcal F=-\Pi\Psi.
-$$
-
-### Field energy balance
-$$
-\frac{dE_{\rm field}}{dt}=-\mathcal F_{\rm out}+q\Pi(z).
-$$
-
-### Total energy
-$$
-E_{\rm tot}=E_p+E_{\rm field}
-$$
-for the closed coupled system, up to numerical error and boundary fluxes.
-
----
-
-## Choice B: lab-potential convention
-
-This is the convention with a **minus** interaction term, where the field behaves like an ordinary potential-energy-per-charge variable.
-
-### Lagrangian
-$$
-L
-=
-\int dx\,\frac12\big(\Phi_t^2-\Phi_x^2\big)
--\int dx\,\rho\,\Phi
--m_0\sqrt{1-v^2}
--V(z).
-$$
-
-Equivalent particle form:
-$$
-L_{\rm part}=-(m_0+q\Phi(t,z))\sqrt{1-v^2}-V(z).
-$$
-
-### Field equation
-$$
-\Phi_{tt}-\Phi_{xx}=-\rho.
-$$
-
-### Static / Poisson equation
-$$
--\Phi_{xx}=-\rho,
-\qquad\text{equivalently}\qquad
-\Phi_{xx}=\rho.
-$$
-
-### Particle energy
-$$
-E_p=(m_0+q\Phi)\gamma+V(z).
-$$
-
-With a split $\Phi=\Phi_s+\Phi_r$:
-$$
-E_p=(m_0+q\Phi_s+q\Phi_r)\gamma+V(z).
-$$
-
-### Effective-mass form
-If the singular piece is absorbed into an effective mass:
-$$
-m_{\rm eff}=m_0+q\Phi_s^{\rm reg}(z),
-$$
-then
-$$
-E_p=m_{\rm eff}\gamma+q\Phi_r(z)\gamma+V(z).
-$$
-
-### Potential-energy interpretation
-$$
-U_\Phi=+q\Phi.
-$$
-
-For $q>0$, larger $\Phi$ means **higher** particle potential energy.
-
-### Particle momentum equation
-$$
-\frac{d}{dt}\Big[(m_0+q\Phi)\gamma v\Big]
-=
--\,V'(z)-\frac{q}{\gamma}\Phi_x(t,z).
-$$
-
-### Particle acceleration equation
-$$
-\ddot z
-=
-\frac{
--\,V'(z)(1-v^2)^{3/2}
--q(1-v^2)\big(\Phi_x+v\Phi_t\big)
-}{m_0+q\Phi(t,z)}.
-$$
-
-If first-order variables are used,
-$$
-\Pi=\Phi_t,\qquad \Psi=\Phi_x,
-$$
-then
-$$
-\ddot z
-=
-\frac{
--\,V'(z)(1-v^2)^{3/2}
--q(1-v^2)\big(\Psi+v\Pi\big)
-}{m_0+q\Phi}.
-$$
-
-### Static nonrelativistic limit
-$$
-m_0\ddot z\approx -V'(z)-q\Phi_x.
-$$
-
-### Particle energy-rate law
-$$
-\frac{dE_p}{dt}=\frac{q}{\gamma}\,\Phi_t(t,z(t)).
-$$
-
-With remainder variables:
-$$
-\dot E_p\supset \frac{q}{\gamma}\Pi_r(z)
-$$
-for the regular-field contribution.
-
-### Field energy
-$$
-E_{\rm field}=\int dx\,\frac12\big(\Phi_t^2+\Phi_x^2\big).
-$$
-
-### Field energy flux
-For
-$$
-\Pi=\Phi_t,\qquad \Psi=\Phi_x,
-$$
-the 1D energy flux is
-$$
-\mathcal F=-\Pi\Psi.
-$$
-
-### Field energy balance
-$$
-\frac{dE_{\rm field}}{dt}=-\mathcal F_{\rm out}-q\Pi(z).
-$$
-
-### Total energy
-$$
-E_{\rm tot}=E_p+E_{\rm field}
-$$
-for the closed coupled system, up to numerical error and boundary fluxes.
-
----
-
-## Side-by-side dictionary
-
-### Interaction sign
-Choice A:
-$$
-L_{\rm int}=+\int dx\,\rho\Phi
-$$
-
-Choice B:
-$$
-L_{\rm int}=-\int dx\,\rho\Phi
-$$
-
-### Wave equation
-Choice A:
-$$
-\Box\Phi=\rho
-$$
-
-Choice B:
-$$
-\Box\Phi=-\rho
-$$
-
-### Static equation
-Choice A:
-$$
-\Phi_{xx}=-\rho
-$$
-
-Choice B:
-$$
-\Phi_{xx}=\rho
-$$
-
-### Potential-energy interpretation
-Choice A:
-$$
-U_\Phi=-q\Phi
-$$
-
-Choice B:
-$$
-U_\Phi=+q\Phi
-$$
-
-### Effective mass from singular piece
-Choice A:
-$$
-m_{\rm eff}=m_0-q\Phi_s^{\rm reg}
-$$
-
-Choice B:
-$$
-m_{\rm eff}=m_0+q\Phi_s^{\rm reg}
-$$
-
-### Static force law
-Choice A:
-$$
-F_\Phi=+q\Phi_x
-$$
-
-Choice B:
-$$
-F_\Phi=-q\Phi_x
-$$
-
-### Remainder-field power term
-Choice A:
-$$
-\dot E_p\supset -\frac{q}{\gamma}\Pi_r(z)
-$$
-
-Choice B:
-$$
-\dot E_p\supset +\frac{q}{\gamma}\Pi_r(z)
-$$
-
----
-
-## Recommended bookkeeping with a split field
-
-If $\Phi_s$ is prescribed and $\Phi_r$ is evolved, the cleanest setups are:
-
-### Choice A
-Keep bare mass:
-$$
-m=m_0,
-\qquad
-E_p=m_0\gamma-q\Phi_s^{\rm reg}\gamma-q\Phi_r\gamma+V,
-$$
-or absorb only the singular piece:
-$$
-m=m_0-q\Phi_s^{\rm reg},
-\qquad
-E_p=m\gamma-q\Phi_r\gamma+V.
-$$
-
-### Choice B
-Keep bare mass:
-$$
-m=m_0,
-\qquad
-E_p=m_0\gamma+q\Phi_s^{\rm reg}\gamma+q\Phi_r\gamma+V,
-$$
-or absorb only the singular piece:
-$$
-m=m_0+q\Phi_s^{\rm reg},
-\qquad
-E_p=m\gamma+q\Phi_r\gamma+V.
-$$
-
-### What to avoid
-Do not absorb the same field piece into $m$ and also add it explicitly again in the energy or force diagnostics. That double-counts that piece.
+# Scalar-field convention used by the 1D solver
+
+This file is the sign and normalization contract for the current one-particle
+implementation. Symbols are
+
+\[
+\Pi=\partial_t\Phi,\qquad \Psi=\partial_x\Phi,\qquad
+\gamma=(1-v^2)^{-1/2}.
+\]
+
+## Field equation and particle coupling
+
+The code uses the signature
+
+\[
+\Box=-\partial_t^2+\partial_x^2
+\]
+
+and the sourced equation
+
+\[
+\Box\Phi={q\over\gamma}\delta(x-z(t)).
+\]
+
+and the particle action
+
+\[
+S_p=-\int (m_0+q\Phi)\,d\tau-\int V(z)\,dt.
+\]
+
+Thus the scalar contribution to the coordinate acceleration has the negative
+sign
+
+\[
+\dot v=-{q\over m\gamma^2}(\Psi_r+v\Pi_r)
+       -{V'(z)\over m\gamma^3}.
+\]
+
+The evolved dynamical mass and proper time obey
+
+\[
+\dot m=q(\Pi_r+v\Psi_r)-{q^2\over2\gamma},\qquad
+\dot\tau={1\over\gamma}.
+\]
+
+All fields in these particle equations are regular remainder fields
+reconstructed at the particle by `ODE.regular_fields_at_particle`.
+
+## Retarded-matched puncture
+
+With \(r=x-z(t)\), \(n=\operatorname{sign}(r)\), and accumulated proper time
+\(\tau(t)\), the singular field is
+
+\[
+\Phi_s={q\gamma\over2}(|r|+vr)-{q\over2}\tau,
+\]
+\[
+\Pi_s=-{q\gamma\over2}(1+vn),\qquad
+\Psi_s={q\gamma\over2}(n+v).
+\]
+
+Velocity derivatives in the remainder source hold \(r\) and \(\tau\) fixed:
+
+\[
+\partial_v\Phi_s={q\gamma^3\over2}(r+v|r|),
+\]
+\[
+\partial_v\Pi_s=-{q\gamma^3\over2}(v+n),\qquad
+\partial_v\Psi_s={q\gamma^3\over2}(1+vn).
+\]
+
+The finite-volume equations insert the exact cell averages of
+\(-a\,\partial_v(\Pi_s,\Psi_s,\Phi_s)\).
+
+## Actual retarded solution
+
+The puncture is not obtained by evaluating itself at retarded particle data.
+For a source switched on at \(t=0\), the retarded time satisfies
+
+\[
+t-t_r=|x-z(t_r)|,
+\]
+
+and the scalar potential is
+
+\[
+\Phi_{\rm ret}(t,x)=-{q\over2}\int_0^{t_r}{dt'\over\gamma(t')}.
+\]
+
+`RetardedPotentials.Φ_ret`, `Π_ret`, and `Ψ_ret` implement these retarded-time
+expressions and return zero outside the future light cone of the switch-on
+event.

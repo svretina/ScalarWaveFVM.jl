@@ -1,136 +1,54 @@
 module RetardedPotentials
 
-using NonlinearSolve
-using Roots
+using Roots: Bisection, find_zero
 using QuadGK: quadgk
-using ForwardDiff: derivative
-using ..ScalarField
 
 export Φ_ret, Π_ret, Ψ_ret, Φ_ret_exact, Π_ret_exact, Ψ_ret_exact
 
-@inline function z(t, p)
-    return p.z0 + p.A * sin(p.ω * t)
-end
+@inline z(t, p) = p.z0 + p.A * sin(p.ω * t)
+@inline v(t, p) = p.ω * p.A * cos(p.ω * t)
 
-@inline function v(t, p)
-    return p.ω * p.A * cos(p.ω * t)
-end
-
-@inline function a(t, p)
-    return -p.ω^2 * p.A * sin(p.ω * t)
-end
-
-function Φ_ret(x, p, t)
-    # calculate retarded time
-    f(tr, p) = t - tr - abs(x - z(tr, p))
-    prob = NonlinearProblem(f, zero(t), p)
-    tᵣ = solve(prob; reltol=1e-18, abstol=1e-18).u
-    if tᵣ < 0
-        tᵣ = zero(tᵣ)
-    end
-
-    z_tr = z(tᵣ, p)
-    v_tr = v(tᵣ, p)
-    return ScalarField.Φs(x, z_tr, v_tr, p.q, tᵣ)
+"""
+Return the coordinate retarded time for a source switched on at `t=0`.
+`nothing` denotes an observation point outside the future light cone of the
+initial worldline event.
+"""
+function retarded_time(x, p, t)
+    t <= zero(t) && return nothing
+    f(tr) = t - tr - abs(x - z(tr, p))
+    f(zero(t)) <= zero(t) && return nothing
+    return find_zero(f, (zero(t), t), Bisection())
 end
 
 function Φ_ret_exact(x, p, t)
-    f(tr) = t - tr - abs(x - z(tr, p))
-    prob = NonlinearProblem((tr, _) -> f(tr), zero(t))
-    tr = solve(prob; reltol=1e-18, abstol=1e-18).u
-    tr = max(zero(tr), tr)
-
-    integrand(τ) = sqrt(1 - v(τ, p)^2)
-    I, _ = quadgk(integrand, zero(tr), tr; rtol=1e-18, atol=1e-18)
-
-    return -p.q * I / 2
+    tr = retarded_time(x, p, t)
+    tr === nothing && return zero(t)
+    τr, _ = quadgk(s -> sqrt(one(s) - v(s, p)^2), zero(tr), tr)
+    return -0.5 * p.q * τr
 end
-
-function Π_ret(x, p, t)
-    # calculate retarded time
-    f(tr, p) = t - tr - abs(x - z(tr, p))
-    prob = NonlinearProblem(f, zero(t), p)
-    tᵣ::typeof(t) = solve(prob; reltol=1e-18, abstol=1e-18).u
-    if tᵣ < zero(tᵣ)
-        tᵣ = zero(tᵣ)
-    end
-    vtr = v(tᵣ, p)
-    ztr = z(tᵣ, p)
-    return ScalarField.Πs(x, ztr, vtr, p.q)
-end
-
-# function Π_ret_exact(x, p, t)
-#     f(tr, p) = t - tr - abs(x - z(tr, p))
-#     prob = NonlinearProblem(f, zero(t), p)
-#     tr = solve(prob; reltol=1e-18, abstol=1e-18).u
-#     tr = max(zero(tr), tr)
-
-#     zr = z(tr, p)
-#     vr = v(tr, p)
-#     # g(xx, p) = -(p.q / 2) * sqrt(1 - vr^2) / (1 - sign(xx - zr) * vr)
-#     # @show g(zr, p) - g(z(0.0, p), p)\
-#     return -(p.q / 2) * sqrt(one(vr) - vr * vr) / (one(t) - sign(x - zr) * vr) #+ p.q / 2
-# end
 
 function Π_ret_exact(x, p, t)
-    if t - abs(x - z(0.0, p)) <= 0
-        return zero(t)
-    end
-
-    f(tr, p) = t - tr - abs(x - z(tr, p))
-    prob = NonlinearProblem(f, t, p)
-    tr::typeof(t) = solve(prob; reltol=1e-18, abstol=1e-18).u
-
+    tr = retarded_time(x, p, t)
+    tr === nothing && return zero(t)
     zr = z(tr, p)
     vr = v(tr, p)
-    s = sign(x - zr)
-
-    return -0.5 * p.q * sqrt(one(vr) - vr * vr) /
-           (one(vr) - s * vr)
+    n = sign(x - zr)
+    return -0.5 * p.q * sqrt(one(vr) - vr^2) / (one(vr) - n * vr)
 end
-
-function Ψ_ret(x, p, t)
-    # calculate retarded time
-    f(tr, p) = t - tr - abs(x - z(tr, p))
-    prob = NonlinearProblem(f, t, p)
-    tᵣ::typeof(t) = solve(prob).u
-    if tᵣ < zero(tᵣ)
-        tᵣ = zero(tᵣ)
-    end
-    return ScalarField.Ψs(x, z(tᵣ, p), v(tᵣ, p), p.q)
-end
-
-# function Ψ_ret_exact(x, p, t)
-#     # calculate retarded time
-#     f(tr, p) = t - tr - abs(x - z(tr, p))
-#     prob = NonlinearProblem(f, t, p)
-#     tᵣ = solve(prob; reltol=1e-18, abstol=1e-18).u
-#     if tᵣ < 0
-#         tᵣ = zero(tᵣ)
-#     end
-#     @inline R(t, p) = (x - z(t, p))
-#     return 0.5 * p.q *
-#            (sign(R(tᵣ, p) * sqrt(one(v(tᵣ, p)) - v(tᵣ, p)^2)) /
-#             (one(t) - v(tᵣ, p) * sign(R(tᵣ, p))))
-# end
 
 function Ψ_ret_exact(x, p, t)
-    # First check whether the observation point is causally connected
-    # to the source after switch-on at τ = 0.
-    if t - abs(x - z(0.0, p)) <= 0
-        return zero(t)
-    end
-
-    f(tr, p) = t - tr - abs(x - z(tr, p))
-    prob = NonlinearProblem(f, t, p)
-    tr::typeof(t) = solve(prob; reltol=1e-18, abstol=1e-18).u
-
+    tr = retarded_time(x, p, t)
+    tr === nothing && return zero(t)
     zr = z(tr, p)
     vr = v(tr, p)
-    s = sign(x - zr)
-
-    return 0.5 * p.q * s * sqrt(one(vr) - vr * vr) /
-           (one(vr) - s * vr)
+    n = sign(x - zr)
+    return 0.5 * p.q * n * sqrt(one(vr) - vr^2) / (one(vr) - n * vr)
 end
 
-end #end of module
+# Keep the historical public names, but make them exact aliases.  Evaluating
+# the instantaneous puncture at retarded data is not the retarded potential.
+Φ_ret(x, p, t) = Φ_ret_exact(x, p, t)
+Π_ret(x, p, t) = Π_ret_exact(x, p, t)
+Ψ_ret(x, p, t) = Ψ_ret_exact(x, p, t)
+
+end

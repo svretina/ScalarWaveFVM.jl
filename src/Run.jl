@@ -127,18 +127,13 @@ function particle_in_potential(Nosc, dx, cfl, vmax, q, sf=true)
         @assert L >= L0
 
         tspan = (0.0, tf)
-        dt = cfl * dx / c
-        t = 0.0:dt:tf
-        tspan = (0.0, tf)
-        dt = cfl * dx / c
-        t = 0.0:dt:tf
-
-        N = Int64(2L / dx)
+        N = ceil(Int, 2L / dx)
 
         grid = UniformStaggeredGrid1D(Float64[-L, L], N)
         x = coords(grid) # cell centers
-
-        @assert spacing(grid) == dx
+        dx = spacing(grid)
+        dt = cfl * dx / c
+        t = 0.0:dt:tf
 
         N = length(x)
 
@@ -160,7 +155,8 @@ function particle_in_potential(Nosc, dx, cfl, vmax, q, sf=true)
         V(x) = InitialData.Harmonic(x, k)
         dxV(x) = InitialData.dxHarmonic(x, k)
 
-        particle_statevector = [m0, z0, v0]
+        τ0 = 0.0
+        particle_statevector = [m0, z0, v0, τ0]
         statevector = ArrayPartition(field_statevector, particle_statevector)
 
         numerical_flux = NumericalFluxes.flux_rusanov
@@ -233,15 +229,13 @@ function particle_in_potential_relativistic(Nosc, dx, cfl, vmax, q, sf=true)
         @assert L >= L0
 
         tspan = (0.0, tf)
-        dt = cfl * dx / c
-        t = 0.0:dt:tf
-
-        N = Int64(2L / dx)
+        N = ceil(Int, 2L / dx)
 
         grid = UniformStaggeredGrid1D(Float64[-L, L], N)
         x = coords(grid) # cell centers
-
-        @assert spacing(grid) == dx
+        dx = spacing(grid)
+        dt = cfl * dx / c
+        t = 0.0:dt:tf
 
         N = length(x)
         ## Particle   
@@ -252,9 +246,9 @@ function particle_in_potential_relativistic(Nosc, dx, cfl, vmax, q, sf=true)
         v0 = 0.0 #0.6283185307179586
 
         # Regular Field
-        Φr = -0ScalarField.Φs.(x, z0, v0, q) #zeros(Float64, length(x))
-        Πr = -0ScalarField.Πs.(x, z0, v0, q) #zeros(Float64, length(x))
-        Ψr = -0ScalarField.Ψs.(x, z0, v0, q) #zeros(Float64, length(x))
+        Φr = zeros(Float64, length(x))
+        Πr = zeros(Float64, length(x))
+        Ψr = zeros(Float64, length(x))
 
         field_statevector = hcat(Πr, Ψr, Φr)
 
@@ -264,7 +258,8 @@ function particle_in_potential_relativistic(Nosc, dx, cfl, vmax, q, sf=true)
         V(x) = InitialData.Harmonic(x, k)
         dxV(x) = InitialData.dxHarmonic(x, k)
 
-        particle_statevector = [m0, z0, v0]
+        τ0 = 0.0
+        particle_statevector = [m0, z0, v0, τ0]
         statevector = ArrayPartition(field_statevector, particle_statevector)
 
         numerical_flux = NumericalFluxes.flux_rusanov

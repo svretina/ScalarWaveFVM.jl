@@ -366,17 +366,14 @@ end
     return nothing
 end
 
-# Adds the exact cell averages implied by the singular-field ansatz in
-# `ScalarField.Φs/Πs/Ψs`, namely the sources `-a∂ᵥΠs`, `-a∂ᵥΨs`, and `-a∂ᵥΦs`.
-# With the current convention
-#   Φs = +(q/2)|x-z|/(1-vσ), Πs = -(q/2)vσ/(1-vσ), Ψs = +(q/2)σ/(1-vσ),
-# the Π and Ψ pieces are piecewise constant while the Φ piece is piecewise
-# linear, so we insert exact cell averages rather than point values.
-@inline function add_singular_sources!(dQ, idx, x_i, h, z, v, q, a, t)
+# Add exact finite-volume averages of `-a ∂ᵥ(Πs, Ψs, Φs)` for the
+# retarded-matched 1+1 puncture.  Its velocity derivatives are evaluated at
+# fixed `r=x-z` and accumulated proper time.
+@inline function add_singular_sources!(dQ, idx, x_i, h, z, v, q, a)
     @inbounds begin
         dQ[idx, 1] += -a * ScalarField.cell_average_dvΠs(x_i, h, z, v, q)
         dQ[idx, 2] += -a * ScalarField.cell_average_dvΨs(x_i, h, z, v, q)
-        dQ[idx, 3] += -a * ScalarField.cell_average_dvΦs(x_i, h, z, v, q, t)
+        dQ[idx, 3] += -a * ScalarField.cell_average_dvΦs(x_i, h, z, v, q)
     end
     return nothing
 end
@@ -398,7 +395,7 @@ function field_rhs_forced!(dQ, Q, params, t)
     # dtΠ = @view dQ[:, 1]
     # dtΦ = @view dQ[:, 3]
     @inbounds for i in 1:N
-        add_singular_sources!(dQ, i, x[i], h, z, v, q, a, t)
+        add_singular_sources!(dQ, i, x[i], h, z, v, q, a)
     end
     return nothing
 end
@@ -416,12 +413,12 @@ function field_rhs!(dQ, Q, params, t)
 
     a = dQ_particle[3]
     z = Q_particle[2]
-    v = Q_particle[3] ### ASK ERIK dQ or Q ?
+    v = Q_particle[3]
 
     muscl_optimized!(dQ_field, Q_field, params, t)
 
     @inbounds for i in 1:N
-        add_singular_sources!(dQ_field, i, x[i], h, z, v, q, a, t)
+        add_singular_sources!(dQ_field, i, x[i], h, z, v, q, a)
     end
     return nothing
 end
@@ -448,21 +445,27 @@ function particle_rhs!(dQ, Q, params, t)
     dQ_particle = dQ.x[2]
 
     q = params.q
-    m0 = params.m0
     dxV = params.dxPotential
 
-    # m = Q_particle[1]
+    m = Q_particle[1]
     z = Q_particle[2]
     v = Q_particle[3]
+    sf = hasproperty(params, :sf) ? params.sf : true
 
     vel = 0.999999
     abs(v) <= vel || throw("v=$v > $(vel), at t=$(t), a = $(dQ_particle[3])")
 
     Πrz, Ψrz = gather_muscl(@view(Q_field[:, 1:2]), z, params)
 
-    @inbounds dQ_particle[1] = q * (v * Ψrz + Πrz)
+    scalar_mass_rate = sf ? q * (Πrz + v * Ψrz) - 0.5 * q^2 : zero(m)
+    scalar_force = sf ? -q * (Ψrz + v * Πrz) : zero(m)
+
+    @inbounds dQ_particle[1] = scalar_mass_rate
     @inbounds dQ_particle[2] = v
-    @inbounds dQ_particle[3] = (q * Ψrz - dxV(z)) / m
+    @inbounds dQ_particle[3] = (scalar_force - dxV(z)) / m
+    if length(dQ_particle) >= 4
+        @inbounds dQ_particle[4] = one(v)
+    end
     return nothing
 end
 
@@ -473,36 +476,44 @@ function particle_rhs_relativistic!(dQ, Q, params, t)
 
     q = params.q
     dxV = params.dxPotential
-    # m0 = params.m0
-
     m = Q_particle[1]
     z = Q_particle[2]
     v = Q_particle[3]
-    cell_idx = cell_index(z, params.x, params.h, params.N)
+    sf = hasproperty(params, :sf) ? params.sf : true
 
-    # @show cell_idx
-
-    Πrz = Q_field[cell_idx, 1]
-    Ψrz = Q_field[cell_idx, 2]
-    Φrz = Q_field[cell_idx, 3]
-
-    #Πrz, Ψrz = gather_muscl(@view(Q_field[:, 1:2]), z, params)
-    #Φrz = gather_muscl(@view(Q_field[:, 3]), z, params)
-    # The extra self-force contribution in dm_eff/dt uses the singular Φ_s piece.
-    # dvΦsz = gather_muscl(ScalarField.cell_average_dvΦs, z, params, v, q)
+    _, Πrz, Ψrz = regular_fields_at_particle(Q_field, z, params)
 
     vel = 0.999999
-    abs(v) <= vel ||
-        throw("v=$v > $(vel), at t=$(t), a = $(dQ_particle[3]), meff= $(m0 + q * Φrz)")
+    abs(v) <= vel || throw(DomainError(v, "particle speed must remain subluminal at t=$t"))
+    isfinite(m) && m > zero(m) ||
+        throw(DomainError(m, "particle dynamical mass must remain positive at t=$t"))
 
+    invγ = sqrt(one(v) - v * v)
+    K = Ψrz + v * Πrz
+    material_Φr = Πrz + v * Ψrz
+    scalar_force = sf ? -q * K : zero(m)
+    scalar_mass_rate = sf ? q * material_Φr - 0.5 * q^2 * invγ : zero(m)
+
+    @inbounds dQ_particle[1] = scalar_mass_rate
     @inbounds dQ_particle[2] = v
-    # Julia expression for the provided equation
-    # Literal translation of the pasted Mathematica snippet
-    literal_expr = (-(1 - v^2) * (dxV(z) * sqrt(1 - v^2) - q * (v * Πrz + Ψrz)))
-
-    @inbounds dQ_particle[3] = literal_expr / m#(m0 + q * Φrz)
-    @inbounds dQ_particle[1] = -q * (Πrz + v * Ψrz)#- dQ_particle[3] * dvΦsz)
+    @inbounds dQ_particle[3] = ((one(v) - v * v) * scalar_force -
+                                dxV(z) * invγ^3) / m
+    if length(dQ_particle) >= 4
+        @inbounds dQ_particle[4] = invγ
+    end
     return nothing
+end
+
+"""
+    regular_fields_at_particle(Q_field, z, params)
+
+Reconstruct `(Φr, Πr, Ψr)` at the particle with the same MUSCL gather
+operator used by particle evolution and diagnostics.
+"""
+@inline function regular_fields_at_particle(Q_field, z, params)
+    Πrz, Ψrz = gather_muscl(@view(Q_field[:, 1:2]), z, params)
+    Φrz = gather_muscl(@view(Q_field[:, 3]), z, params)
+    return Φrz, Πrz, Ψrz
 end
 
 function non_radiative_particle_rhs_relativistic!(du, u, params, t)

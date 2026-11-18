@@ -6,37 +6,69 @@ using ForwardDiff: derivative
     return x * sqrt(x)
 end
 
-# boost with +v
-
 """
-    Φs(x, z, v, q)
+    Φs(x, z, v, q, τ)
 
-Singular field convention used throughout the code, with `σ = sign(x - z)`:
+Retarded-matched 1+1 puncture for the positive-source convention
+`□Φ = q δ(x-z)/γ`, with `r = x-z` and accumulated proper time `τ`:
 
-`Φs = +(q/2) * |x - z| / (1 - vσ)`
-`Πs = -(q/2) * vσ / (1 - vσ)`
-`Ψs = +(q/2) * σ / (1 - vσ) = ∂ₓΦs`
+`Φs = (qγ/2) * (|r| + v*r) - (q/2) * τ`
+`Πs = -(qγ/2) * (1 + v*sign(r))`
+`Ψs = +(qγ/2) * (sign(r) + v)`
 
-The singular-source insertion in `ODE.add_singular_sources!` is derived from this
-ansatz by adding the cell averages of `-a∂ᵥΠs`, `-a∂ᵥΨs`, and `-a∂ᵥΦs`.
+The first-order fields equal the one-sided local retarded fields. Velocity
+derivatives hold `r` and `τ` fixed, as required by the remainder equations.
 """
-@inline function Φs(x, z, v, q, t)
-    # return 0.5q * abs(x - z) * cosh(v)
-    # return (q / 2) * abs(x - z) / (sqrt(one(v) - v * v))
-    return 0.5 * q * sqrt(one(v) - v * v) * (abs(x - z) / (one(v) - v * sign(x - z)) - t)
+@inline function Φs(x, z, v, q, τ)
+    r = x - z
+    γ = inv(sqrt(one(v) - v * v))
+    return 0.5 * q * (γ * (abs(r) + v * r) - τ)
 end
 
 @inline function Πs(x, z, v, q)
-    # return -0.5q * sinh(v) * sign(x - z)
-    # return -q * v * sign(x - z) / (2sqrt(one(v) - v * v))
-    #  return -0.5 * q * v * sign(x - z) / (one(v) - v * sign(x - z))
-    return -(q / 2) * sqrt(one(v) - v * v) / (one(v) - v * sign(x - z))
+    n = sign(x - z)
+    γ = inv(sqrt(one(v) - v * v))
+    return -0.5 * q * γ * (one(v) + v * n)
 end
 
 @inline function Ψs(x, z, v, q)
-    return q / 2 * (sign(x - z) * sqrt(one(v) - v * v)) / (one(v) - sign(x - z) * v)
-    # return 0.5 * q * sign(x - z) / (one(v) - v * sign(x - z))
-    # return q * sign(x - z) / (2sqrt(one(v) - v * v))
+    n = sign(x - z)
+    γ = inv(sqrt(one(v) - v * v))
+    return 0.5 * q * γ * (n + v)
+end
+
+@inline function dvΦs(x, z, v, q)
+    r = x - z
+    γ = inv(sqrt(one(v) - v * v))
+    return 0.5 * q * γ^3 * (r + v * abs(r))
+end
+
+@inline function dvΠs(x, z, v, q)
+    n = sign(x - z)
+    γ = inv(sqrt(one(v) - v * v))
+    return -0.5 * q * γ^3 * (v + n)
+end
+
+
+@inline function dvΨs(x, z, v, q)
+    n = sign(x - z)
+    γ = inv(sqrt(one(v) - v * v))
+    return 0.5 * q * γ^3 * (one(v) + v * n)
+end
+
+"""Return `(Pi_s, Psi_s)` at a face, selecting `side` only when `x == z`."""
+@inline function singular_face_trace(x, z, v, q, side)
+    n = x < z ? -one(v) : x > z ? one(v) : sign(side)
+    γ = inv(sqrt(one(v) - v * v))
+    return -0.5 * q * γ * (one(v) + v * n),
+           0.5 * q * γ * (n + v)
+end
+
+"""Return the left/right one-sided traces `(PiL, PiR, PsiL, PsiR)`."""
+@inline function singular_particle_traces(z, v, q)
+    ΠL, ΨL = singular_face_trace(z, z, v, q, -one(v))
+    ΠR, ΨR = singular_face_trace(z, z, v, q, one(v))
+    return ΠL, ΠR, ΨL, ΨR
 end
 
 @inline function _cell_faces(xi, h)
@@ -54,7 +86,7 @@ end
 end
 
 """
-    cell_average_Φs(xi, h, z, v, q)
+    cell_average_Φs(xi, h, z, v, q, τ)
 
 Return the exact finite-volume cell average of `Φs` over
 `[xi - h/2, xi + h/2]`.
@@ -72,19 +104,19 @@ Return the exact finite-volume cell average of `Φs` over
 #     end
 # end
 
-@inline function cell_average_Φs(xi, h, z, v, q, t)
+@inline function cell_average_Φs(xi, h, z, v, q, τ)
     left_face, right_face, _, _, lenL, lenR = _singular_cell_geometry(xi, h, z)
 
     if z >= right_face
-        return 0.5 * (Φs(left_face, z, v, q, t) + Φs(right_face, z, v, q, t))
+        return 0.5 * (Φs(left_face, z, v, q, τ) + Φs(right_face, z, v, q, τ))
     elseif z <= left_face
-        return 0.5 * (Φs(left_face, z, v, q, t) + Φs(right_face, z, v, q, t))
+        return 0.5 * (Φs(left_face, z, v, q, τ) + Φs(right_face, z, v, q, τ))
     else
-        Φz = -0.5 * q * sqrt(one(v) - v * v) * t
+        Φz = -0.5 * q * τ
 
         return 0.5 *
-               (lenL * Φs(left_face, z, v, q, t) +
-                lenR * Φs(right_face, z, v, q, t) +
+               (lenL * Φs(left_face, z, v, q, τ) +
+                lenR * Φs(right_face, z, v, q, τ) +
                 h * Φz) / h
     end
 end
@@ -135,8 +167,13 @@ end
 Return the exact finite-volume cell average of `∂vΦs` over
 `[xi - h/2, xi + h/2]`.
 """
-@inline function cell_average_dvΦs(xi, h, z, v, q, t)
-    return derivative(vv -> cell_average_Φs(xi, h, z, vv, q, t), v)
+@inline function cell_average_dvΦs(xi, h, z, v, q)
+    left_face, right_face, _, _, lenL, lenR = _singular_cell_geometry(xi, h, z)
+    if z >= right_face || z <= left_face
+        return dvΦs(xi, z, v, q)
+    end
+    return 0.5 * (lenL * dvΦs(left_face, z, v, q) +
+                  lenR * dvΦs(right_face, z, v, q)) / h
 end
 
 """
@@ -146,7 +183,11 @@ Return the exact finite-volume cell average of `∂vΠs` over
 `[xi - h/2, xi + h/2]`.
 """
 @inline function cell_average_dvΠs(xi, h, z, v, q)
-    return derivative(vv -> cell_average_Πs(xi, h, z, vv, q), v)
+    _, _, _, _, lenL, lenR = _singular_cell_geometry(xi, h, z)
+    γ = inv(sqrt(one(v) - v * v))
+    left = -0.5 * q * γ^3 * (v - one(v))
+    right = -0.5 * q * γ^3 * (v + one(v))
+    return (lenL * left + lenR * right) / h
 end
 
 """
@@ -156,15 +197,19 @@ Return the exact finite-volume cell average of `∂vΨs` over
 `[xi - h/2, xi + h/2]`.
 """
 @inline function cell_average_dvΨs(xi, h, z, v, q)
-    return derivative(vv -> cell_average_Ψs(xi, h, z, vv, q), v)
+    _, _, _, _, lenL, lenR = _singular_cell_geometry(xi, h, z)
+    γ = inv(sqrt(one(v) - v * v))
+    left = 0.5 * q * γ^3 * (one(v) - v)
+    right = 0.5 * q * γ^3 * (one(v) + v)
+    return (lenL * left + lenR * right) / h
 end
 
 """
-    cell_averages_Φs(x, h, z, v, q)
+    cell_averages_Φs(x, h, z, v, q, τ)
 
 Return exact finite-volume cell averages of `Φs` over the cells centered at `x`.
 """
-@inline cell_averages_Φs(x, h, z, v, q) = cell_average_Φs.(x, h, z, v, q)
+@inline cell_averages_Φs(x, h, z, v, q, τ) = cell_average_Φs.(x, h, z, v, q, τ)
 
 """
     cell_averages_Πs(x, h, z, v, q)
@@ -203,9 +248,7 @@ Return exact finite-volume cell averages of `∂vΨs` over the cells centered at
 
 ## Φ
 @inline function Φs001(x, z, v, q)
-    # return 0.5q * abs(x - z) * sinh(v) * cosh(v)^2
-    return derivative(vv -> Φs(x, z, vv, q), v)
-    # return 0.5q * v * abs(x - z) / exp32(one(v) - v * v)
+    return dvΦs(x, z, v, q)
 end
 
 @inline function Φs002(x, z, v, q)
