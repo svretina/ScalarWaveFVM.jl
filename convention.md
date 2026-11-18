@@ -90,3 +90,22 @@ and the scalar potential is
 `RetardedPotentials.Φ_ret`, `Π_ret`, and `Ψ_ret` implement these retarded-time
 expressions and return zero outside the future light cone of the switch-on
 event.
+
+## Initialization and coupling controls
+
+`ScalarField.initialize_remainder` provides three explicit choices:
+
+- `:zero_remainder`: the full initial field is the selected global puncture
+  extension. This is not the switched-on retarded solution.
+- `:retarded`: a supplied full retarded field is sampled and the puncture is
+  subtracted.
+- `:custom`: user-supplied `(Πr, Ψr, Φr)` data are copied.
+
+Coupling direction is controlled independently:
+
+- `field_source=true` lets the trajectory drive the remainder field.
+- `particle_feedback=true` lets the regular field drive the particle and
+  includes retarded self-mass loss.
+
+Thus a prescribed trajectory uses a field source without particle feedback;
+turning off feedback does not silently remove the particle's field source.

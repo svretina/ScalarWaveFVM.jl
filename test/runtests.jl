@@ -15,6 +15,7 @@ include(joinpath(@__DIR__, "..", "src", "Limiters.jl"))
 include(joinpath(@__DIR__, "..", "src", "NumericalFluxes.jl"))
 include(joinpath(@__DIR__, "..", "src", "ODE.jl"))
 include(joinpath(@__DIR__, "..", "src", "Energies.jl"))
+include(joinpath(@__DIR__, "..", "src", "Diagnostics.jl"))
 end
 
 const SF = ScalarWaveFVMTestHarness.ScalarField
@@ -24,18 +25,19 @@ const EQ = ScalarWaveFVMTestHarness.Equations
 const EN = ScalarWaveFVMTestHarness.Energies
 const LIM = ScalarWaveFVMTestHarness.Limiters
 const NF = ScalarWaveFVMTestHarness.NumericalFluxes
+const DIAG = ScalarWaveFVMTestHarness.Diagnostics
 
 minmod(a, b) = signbit(a) == signbit(b) ? sign(a) * min(abs(a), abs(b)) : zero(a + b)
 
 function constant_field_problem(; m=2.0, z=0.0, v=0.0, q=0.7,
                                 Π=0.0, Ψ=0.0, Φ=0.0,
-                                dV=z -> 0.0, sf=true)
+                                dV=z -> 0.0, particle_feedback=true)
     x = [-1.0, 0.0, 1.0]
     Qfield = hcat(fill(Π, 3), fill(Ψ, 3), fill(Φ, 3))
     Qparticle = [m, z, v, 0.0]
     Q = (x=(Qfield, Qparticle),)
     dQ = (x=(zeros(size(Qfield)), zeros(4)),)
-    params = (q=q, dxPotential=dV, sf=sf, x=x, h=1.0, N=3,
+    params = (q=q, dxPotential=dV, particle_feedback, x=x, h=1.0, N=3,
               equation=EQ.LinearScalarWaveEquation1D(1.0),
               slope_limiter=minmod)
     return Q, dQ, params
@@ -49,6 +51,9 @@ include("test_accelerated_retarded.jl")
 include("test_particle_coupling.jl")
 include("test_external_potential.jl")
 include("test_remainder_energy.jl")
+include("test_discrete_energy.jl")
+include("test_initialization_modes.jl")
+include("test_coupled_long_time.jl")
 
 @testset "ScalarWaveFVM.jl" begin
     @testset "retarded-matched 1+1 puncture" begin
@@ -180,7 +185,8 @@ include("test_remainder_energy.jl")
 
     @testset "scalar feedback switch" begin
         v, q = 0.4, 0.7
-        Q, dQ, params = constant_field_problem(v=v, q=q, Π=0.3, Ψ=-0.2, sf=false)
+        Q, dQ, params = constant_field_problem(v=v, q=q, Π=0.3, Ψ=-0.2,
+                                                particle_feedback=false)
         ODE.particle_rhs_relativistic!(dQ, Q, params, 0.0)
         @test dQ.x[2][1] == 0.0
         @test dQ.x[2][3] == 0.0

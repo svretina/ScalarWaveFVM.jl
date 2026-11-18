@@ -390,6 +390,9 @@ function field_rhs_forced!(dQ, Q, params, t)
 
     muscl_optimized!(dQ, Q, params, t)
 
+    field_source = hasproperty(params, :field_source) ? params.field_source : true
+    field_source || return nothing
+
     z, v, a = ParticleMotion.oscillator(t, z0, A, ω)
 
     # dtΠ = @view dQ[:, 1]
@@ -417,6 +420,9 @@ function field_rhs!(dQ, Q, params, t)
 
     muscl_optimized!(dQ_field, Q_field, params, t)
 
+    field_source = hasproperty(params, :field_source) ? params.field_source : true
+    field_source || return nothing
+
     @inbounds for i in 1:N
         add_singular_sources!(dQ_field, i, x[i], h, z, v, q, a)
     end
@@ -440,33 +446,7 @@ end
 end
 
 function particle_rhs!(dQ, Q, params, t)
-    Q_field = Q.x[1]
-    Q_particle = Q.x[2]
-    dQ_particle = dQ.x[2]
-
-    q = params.q
-    dxV = params.dxPotential
-
-    m = Q_particle[1]
-    z = Q_particle[2]
-    v = Q_particle[3]
-    sf = hasproperty(params, :sf) ? params.sf : true
-
-    vel = 0.999999
-    abs(v) <= vel || throw("v=$v > $(vel), at t=$(t), a = $(dQ_particle[3])")
-
-    Πrz, Ψrz = gather_muscl(@view(Q_field[:, 1:2]), z, params)
-
-    scalar_mass_rate = sf ? q * (Πrz + v * Ψrz) - 0.5 * q^2 : zero(m)
-    scalar_force = sf ? -q * (Ψrz + v * Πrz) : zero(m)
-
-    @inbounds dQ_particle[1] = scalar_mass_rate
-    @inbounds dQ_particle[2] = v
-    @inbounds dQ_particle[3] = (scalar_force - dxV(z)) / m
-    if length(dQ_particle) >= 4
-        @inbounds dQ_particle[4] = one(v)
-    end
-    return nothing
+    return particle_rhs_relativistic!(dQ, Q, params, t)
 end
 
 function particle_rhs_relativistic!(dQ, Q, params, t)
@@ -479,7 +459,8 @@ function particle_rhs_relativistic!(dQ, Q, params, t)
     m = Q_particle[1]
     z = Q_particle[2]
     v = Q_particle[3]
-    sf = hasproperty(params, :sf) ? params.sf : true
+    particle_feedback = hasproperty(params, :particle_feedback) ?
+                        params.particle_feedback : true
 
     _, Πrz, Ψrz = regular_fields_at_particle(Q_field, z, params)
 
@@ -488,21 +469,36 @@ function particle_rhs_relativistic!(dQ, Q, params, t)
     isfinite(m) && m > zero(m) ||
         throw(DomainError(m, "particle dynamical mass must remain positive at t=$t"))
 
-    invγ = sqrt(one(v) - v * v)
-    K = Ψrz + v * Πrz
-    material_Φr = Πrz + v * Ψrz
-    scalar_force = sf ? -q * K : zero(m)
-    scalar_mass_rate = sf ? q * material_Φr - 0.5 * q^2 * invγ : zero(m)
+    rates = particle_rates(m, z, v, q, Πrz, Ψrz, dxV;
+                           particle_feedback=particle_feedback)
 
-    @inbounds dQ_particle[1] = scalar_mass_rate
-    @inbounds dQ_particle[2] = v
-    @inbounds dQ_particle[3] = ((one(v) - v * v) * scalar_force -
-                                dxV(z) * invγ^3) / m
+    @inbounds dQ_particle[1] = rates.dm
+    @inbounds dQ_particle[2] = rates.dz
+    @inbounds dQ_particle[3] = rates.dv
     if length(dQ_particle) >= 4
-        @inbounds dQ_particle[4] = invγ
+        @inbounds dQ_particle[4] = rates.dτ
     end
     return nothing
 end
+
+"""Validated one-particle evolution laws for the chosen 1+1 convention."""
+@inline function particle_rates(m, z, v, q, Πr, Ψr, dxV;
+                                particle_feedback=true)
+    invγ = sqrt(one(v) - v * v)
+    if particle_feedback
+        dm = q * (Πr + v * Ψr) - 0.5 * q^2 * invγ
+        scalar_force = -q * (Ψr + v * Πr)
+    else
+        dm = zero(m)
+        scalar_force = zero(m)
+    end
+    dv = (invγ^2 * scalar_force - dxV(z) * invγ^3) / m
+    return (; dm, dz=v, dv, dτ=invγ)
+end
+
+"""Mass implied by the regular field and retarded-matched puncture."""
+@inline dynamical_mass(m0, q, Φr, τ; τ0=zero(τ)) =
+    m0 + q * Φr - 0.5 * q^2 * (τ - τ0)
 
 """
     regular_fields_at_particle(Q_field, z, params)

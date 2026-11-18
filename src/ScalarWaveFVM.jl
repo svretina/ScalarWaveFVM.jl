@@ -17,26 +17,15 @@ include("ODE.jl")
 include("Types.jl")
 include("Run.jl")
 include("Energies.jl")
+include("Diagnostics.jl")
 
 const _PLOTTING_FILES = (
     "PlottingUtils.jl",
-    "Convergence.jl",
-    "ForcedPlots.jl",
-    "InteractingPlots.jl",
-    "ParticlePotentialPlots.jl",
-    "EnergyBalanceIngredientPlots.jl",
-    "PreparePlots.jl",
     "RetardedPotentialPlots.jl",
 )
 
 const _PLOTTING_MODULES = (
     :PlottingUtils,
-    :Convergence,
-    :ForcedPlots,
-    :InteractingPlots,
-    :ParticlePotentialPlots,
-    :EnergyBalanceIngredientPlots,
-    :PreparePlots,
     :RetardedPotentialPlots,
 )
 

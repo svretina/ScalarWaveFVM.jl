@@ -6,10 +6,23 @@
 [![Coverage](https://codecov.io/gh/svretina/ScalarWaveFVM.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/svretina/ScalarWaveFVM.jl)
 
 
-TODO:
---------
-  - ✅ Implement Advection Equation with Godunov Method
-  - ⬛ Implement Wave Equation
-  - ⬛ Implement Godunov method in Wave Propagation Form
-  - ⬛ Implement Higher order method with Flux Limiters
+# Validated 1+1 scalar self-force reference solver
+
+The current reference implementation uses a retarded-matched puncture,
+proper-time and dynamical-mass evolution, MUSCL finite volumes, and independent
+controls for field sourcing and particle feedback. The sign and normalization
+contract is documented in [`convention.md`](convention.md); continuum and exact
+semidiscrete energy identities are documented in
+[`balance_law.md`](balance_law.md).
+
+Run the complete validation suite with:
+
+```sh
+julia --project=. -e 'using Pkg; Pkg.test()'
+```
+
+The legacy one- and two-particle plotting/energy modules were retired because
+they encoded the previous mass sign, obsolete puncture signatures, and
+incompatible normalization. The supported diagnostic API is `Diagnostics`;
+retarded-field plots remain available through `enable_plotting!()`.
  

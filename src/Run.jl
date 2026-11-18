@@ -19,7 +19,10 @@ using OrdinaryDiffEq
 using DataInterpolations
 # using DiffEqCallbacks
 
-function forced_motion(Nosc, dx, cfl, vmax, q, sf=true, muscl=true)
+function forced_motion(Nosc, dx, cfl, vmax, q;
+                       muscl=true,
+                       initialization=:zero_remainder, initial_data=nothing,
+                       retarded_field=nothing, field_source=true)
     c = 1.0
     equation = LinearScalarWaveEquation1D(c)
 
@@ -54,32 +57,26 @@ function forced_motion(Nosc, dx, cfl, vmax, q, sf=true, muscl=true)
         tf = Nosc * T
         L0 = ceil(2Nosc * T)
 
-        Φ = zeros(Float64, length(grid))
-        Π = zeros(Float64, length(grid))
-        Ψ = zeros(Float64, length(grid))
-
-        # Φ = -ScalarField.cell_average_Φs.(x, dx, z0, vmax, q, 0.0)
-        # Π = -ScalarField.cell_average_Πs.(x, dx, z0, vmax, q)
-        # Ψ = -ScalarField.cell_average_Ψs.(x, dx, z0, vmax, q)
-
-        statevector = hcat(Π, Ψ, Φ)
+        statevector = ScalarField.initialize_remainder(
+            x; mode=initialization, z=z0, v=vmax, q=q, τ=0.0,
+            full_field=retarded_field, custom=initial_data)
 
         tspan = (0.0, tf)
         t = 0.0:dt:(tf + dt)
         sim = SimulationParameters1D(Int64(L), Int64(N), float(dx), float(dt),
                                      convert(Vector{Float64}, x), float(q), 1.0, float(z0),
                                      float(vmax), float(vmax), float(A), float(ω),
-                                     0.0, direction, float(Nosc), sf, float(cfl))
+                                     0.0, direction, float(Nosc), field_source, float(cfl))
 
         params = (equation=equation, numerical_flux=numerical_flux,
                   slope_limiter=slope_limiter, flux_limiter=flux_limiter,
                   h=dx, N=N, x=x, cfl=cfl, L=L0, L0=L0, vmax=vmax, A=A,
-                  dt=dt, z0=z0, ω=ω, q=q)
+                  dt=dt, z0=z0, ω=ω, q=q, field_source=field_source)
 
         print_simulation_info(sim; title="Forced Motion")
         if muscl
             alg = SSPRK54()
-            if sf
+            if field_source
                 println("Self Force = True")
                 ode = ODEProblem{true}(ODE.field_rhs_forced!,
                                        statevector, tspan, params;
@@ -105,7 +102,10 @@ function forced_motion(Nosc, dx, cfl, vmax, q, sf=true, muscl=true)
     error("Simulation failed after $max_retries attempts")
 end
 
-function particle_in_potential(Nosc, dx, cfl, vmax, q, sf=true)
+function particle_in_potential(Nosc, dx, cfl, vmax, q;
+                               initialization=:zero_remainder, initial_data=nothing,
+                               retarded_field=nothing, particle_feedback=true,
+                               field_source=true)
     c = 1.0
     equation = LinearScalarWaveEquation1D(c)
 
@@ -137,12 +137,6 @@ function particle_in_potential(Nosc, dx, cfl, vmax, q, sf=true)
 
         N = length(x)
 
-        Φ = zeros(Float64, length(x))
-        Π = zeros(Float64, length(x))
-        Ψ = zeros(Float64, length(x))
-
-        field_statevector = hcat(Π, Ψ, Φ)
-
         ## Particle 1
         m0 = 1.0
         z0 = A
@@ -156,6 +150,9 @@ function particle_in_potential(Nosc, dx, cfl, vmax, q, sf=true)
         dxV(x) = InitialData.dxHarmonic(x, k)
 
         τ0 = 0.0
+        field_statevector = ScalarField.initialize_remainder(
+            x; mode=initialization, z=z0, v=v0, q=q, τ=τ0,
+            full_field=retarded_field, custom=initial_data)
         particle_statevector = [m0, z0, v0, τ0]
         statevector = ArrayPartition(field_statevector, particle_statevector)
 
@@ -168,7 +165,8 @@ function particle_in_potential(Nosc, dx, cfl, vmax, q, sf=true)
                   slope_limiter=slope_limiter, flux_limiter=flux_limiter,
                   h=dx, N=N, x=x, dx=dx, cfl=cfl, L=L,
                   dt=dt, z0=z0,
-                  q=q, sf=sf,
+                  q=q, particle_feedback=particle_feedback,
+                  field_source=field_source,
                   Potential=V,
                   dxPotential=dxV,
                   interpolation_method=interpolation_method,
@@ -179,7 +177,7 @@ function particle_in_potential(Nosc, dx, cfl, vmax, q, sf=true)
                                      convert(Vector{Float64}, x), float(q), float(m0),
                                      float(z0),
                                      float(v0), float(vmax), float(A), float(ω),
-                                     float(k), 0, float(Nosc), sf, float(cfl))
+                                     float(k), 0, float(Nosc), particle_feedback, float(cfl))
 
         print_simulation_info(sim; title="Particle in Potential")
 
@@ -207,7 +205,12 @@ function particle_in_potential(Nosc, dx, cfl, vmax, q, sf=true)
     error("Simulation failed after $max_retries attempts")
 end
 
-function particle_in_potential_relativistic(Nosc, dx, cfl, vmax, q, sf=true)
+function particle_in_potential_relativistic(Nosc, dx, cfl, vmax, q;
+                                            initialization=:zero_remainder,
+                                            initial_data=nothing,
+                                            retarded_field=nothing,
+                                            particle_feedback=true,
+                                            field_source=true)
     c = 1.0
     equation = LinearScalarWaveEquation1D(c)
 
@@ -245,13 +248,6 @@ function particle_in_potential_relativistic(Nosc, dx, cfl, vmax, q, sf=true)
         z0 = A
         v0 = 0.0 #0.6283185307179586
 
-        # Regular Field
-        Φr = zeros(Float64, length(x))
-        Πr = zeros(Float64, length(x))
-        Ψr = zeros(Float64, length(x))
-
-        field_statevector = hcat(Πr, Ψr, Φr)
-
         # k = (m0 / q) * ω^2
         k = m0 * ω^2
 
@@ -259,6 +255,9 @@ function particle_in_potential_relativistic(Nosc, dx, cfl, vmax, q, sf=true)
         dxV(x) = InitialData.dxHarmonic(x, k)
 
         τ0 = 0.0
+        field_statevector = ScalarField.initialize_remainder(
+            x; mode=initialization, z=z0, v=v0, q=q, τ=τ0,
+            full_field=retarded_field, custom=initial_data)
         particle_statevector = [m0, z0, v0, τ0]
         statevector = ArrayPartition(field_statevector, particle_statevector)
 
@@ -271,7 +270,8 @@ function particle_in_potential_relativistic(Nosc, dx, cfl, vmax, q, sf=true)
                   slope_limiter=slope_limiter, flux_limiter=flux_limiter,
                   h=dx, N=N, x=x, dx=dx, cfl=cfl, L=L,
                   dt=dt, z0=z0,
-                  q=q, sf=sf,
+                  q=q, particle_feedback=particle_feedback,
+                  field_source=field_source,
                   Potential=V,
                   dxPotential=dxV,
                   interpolation_method=interpolation_method,
@@ -282,7 +282,7 @@ function particle_in_potential_relativistic(Nosc, dx, cfl, vmax, q, sf=true)
                                      convert(Vector{Float64}, x), float(q), float(m0),
                                      float(z0),
                                      float(v0), float(vmax), float(A), float(ω),
-                                     float(k), 0, float(Nosc), sf, float(cfl))
+                                     float(k), 0, float(Nosc), particle_feedback, float(cfl))
 
         print_simulation_info(sim; title="Particle in Potential")
 

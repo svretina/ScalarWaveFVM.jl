@@ -71,6 +71,38 @@ end
     return ΠL, ΠR, ΨL, ΨR
 end
 
+"""
+    initialize_remainder(x; mode, z, v, q, τ, full_field, custom)
+
+Construct cell-centred remainder data in `(Πr, Ψr, Φr)` column order.
+`mode=:zero_remainder` selects the global puncture extension, `:retarded`
+subtracts the puncture from a supplied full-field callback, and `:custom`
+copies user-supplied data. The callback must return `(Φ, Π, Ψ)`.
+"""
+function initialize_remainder(x; mode=:zero_remainder, z=0.0, v=0.0, q=0.0,
+                              τ=0.0, full_field=nothing, custom=nothing)
+    if mode === :zero_remainder
+        return zeros(promote_type(eltype(x), typeof(q)), length(x), 3)
+    elseif mode === :custom
+        custom === nothing && throw(ArgumentError("custom remainder data are required"))
+        size(custom) == (length(x), 3) ||
+            throw(DimensionMismatch("custom data must have size ($(length(x)), 3)"))
+        return copy(custom)
+    elseif mode === :retarded
+        full_field === nothing &&
+            throw(ArgumentError("full_field callback is required for :retarded initialization"))
+        data = Matrix{promote_type(eltype(x), typeof(q))}(undef, length(x), 3)
+        for (i, xi) in pairs(x)
+            full = full_field(xi)
+            data[i, 1] = full[2] - Πs(xi, z, v, q)
+            data[i, 2] = full[3] - Ψs(xi, z, v, q)
+            data[i, 3] = full[1] - Φs(xi, z, v, q, τ)
+        end
+        return data
+    end
+    throw(ArgumentError("unknown initialization mode $mode"))
+end
+
 @inline function _cell_faces(xi, h)
     half_h = 0.5 * h
     return xi - half_h, xi + half_h
