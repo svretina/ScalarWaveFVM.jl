@@ -22,11 +22,13 @@ include("Diagnostics.jl")
 const _PLOTTING_FILES = (
     "PlottingUtils.jl",
     "RetardedPotentialPlots.jl",
+    "ParticleHistoryPlots.jl",
 )
 
 const _PLOTTING_MODULES = (
     :PlottingUtils,
     :RetardedPotentialPlots,
+    :ParticleHistoryPlots,
 )
 
 const _REVISE_PKGID = Base.PkgId(

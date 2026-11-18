@@ -210,7 +210,11 @@ function particle_in_potential_relativistic(Nosc, dx, cfl, vmax, q;
                                             initial_data=nothing,
                                             retarded_field=nothing,
                                             particle_feedback=true,
-                                            field_source=true)
+                                            field_source=true,
+                                            amplitude=0.1,
+                                            initial_position=amplitude,
+                                            initial_velocity=0.0,
+                                            rest_mass=1.0)
     c = 1.0
     equation = LinearScalarWaveEquation1D(c)
 
@@ -219,7 +223,8 @@ function particle_in_potential_relativistic(Nosc, dx, cfl, vmax, q;
         println("==========================================")
         println("Attempt $attempt / $max_retries (cfl = $cfl)")
 
-        A = 0.0001
+        A = amplitude
+        A > 0 || throw(ArgumentError("amplitude must be positive"))
         ω = round(vmax / A; digits=9)
         T = 2π / ω
 
@@ -242,11 +247,9 @@ function particle_in_potential_relativistic(Nosc, dx, cfl, vmax, q;
 
         N = length(x)
         ## Particle   
-        m0 = 1.0
-        #z0 = 0.0
-        #v0 = vmax
-        z0 = A
-        v0 = 0.0 #0.6283185307179586
+        m0 = rest_mass
+        z0 = initial_position
+        v0 = initial_velocity
 
         # k = (m0 / q) * ω^2
         k = m0 * ω^2
