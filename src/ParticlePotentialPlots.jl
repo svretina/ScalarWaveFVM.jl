@@ -4,10 +4,14 @@ using ..ParticleMotion
 using ..PlottingUtils
 using ..ScalarField
 using ..InitialData
+using ..Run
+using ..ODE
+using ..Equations
 using CairoMakie
 using LinearAlgebra
 using DataInterpolations
 using Roots
+using OrdinaryDiffEq
 
 function trapezoidal(y, h)
     n = length(y) - 1
@@ -42,6 +46,15 @@ function cumulative_trapezoidal(t, y)
     return out
 end
 
+function cumulative_trapezoidal(t, dt, y)
+    n = length(t)
+    out = zeros(promote_type(eltype(t), eltype(y)), n)
+    @inbounds for i in 2:n
+        out[i] = out[i - 1] + 0.5 * dt * (y[i - 1] + y[i])
+    end
+    return out
+end
+
 function get_velocity(sim)
     if hasproperty(sim.sol.prob.p, :equation)
         return sim.sol.prob.p.equation.velocity
@@ -49,15 +62,113 @@ function get_velocity(sim)
     return 1.0
 end
 
-function harmonic_reference_motion(sim, t)
-    q = sim.params.q
-    m = sim.params.m
-    k = sim.params.k
-    v0 = sim.params.v0
-    z0 = sim.params.z0
-    ω = sqrt(k * q / m)
-    A = v0 / ω
-    return ParticleMotion.oscillator(t, z0, A, ω)
+function non_radiative_reference_solution(sim)
+    return Run.solve_non_radiative_relativistic_particle(sim.params)
+end
+
+function particle_centered_interpolant(ξ, y)
+    if length(ξ) >= 5
+        return AkimaInterpolation(y, ξ; extrapolation=ExtrapolationType.Extension)
+    end
+    return LinearInterpolation(y, ξ; extrapolation=ExtrapolationType.Extension)
+end
+
+function relativistic_self_force_at_particle(sim, i)
+    q = sim.sol.prob.p.q
+    v = sim.sol.u[i].x[2][3]
+    return q * (1 - v * v) * regular_force_combo_at_particle(sim, i)
+end
+
+function regular_force_combo_at_particle(sim, i)
+    params = sim.sol.prob.p
+
+    z = sim.sol.u[i].x[2][2]
+    v = sim.sol.u[i].x[2][3]
+    Q_field = sim.sol.u[i].x[1]
+    Πrz, Ψrz = ODE.gather_muscl(@view(Q_field[:, 1:2]), z, params)
+
+    return Ψrz + v * Πrz
+end
+
+function plot_regular_force_combo_convergence(sim1, sim2, sim4, sim8, sim16; paper=false)
+    CairoMakie.activate!()
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    nt = length(sim1.sol.t)
+    g1 = zeros(nt)
+    g2 = zeros(nt)
+    g4 = zeros(nt)
+    g8 = zeros(nt)
+    g16 = zeros(nt)
+
+    for i in 1:nt
+        g1[i] = regular_force_combo_at_particle(sim1, i)
+        g2[i] = regular_force_combo_at_particle(sim2, 2i - 1)
+        g4[i] = regular_force_combo_at_particle(sim4, 4i - 3)
+        g8[i] = regular_force_combo_at_particle(sim8, 8i - 7)
+        g16[i] = regular_force_combo_at_particle(sim16, 16i - 15)
+    end
+
+    diff12 = max.(abs.(g1 .- g2), eps(Float64))
+    diff24 = max.(abs.(g2 .- g4), eps(Float64))
+    diff48 = max.(abs.(g4 .- g8), eps(Float64))
+    diff816 = max.(abs.(g8 .- g16), eps(Float64))
+
+    palette = mytheme.palette
+    color_low = palette.color[][1]
+    color_mid = palette.color[][2]
+    color_high = palette.color[][3]
+    color_finer = palette.color[][4]
+    color_finest = palette.color[][5]
+
+    fig = Figure(; size=(253, 330), figure_padding=(1, 5, 5, 1))
+
+    ax1 = Axis(fig[1, 1];
+               xlabel=L"t",
+               ylabel=L"\Psi_r(z) + v \Pi_r(z)",
+               title=L"\textrm{Particle-sampled regular field}")
+    lines!(ax1, sim1.sol.t, zeros(nt); color=:black, linestyle=:dot, linewidth=1.0,
+           label=L"0")
+    lines!(ax1, sim1.sol.t, g1; color=color_low, linewidth=1.5,
+           label=L"h")
+    lines!(ax1, sim1.sol.t, g2; color=color_mid, linestyle=:dash, linewidth=1.4,
+           label=L"h/2")
+    lines!(ax1, sim1.sol.t, g4; color=color_high, linestyle=:dot, linewidth=1.4,
+           label=L"h/4")
+    lines!(ax1, sim1.sol.t, g8; color=color_finer, linestyle=:dashdot, linewidth=1.3,
+           label=L"h/8")
+    lines!(ax1, sim1.sol.t, g16; color=color_finest, linestyle=:solid, linewidth=1.2,
+           label=L"h/16")
+    axislegend(ax1; position=:rb, labelsize=9, rowgap=0.1)
+    apply_scientific_notation_if_needed!(ax1)
+
+    ax2 = Axis(fig[2, 1];
+               xlabel=L"t",
+               ylabel=L"\Delta",
+               yscale=log10,
+               title=L"\textrm{Successive resolution differences}")
+    lines!(ax2, sim1.sol.t, diff12; color=color_low, linewidth=1.5,
+           label=L"|Q_h - Q_{h/2}|")
+    lines!(ax2, sim1.sol.t, diff24; color=color_mid, linestyle=:dash, linewidth=1.4,
+           label=L"|Q_{h/2} - Q_{h/4}|")
+    lines!(ax2, sim1.sol.t, diff48; color=color_high, linestyle=:dot, linewidth=1.4,
+           label=L"|Q_{h/4} - Q_{h/8}|")
+    lines!(ax2, sim1.sol.t, diff816; color=color_finer, linestyle=:dashdot, linewidth=1.3,
+           label=L"|Q_{h/8} - Q_{h/16}|")
+    axislegend(ax2; position=:rb, labelsize=9, rowgap=0.1)
+
+    rowsize!(fig.layout, 1, Auto())
+    rowsize!(fig.layout, 2, Auto())
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowgap!(fig.layout, 4)
+
+    savename = simple_name("psi_vpi_particle_convergence")
+    save(joinpath(get_fig_path(), savename), fig)
+    if paper
+        save(joinpath(get_paper_fig_path(), savename), fig)
+    end
+    return fig
 end
 
 function plot_total_phifield(i, sim1; paper=false)
@@ -75,19 +186,15 @@ function plot_total_phifield(i, sim1; paper=false)
     vp = sim1.sol.u[i].x[2][3]
     # Create figure and axis
 
-    c = get_velocity(sim1)
-    if iszero(t)
-        x_range = (-sim1.params.L / 2, sim1.params.L / 2)
-    else
-        x_range = (-c * t, c * t)
-    end
+    tf = sim1.sol.t[end]
+    x_range = (-tf, tf)
     mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     x_filtered = sim1.params.x[mask]
 
     # Filter sim1 data (640 points)
     mask1 = mask # (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     x1_filtered = sim1.params.x[mask1]  # ~320 elements if symmetric around 0
-    y1_filtered = sim1.sol.u[i].x[1][mask1, 3] .+ ScalarField.Φs.(x_filtered, q, xp, vp)
+    y1_filtered = sim1.sol.u[i].x[1][mask1, 3] .+ ScalarField.Φs.(x_filtered, xp, vp, q)
 
     # Compute y-limits with padding
     # y_min = minimum([minimum(y1_filtered), minimum(y2_filtered), minimum(y4_filtered)])
@@ -103,7 +210,7 @@ function plot_total_phifield(i, sim1; paper=false)
     #,
     #limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
     # Plot the data
-    lines!(ax, x_filtered, y1_filtered; label=L"\Pi")
+    lines!(ax, x_filtered, y1_filtered; label=L"\Phi")
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
 
@@ -117,6 +224,154 @@ function plot_total_phifield(i, sim1; paper=false)
     if paper
         save(joinpath(get_paper_fig_path(), savename), fig)
     end
+    return fig
+end
+
+function plot_total_phifield_atx(ix, sim1; paper=false)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+    # Get time points and assert equality
+    c = get_velocity(sim1)
+    # if iszero(t)
+    #     x_range = (-sim1.params.L / 2, sim1.params.L / 2)
+    # else
+    #     x_range = (-c * t, c * t)
+    # end
+    # mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    # x_filtered = sim1.params.x[mask]
+
+    # Filter sim1 data (640 points)
+    # mask1 = mask # (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    x1_filtered = sim1.params.x[ix]  # ~320 elements if symmetric around 0
+    y1_filtered = zeros(length(sim1.sol.t))
+    for i in 1:length(sim1.sol.t)
+        q = sim1.params.q
+        xp = sim1.sol.u[i].x[2][2]
+        vp = sim1.sol.u[i].x[2][3]
+        y1_filtered[i] = sim1.sol.u[i].x[1][ix, 3] .+
+                         ScalarField.Φs.(x1_filtered, xp, vp, q)
+    end
+    ts = sim1.sol.t
+    # Compute y-limits with padding
+    # y_min = minimum([minimum(y1_filtered), minimum(y2_filtered), minimum(y4_filtered)])
+    # y_max = maximum([maximum(y1_filtered), maximum(y2_filtered), maximum(y4_filtered)])
+    # padding = 0.1 * (y_max - y_min)  # Add 10% padding
+    # y_limits = (y_min - padding, y_max + padding)
+    @show max(y1_filtered...)
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"t",
+              ylabel=L"\Phi",
+              title=L"x=%$(round(x1_filtered, digits=3))")
+    #,
+    #limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+    # Plot the data
+    lines!(ax, ts, y1_filtered; label=L"\Pi")
+    # vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+    # Add legend at the bottom
+
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    # Save the figure
+
+    # savename = simple_name("total_phifield", t)
+    # save(joinpath(get_fig_path(), savename), fig)
+    # if paper
+    #     save(joinpath(get_paper_fig_path(), savename), fig)
+    # end
+    return fig
+end
+
+function plot_total_pifield_atx(ix, sim1; paper=false)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+
+    nt = length(sim1.sol.t)
+    x1_filtered = sim1.params.x[ix]  # ~320 elements if symmetric around 0
+    y1_filtered = zeros(nt)
+    q = sim1.params.q
+    ps = zeros(nt)
+    for i in 1:nt
+        xp = sim1.sol.u[i].x[2][2]
+        vp = sim1.sol.u[i].x[2][3]
+        ps[i] = ScalarField.Πs.(x1_filtered, xp, vp, q)
+        y1_filtered[i] = sim1.sol.u[i].x[1][ix, 1]
+    end
+    ts = sim1.sol.t
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"t",
+              ylabel=L"\Pi",
+              title=L"x=%$(round(x1_filtered, digits=3))")
+    #,
+    #limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+    # Plot the data
+    lines!(ax, ts, y1_filtered; label=L"\Pi_{r}")
+    lines!(ax, ts, ps; label=L"\Pi_s")
+    lines!(ax, ts, y1_filtered .+ ps; linestyle=:dash, label=L"\Pi")
+    # vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+    # Add legend at the bottom
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal,
+                 tellwidth=false, tellheight=true)
+
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    # Save the figure
+
+    # savename = simple_name("total_phifield", t)
+    # save(joinpath(get_fig_path(), savename), fig)
+    # if paper
+    #     save(joinpath(get_paper_fig_path(), savename), fig)
+    # end
+    return fig
+end
+
+function plot_total_psifield_atx(ix, sim1; paper=false)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+
+    nt = length(sim1.sol.t)
+    x1_filtered = sim1.params.x[ix]  # ~320 elements if symmetric around 0
+    y1_filtered = zeros(nt)
+    q = sim1.params.q
+    ps = zeros(nt)
+    for i in 1:nt
+        xp = sim1.sol.u[i].x[2][2]
+        vp = sim1.sol.u[i].x[2][3]
+        ps[i] = ScalarField.Ψs.(x1_filtered, xp, vp, q)
+        y1_filtered[i] = sim1.sol.u[i].x[1][ix, 2]
+    end
+    ts = sim1.sol.t
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"t",
+              ylabel=L"\Psi",
+              title=L"x=%$(round(x1_filtered, digits=3))")
+    #,
+    #limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+    # Plot the data
+    lines!(ax, ts, y1_filtered; label=L"\Psi_{r}")
+    lines!(ax, ts, ps; label=L"\Psi_s")
+    lines!(ax, ts, y1_filtered .+ ps; linestyle=:dash, label=L"\Psi")
+    # vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+    # Add legend at the bottom
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal,
+                 tellwidth=false, tellheight=true)
+
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    # Save the figure
+
+    # savename = simple_name("total_phifield", t)
+    # save(joinpath(get_fig_path(), savename), fig)
+    # if paper
+    #     save(joinpath(get_paper_fig_path(), savename), fig)
+    # end
     return fig
 end
 
@@ -281,48 +536,48 @@ function plot_total_phifield_diff_res(ti, xi, sim1, sim2, sim4; paper=false)
 
     ## Fields at start of simulation
     Φ10_filtered = sim1.sol.u[ti0].x[1][mask1, 3] .+
-                   ScalarField.Φs.(x1_filtered, q, xp10, vp10)
+                   ScalarField.Φs.(x1_filtered, xp10, vp10, q)
     Φ20_filtered = sim2.sol.u[ti0].x[1][mask2, 3] .+
-                   ScalarField.Φs.(x2_filtered, q, xp20, vp20)
+                   ScalarField.Φs.(x2_filtered, xp20, vp20, q)
     Φ40_filtered = sim4.sol.u[ti0].x[1][mask4, 3] .+
-                   ScalarField.Φs.(x4_filtered, q, xp40, vp40)
+                   ScalarField.Φs.(x4_filtered, xp40, vp40, q)
 
     ## Fields at t=ti of simulation
-    Φ1_filtered = sim1.sol.u[ti].x[1][mask1, 3] .+ ScalarField.Φs.(x1_filtered, q, xp1, vp1)
+    Φ1_filtered = sim1.sol.u[ti].x[1][mask1, 3] .+ ScalarField.Φs.(x1_filtered, xp1, vp1, q)
     Φ2_filtered = sim2.sol.u[2ti - 1].x[1][mask2, 3] .+
-                  ScalarField.Φs.(x2_filtered, q, xp2, vp2)
+                  ScalarField.Φs.(x2_filtered, xp2, vp2, q)
     Φ4_filtered = sim4.sol.u[4ti - 3].x[1][mask4, 3] .+
-                  ScalarField.Φs.(x4_filtered, q, xp4, vp4)
+                  ScalarField.Φs.(x4_filtered, xp4, vp4, q)
 
     ## Π fields
     Π10_filtered = sim1.sol.u[ti0].x[1][mask1, 1] .+
-                   ScalarField.Πs.(x1_filtered, q, xp10, vp10)
+                   ScalarField.Πs.(x1_filtered, xp10, vp10, q)
     Π20_filtered = sim2.sol.u[ti0].x[1][mask2, 1] .+
-                   ScalarField.Πs.(x2_filtered, q, xp20, vp20)
+                   ScalarField.Πs.(x2_filtered, xp20, vp20, q)
     Π40_filtered = sim4.sol.u[ti0].x[1][mask4, 1] .+
-                   ScalarField.Πs.(x4_filtered, q, xp40, vp40)
+                   ScalarField.Πs.(x4_filtered, xp40, vp40, q)
 
     ## Fields at t=ti of simulation
-    Π1_filtered = sim1.sol.u[ti].x[1][mask1, 1] .+ ScalarField.Πs.(x1_filtered, q, xp1, vp1)
+    Π1_filtered = sim1.sol.u[ti].x[1][mask1, 1] .+ ScalarField.Πs.(x1_filtered, xp1, vp1, q)
     Π2_filtered = sim2.sol.u[2ti - 1].x[1][mask2, 1] .+
-                  ScalarField.Πs.(x2_filtered, q, xp2, vp2)
+                  ScalarField.Πs.(x2_filtered, xp2, vp2, q)
     Π4_filtered = sim4.sol.u[4ti - 3].x[1][mask4, 1] .+
-                  ScalarField.Πs.(x4_filtered, q, xp4, vp4)
+                  ScalarField.Πs.(x4_filtered, xp4, vp4, q)
 
     ## Ψ fields
     Ψ10_filtered = sim1.sol.u[ti0].x[1][mask1, 2] .+
-                   ScalarField.Ψs.(x1_filtered, q, xp10, vp10)
+                   ScalarField.Ψs.(x1_filtered, xp10, vp10, q)
     Ψ20_filtered = sim2.sol.u[ti0].x[1][mask2, 2] .+
-                   ScalarField.Ψs.(x2_filtered, q, xp20, vp20)
+                   ScalarField.Ψs.(x2_filtered, xp20, vp20, q)
     Ψ40_filtered = sim4.sol.u[ti0].x[1][mask4, 2] .+
-                   ScalarField.Ψs.(x4_filtered, q, xp40, vp40)
+                   ScalarField.Ψs.(x4_filtered, xp40, vp40, q)
 
     ## Fields at t=ti of simulation
-    Ψ1_filtered = sim1.sol.u[ti].x[1][mask1, 2] .+ ScalarField.Ψs.(x1_filtered, q, xp1, vp1)
+    Ψ1_filtered = sim1.sol.u[ti].x[1][mask1, 2] .+ ScalarField.Ψs.(x1_filtered, xp1, vp1, q)
     Ψ2_filtered = sim2.sol.u[2ti - 1].x[1][mask2, 2] .+
-                  ScalarField.Ψs.(x2_filtered, q, xp2, vp2)
+                  ScalarField.Ψs.(x2_filtered, xp2, vp2, q)
     Ψ4_filtered = sim4.sol.u[4ti - 3].x[1][mask4, 2] .+
-                  ScalarField.Ψs.(x4_filtered, q, xp4, vp4)
+                  ScalarField.Ψs.(x4_filtered, xp4, vp4, q)
 
     fig = Figure(; size=(253, 200))
     ax = Axis(fig[1, 1];
@@ -356,23 +611,18 @@ function plot_total_phifield_diff_res(ti, xi, sim1, sim2, sim4; paper=false)
     return fig
 end
 
-function plot_phifield(i, sim1; paper=false)
+function plot_regular_phifield(i, sim1; paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     if i == -1
         i = lastindex(sim1.sol.t)
     end
-    t1 = sim1.sol.t[i]
-    t = t1
+    ti = sim1.sol.t[i]
+    tf = sim1.sol.t[end]
 
     # Create figure and axis
-    c = get_velocity(sim1)
-    if iszero(t)
-        x_range = (-sim1.params.L / 2, sim1.params.L / 2)
-    else
-        x_range = (-c * t, c * t)
-    end
+    x_range = (-tf, tf)
     mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     x_filtered = sim1.params.x[mask]
 
@@ -388,22 +638,16 @@ function plot_phifield(i, sim1; paper=false)
     padding = 0.1 * (y_max - y_min)  # Add 10% padding
     y_limits = (y_min - padding, y_max + padding)
 
-    q = sim1.params.q
-    h = sim1.params.dx
     xp = sim1.sol.u[i].x[2][2]
-    vp = sim1.sol.u[i].x[2][3]
+
     fig = Figure(; size=(253, 200))
     ax = Axis(fig[1, 1];
               xlabel=L"x",
               ylabel=L"\Phi_\mathrm{r}",
-              title=L"t=%$(round(t, digits=3))",
+              title=L"t=%$(round(ti, digits=3))",
               limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
     # Plot the data
     lines!(ax, x_filtered, y1_filtered; label=L"\Phi_r")
-    # lines!(ax, x_filtered, ScalarField.Φs.(x_filtered, Ref(xp), Ref(vp), Ref(q));
-    #        label=L"\Phi_s")
-    # lines!(ax, x_filtered, y1_filtered .+ ScalarField.Φs.(x_filtered, xp, vp, q);
-    #        label=L"\Phi")
     apply_scientific_notation_if_needed!(ax)
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
     # Add legend at the bottom
@@ -415,15 +659,15 @@ function plot_phifield(i, sim1; paper=false)
     # Save the figure
 
     # Save the figure
-    savename = name("particle_potential/phifield", sim1, "i=$(i)")
-    save(joinpath(FIG_PATH, savename), fig)
+    savename = simple_name("phifield", i)
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
         save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
 
-function plot_pifield(i, sim1; paper=false)
+function plot_regular_pifield(i, sim1; paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
@@ -431,30 +675,17 @@ function plot_pifield(i, sim1; paper=false)
         i = lastindex(sim1.sol.t)
     end
     t = sim1.sol.t[i]
-    k = sim1.params.k
-    Nosc = sim1.params.Nosc
-    T = 2π / sqrt(abs(k))
-    tf = Nosc * T
+    tf = sim1.sol.t[end]
 
     # Create figure and axis
 
-    c = get_velocity(sim1)
-    L = sim1.params.L
-    if iszero(t)
-        x_range = (-L / 2, L / 2)
-    else
-        x_range = (-c * t, c * t)
-    end
-    @show x_range
+    x_range = (-tf, tf)
     # Filter sim1 data (640 points)
     mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     x_filtered = sim1.params.x[mask]  # ~320 elements if symmetric around 0
     y_filtered = sim1.sol.u[i].x[1][mask, 1]  # Matches x1_filtered length
 
-    q = sim1.params.q
-    h = sim1.params.dx
     xp = sim1.sol.u[i].x[2][2]
-    vp = sim1.sol.u[i].x[2][3]
 
     y_min = minimum(y_filtered)
     y_max = maximum(y_filtered)
@@ -465,7 +696,7 @@ function plot_pifield(i, sim1; paper=false)
     ax = Axis(fig[1, 1];
               xlabel=L"x",
               ylabel=L"\Pi_\mathrm{r}",
-              title=L"t=%$(round(t, digits=3))",
+              title=L"t=%$(round(t, digits=5))",
               limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
 
     lines!(ax, x_filtered, y_filtered; label=L"\Pi_r")
@@ -499,20 +730,11 @@ function plot_total_pifield(i, sim1; paper=false)
     end
     t = sim1.sol.t[i]
     k = sim1.params.k
-    Nosc = sim1.params.Nosc
-    T = 2π / sqrt(abs(k))
-    tf = Nosc * T
+    tf = sim1.sol.t[end]
 
     # Create figure and axis
 
-    c = get_velocity(sim1)
-    L = sim1.params.L
-    if iszero(t)
-        x_range = (-L / 2, L / 2)
-    else
-        x_range = (-c * t, c * t)
-    end
-    @show x_range
+    x_range = (-tf, tf)
     # Filter sim1 data (640 points)
     mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
     x_filtered = sim1.params.x[mask]  # ~320 elements if symmetric around 0
@@ -527,20 +749,20 @@ function plot_total_pifield(i, sim1; paper=false)
     y_max = maximum(y_filtered)
     padding = 0.1 * (y_max - y_min)  # Add 10% padding
     y_limits = (y_min - padding, y_max + padding)
+    ps = ScalarField.Πs.(x_filtered, xp, vp, q)
 
     fig = Figure(; size=(253, 200))
     ax = Axis(fig[1, 1];
               xlabel=L"x",
-              ylabel=L"\Pi_\mathrm{r}",
+              ylabel=L"\Pi",
               title=L"t=%$(round(t, digits=3))",
               limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
 
     lines!(ax, x_filtered, y_filtered; label=L"\Pi_r")
-    lines!(ax, x_filtered, y_filtered .+ ScalarField.Πs.(x_filtered, xp, vp, q);
-           label=L"\Pi")
+    lines!(ax, x_filtered, y_filtered .+ ps; label=L"\Pi")
 
-    # lines!(ax, x_filtered, ScalarField.Πs.(x_filtered, q, xp, vp); label=L"\Pi_s")
-    # lines!(ax, x_filtered, y_filtered .+ ScalarField.Πs.(x_filtered, q, xp, vp);
+    # lines!(ax, x_filtered, ScalarField.Πs.(x_filtered, xp, vp, q); label=L"\Pi_s")
+    # lines!(ax, x_filtered, y_filtered .+ ScalarField.Πs.(x_filtered, xp, vp, q);
     #        label=L"\Pi")
 
     vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
@@ -633,25 +855,19 @@ function plot_pifield_resolutions(i, sim1, sim2, sim4; paper=false)
     return fig
 end
 
-function plot_psifield(i, sim1; paper=false)
+function plot_regular_psifield(i, sim1; paper=false)
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
     # Get time points and assert equality
     if i == -1
         i = lastindex(sim1.sol.t)
     end
-    t1 = sim1.sol.t[i]
-    t = t1
+    ti = sim1.sol.t[i]
+    tf = sim1.sol.t[end]
 
     # Create figure and axis
 
-    c = get_velocity(sim1)
-    L = sim1.params.L
-    if iszero(t)
-        x_range = (-L / 2, L / 2)
-    else
-        x_range = (-c * t, c * t)
-    end
+    x_range = (-tf, tf)
 
     # Filter sim1 data (640 points)
     mask1 = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
@@ -672,13 +888,13 @@ function plot_psifield(i, sim1; paper=false)
     ax = Axis(fig[1, 1];
               xlabel=L"x",
               ylabel=L"\Psi_\mathrm{r}",
-              title=L"t=%$(round(t, digits=3))")
+              title=L"t=%$(round(ti, digits=3))")
     # ,
     # limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
     # Plot the data
     lines!(ax, x1_filtered, y1_filtered; label=L"\Psi_r")
-    # lines!(ax, x1_filtered, ScalarField.Ψs.(x1_filtered, q, xp, vp); label=L"\Psi_s")
-    # lines!(ax, x1_filtered, y1_filtered .+ ScalarField.Ψs.(x1_filtered, q, xp, vp);
+    # lines!(ax, x1_filtered, ScalarField.Ψs.(x1_filtered, xp, vp, q); label=L"\Psi_s")
+    # lines!(ax, x1_filtered, y1_filtered .+ ScalarField.Ψs.(x1_filtered, xp, vp, q);
     #        linestyle=:dash, label=L"\Psi")
 
     apply_scientific_notation_if_needed!(ax)
@@ -698,6 +914,232 @@ function plot_psifield(i, sim1; paper=false)
         save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
+end
+
+function plot_total_psifield(i, sim1; paper=false)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+    # Get time points and assert equality
+    if i == -1
+        i = lastindex(sim1.sol.t)
+    end
+    t = sim1.sol.t[i]
+    k = sim1.params.k
+    tf = sim1.sol.t[end]
+
+    # Create figure and axis
+
+    x_range = (-tf, tf)
+    # Filter sim1 data (640 points)
+    mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
+    x_filtered = sim1.params.x[mask]  # ~320 elements if symmetric around 0
+    y_filtered = sim1.sol.u[i].x[1][mask, 1]  # Matches x1_filtered length
+    q = sim1.params.q
+    xp = sim1.sol.u[i].x[2][2]
+    vp = sim1.sol.u[i].x[2][3]
+    ys = ScalarField.Ψs.(x_filtered, xp, vp, q)
+
+    y_min = minimum(ys)
+    y_max = maximum(ys)
+    padding = 0.1 * (y_max - y_min)  # Add 10% padding
+    y_limits = (y_min - padding, y_max + padding)
+
+    fig = Figure(; size=(253, 200))
+    ax = Axis(fig[1, 1];
+              xlabel=L"x",
+              ylabel=L"\Psi",
+              title=L"t=%$(round(t, digits=3))",
+              limits=(x_range[1], x_range[2], y_limits[1], y_limits[2]))
+
+    lines!(ax, x_filtered, y_filtered; label=L"\Psi_r")
+    lines!(ax, x_filtered, y_filtered .+ ys; label=L"\Psi")
+
+    lines!(ax, x_filtered, ys; label=L"\Psi_s")
+    # lines!(ax, x_filtered, ScalarField.Πs.(x_filtered, xp, vp, q); label=L"\Pi_s")
+    # lines!(ax, x_filtered, y_filtered .+ ScalarField.Πs.(x_filtered, xp, vp, q);
+    #        label=L"\Pi")
+
+    vlines!(ax, [xp]; color=:darkgray, linestyle=:dash, linewidth=0.8)  # Add vertical line
+    # Add legend at the bottom
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal,
+                 tellwidth=false, tellheight=true)
+
+    rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
+    rowgap!(fig.layout, 0)  # Small gap between plot and legend
+    colsize!(fig.layout, 1, Relative(0.9))
+    # Save the figure
+
+    # Save the figure
+    savename = simple_name("total_psifield", i)
+    save(joinpath(get_fig_path(), savename), fig)
+    if paper
+        save(joinpath(get_paper_fig_path(), savename), fig)
+    end
+    return fig
+end
+
+function particle_centered_field_slice(i, sim, component)
+    t = sim.sol.t[i]
+    c = get_velocity(sim)
+    L = sim.params.L
+
+    if iszero(t)
+        x_range = (-L / 2, L / 2)
+    else
+        x_range = (-c * t, c * t)
+    end
+
+    x = sim.params.x
+    mask = (x .>= x_range[1]) .& (x .<= x_range[2])
+    xp = sim.sol.u[i].x[2][2]
+    ξ = x[mask] .- xp
+    y = sim.sol.u[i].x[1][mask, component]
+    return ξ, y, xp, t
+end
+
+function plot_field_resolutions_particle_centered(i, sim1, sim2, sim4;
+                                                  component, ylabel, basename,
+                                                  paper=false)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+
+    t1 = sim1.sol.t[i]
+    t2 = sim2.sol.t[2i - 1]
+    t4 = sim4.sol.t[4i - 3]
+    @assert t1 == t2
+    @assert t2 == t4
+    t = t1
+
+    ξ1, y1, _, _ = particle_centered_field_slice(i, sim1, component)
+    ξ2, y2, _, _ = particle_centered_field_slice(2i - 1, sim2, component)
+    ξ4, y4, _, _ = particle_centered_field_slice(4i - 3, sim4, component)
+
+    y_min = minimum([minimum(y1), minimum(y2), minimum(y4)])
+    y_max = maximum([maximum(y1), maximum(y2), maximum(y4)])
+    padding = 0.1 * (y_max - y_min + eps(eltype(y1)))
+    ξ_min = minimum([minimum(ξ1), minimum(ξ2), minimum(ξ4)])
+    ξ_max = maximum([maximum(ξ1), maximum(ξ2), maximum(ξ4)])
+
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
+    ax = Axis(fig[1, 1];
+              xlabel=L"\xi = x - z_p(t)",
+              ylabel=ylabel,
+              title=L"t=%$(round(t, digits=3))",
+              limits=(ξ_min, ξ_max, y_min - padding, y_max + padding))
+
+    lines!(ax, ξ1, y1; label=L"\textrm{low}")
+    lines!(ax, ξ2, y2; label=L"\textrm{mid}")
+    lines!(ax, ξ4, y4; label=L"\textrm{high}")
+    vlines!(ax, [0.0]; color=:darkgray, linestyle=:dash, linewidth=0.8)
+
+    Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+    rowsize!(fig.layout, 1, Auto())
+    rowsize!(fig.layout, 2, Relative(0.1))
+    rowgap!(fig.layout, 0)
+    colsize!(fig.layout, 1, Relative(0.9))
+
+    savename = simple_name(basename, t)
+    save(joinpath(get_fig_path(), savename), fig)
+    if paper
+        save(joinpath(get_paper_fig_path(), savename), fig)
+    end
+    return fig
+end
+
+function plot_pifield_resolutions_particle_centered(i, sim1, sim2, sim4; paper=false)
+    return plot_field_resolutions_particle_centered(i, sim1, sim2, sim4;
+                                                    component=1,
+                                                    ylabel=L"\Pi_\mathrm{r}",
+                                                    basename="pifield_res_particle_centered",
+                                                    paper=paper)
+end
+
+function plot_psifield_resolutions_particle_centered(i, sim1, sim2, sim4; paper=false)
+    return plot_field_resolutions_particle_centered(i, sim1, sim2, sim4;
+                                                    component=2,
+                                                    ylabel=L"\Psi_\mathrm{r}",
+                                                    basename="psifield_res_particle_centered",
+                                                    paper=paper)
+end
+
+function particle_centered_self_convergence_factor(sim1, sim2, sim4, component)
+    nt = length(sim1.sol.t)
+    convfac = zeros(nt)
+
+    for i in 2:nt
+        t1 = sim1.sol.t[i]
+        t2 = sim2.sol.t[2i - 1]
+        t4 = sim4.sol.t[4i - 3]
+        @assert t1 == t2
+        @assert t2 == t4
+
+        ξ1, y1, _, _ = particle_centered_field_slice(i, sim1, component)
+        ξ2, y2, _, _ = particle_centered_field_slice(2i - 1, sim2, component)
+        ξ4, y4, _, _ = particle_centered_field_slice(4i - 3, sim4, component)
+        if min(length(ξ1), length(ξ2), length(ξ4)) < 2
+            convfac[i] = NaN
+            continue
+        end
+
+        ξref = ξ1
+        y1ref = y1
+
+        interp2 = particle_centered_interpolant(ξ2, y2)
+        interp4 = particle_centered_interpolant(ξ4, y4)
+        y2ref = interp2.(ξref)
+        y4ref = interp4.(ξref)
+
+        diff1 = y1ref .- y2ref
+        diff2 = y2ref .- y4ref
+        convfac[i] = norm(diff1, 1) / max(norm(diff2, 1), eps(eltype(convfac)))
+    end
+    return convfac
+end
+
+function plot_field_self_convergence_order_particle_centered(sim1, sim2, sim4;
+                                                             component, title, basename,
+                                                             paper=false)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+
+    convfac = particle_centered_self_convergence_factor(sim1, sim2, sim4, component)
+
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
+    ax = Axis(fig[1, 1];
+              xlabel=L"t",
+              title=title,
+              limits=(0, sim1.sol.t[end], 0, 4))
+    mask = isfinite.(convfac[2:end]) .& (convfac[2:end] .> 0)
+    lines!(ax, sim1.sol.t[2:end][mask], log2.(convfac[2:end][mask]); linewidth=1)
+
+    rowsize!(fig.layout, 1, Auto())
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowgap!(fig.layout, 0)
+
+    savename = simple_name(basename)
+    save(joinpath(get_fig_path(), savename), fig)
+    if paper
+        save(joinpath(get_paper_fig_path(), savename), fig)
+    end
+    return fig
+end
+
+function plot_pifield_self_convergence_order_particle_centered(sim1, sim2, sim4;
+                                                               paper=false)
+    return plot_field_self_convergence_order_particle_centered(sim1, sim2, sim4;
+                                                               component=1,
+                                                               title=L"\textrm{Self Convergence Order of }\Pi_\mathrm{r}\textrm{ in } \xi",
+                                                               basename="pifield_convord_particle_centered_potential",
+                                                               paper=paper)
+end
+
+function plot_psifield_self_convergence_order_particle_centered(sim1, sim2, sim4;
+                                                                paper=false)
+    return plot_field_self_convergence_order_particle_centered(sim1, sim2, sim4;
+                                                               component=2,
+                                                               title=L"\textrm{Self Convergence Order of }\Psi_\mathrm{r}\textrm{ in } \xi",
+                                                               basename="psifield_convord_particle_centered_potential",
+                                                               paper=paper)
 end
 
 function plot_psifield_resolutions(i, sim1, sim2, sim4; paper=false)
@@ -914,11 +1356,12 @@ function plot_particle_position(sim1; invert=true, paper=false)
 
     nt = length(sim1.sol.t)
     xs1 = zeros(nt)
-    xa = zeros(nt)
+    xnr = zeros(nt)
+    non_radiative_sol = non_radiative_reference_solution(sim1)
 
     for i in 1:nt
         xs1[i] = sim1.sol.u[i].x[2][2]
-        xa[i] = harmonic_reference_motion(sim1, sim1.sol.t[i])[1]
+        xnr[i] = non_radiative_sol.u[i][2]
     end
 
     fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
@@ -927,19 +1370,20 @@ function plot_particle_position(sim1; invert=true, paper=false)
               xticks=LinearTicks(5),
               xgridvisible=true,
               ygridvisible=true,
-              limits=(-0.025, 0.025, 0, sim1.sol.t[end]))
+              limits=(1.1 * minimum(xs1), 1.1 * maximum(xs1), 0, sim1.sol.t[end]))
     # Plot the data
     if invert
-        lines!(ax, xs1, sim1.sol.t)# ; label=L"\textrm{particle 1}")
-        lines!(ax, xa, sim1.sol.t)
+        lines!(ax, xs1, sim1.sol.t; label=L"\textrm{radiative}")
+        lines!(ax, xnr, sim1.sol.t; linestyle=:dash, label=L"\textrm{non-radiative}")
         ax.xlabel = L"z\,(t\,)"
         ax.ylabel = L"t\,"
     else
-        lines!(ax, sim1.sol.t, xs1)# ; label=L"\textrm{particle 1}")
+        lines!(ax, sim1.sol.t, xs1; label=L"\textrm{radiative}")
+        lines!(ax, sim1.sol.t, xnr; linestyle=:dash, label=L"\textrm{non-radiative}")
         ax.ylabel = L"z\,(t\,)"
         ax.xlabel = L"t\,"
     end
-    # leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
 
     # Adjust layout to ensure proper spacing
     #rowsize!(fig.layout, 1, Relative(1.1))  # Let the axis size adjust
@@ -948,8 +1392,9 @@ function plot_particle_position(sim1; invert=true, paper=false)
     #rowgap!(fig.layout, 0)                 # Gap between plot and legend
 
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
-    rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
+    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    rowgap!(fig.layout, 0)                 # Gap between plot and legend
 
     # Save the figure
     # Save the figure
@@ -967,24 +1412,19 @@ function plot_particle_velocity(sim1; paper=false)
     set_theme!(mytheme)
     # Get time points and assert equality
 
-    # Create figure and axis
-    L = sim1.params.L
-    x_range = (-L / 2, L / 2)
-    mask = (sim1.params.x .>= -L / 2) .& (sim1.params.x .<= L / 2)
-    x_filtered = sim1.params.x[mask]
-
     nt = length(sim1.sol.t)
     xs1 = zeros(nt)
+    vnr = zeros(nt)
+    non_radiative_sol = non_radiative_reference_solution(sim1)
     for i in 1:nt
         xs1[i] = sim1.sol.u[i].x[2][3]
+        vnr[i] = non_radiative_sol.u[i][3]
     end
 
     fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1]; title=L"\textrm{Particle Velocity}")
-    # Plot the data
-    # lines!(ax, sim1.sol.t, xs1; label=L"\textrm{particle 1}")
-
-    lines!(ax, sim1.sol.t, tanh.(xs1); label=L"\textrm{particle 1}")
+    lines!(ax, sim1.sol.t, xs1; label=L"\textrm{radiative}")
+    lines!(ax, sim1.sol.t, vnr; linestyle=:dash, label=L"\textrm{non-radiative}")
     ax.ylabel = L"v(t)"
     ax.xlabel = L"t"
     leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
@@ -1024,10 +1464,6 @@ function plot_particle_mass(sim1; paper=false)
 
     nt = length(sim1.sol.t)
     m = zeros(nt)
-    m2 = zeros(nt)
-    # for i in 1:nt
-    #     m[i] = sim1.sol.u[i].x[2][1]
-    # end
 
     k = sim1.params.k
     q = sim1.params.q
@@ -1035,41 +1471,13 @@ function plot_particle_mass(sim1; paper=false)
     h = sim1.params.dx
     V(x) = InitialData.Harmonic(x, k)
     m0 = sim1.sol.u[1].x[2][1]
+    mm = zeros(nt)
     for i in 1:nt
-        # z = sim1.sol.u[i].x[2][2]
-        # v = sim1.sol.u[i].x[2][3]
-        # Φr = @view sim1.sol.u[i].x[1][mask, 3]
-        # Πr = @view sim1.sol.u[i].x[1][mask, 1]
-        # Ψr = @view sim1.sol.u[i].x[1][mask, 2]
-        # # interpolator_Ψ = PCHIPInterpolation(Ψr, x_filtered;
-        # #                                     extrapolation=ExtrapolationType.Extension)
-        # # interpolator_Π = PCHIPInterpolation(Πr, x_filtered;
-        # #                                     extrapolation=ExtrapolationType.Extension)
-        # interpolator_Φ = PCHIPInterpolation(Φr, x_filtered;
-        #                                     extrapolation=ExtrapolationType.Extension)
+        z = sim1.sol.u[i].x[2][2]
+        Q_field = sim1.sol.u[i].x[1]
+        Φrz = ODE.gather_muscl(@view(Q_field[:, 3]), z, sim1.sol.prob.p)
 
-        # # Πrz = interpolator_Π(z)
-        # # Ψrz = interpolator_Ψ(z)
-        # Φrz = interpolator_Φ(z)
-
-        # a2 = 1.0 - v * v
-        # γ = 1.0 / sqrt(a2)
-        # temp = @. q * sign.(xs .- z) * (3Π * v + Ψ * (1 + 2v^2)) / (2a2^2.5)
-        # m2[i] = (m0 + q * Φr) / a2^1.5 - trapezoidal(temp, dx)
-
-        # term1 = @. 0.25q^2 * sign.(x_filtered - z)^2 * γ^3
-
-        #term2 = @. q * sign.(xsm - z) * (3Πr * v + Ψr * (1 + 2v^2)) / (2a2^2.5)
-        # term2 = @. 0.5q * sign.(x_filtered - z) * (3Πr * v + Ψr * (1 + 2v^2)) * γ^5
-        # # term3 = @. -δ * (q * Φr) * γ^3 + term2 + term1
-        # # m = -m0 * γ^3 + trapezoidal(term3, dx)
-        # term3 = @. term2 + term1
-        # m[i] = -1 * (-(m0 + q * Φrz) * γ^3 + trapezoidal(term3, dx))
-        # term2 = @. 0.5q * γ^5 * sign.(x_filtered - z) * (3Πr * v + Ψr * (1 + 2 * v^2))
-        # term3 = @. -δ * (q * Φr) * γ^3 + term2 + term1
-        # m = -m0 * γ^3 + trapezoidal(term3, dx)
-        # term3 = @. term2 + 0term1
-        # m[i] = abs(-(m0 + 2q * Φrz))
+        mm[i] = m0 + q * Φrz
         m[i] = sim1.sol.u[i].x[2][1]
     end
 
@@ -1079,14 +1487,15 @@ function plot_particle_mass(sim1; paper=false)
     # Plot the data
     # lines!(ax, sim1.sol.t, m; label=L"\textrm{particle}")
     lines!(ax, sim1.sol.t, m; label=L"\textrm{particle mass}")
+    lines!(ax, sim1.sol.t, mm; label=L"\textrm{particle mass}")
     ax.ylabel = L"m(t)"
     ax.xlabel = L"t"
-    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+    # leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
 
     # Adjust layout to ensure proper spacing
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
     colsize!(fig.layout, 1, Relative(0.9))
-    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    #rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
     rowgap!(fig.layout, 0)                 # Gap between plot and legend
 
     # Save the figure
@@ -1116,21 +1525,23 @@ function plot_particle_position_resolutions(sim1, sim2, sim4;
     xs1 = zeros(nt)
     xs2 = zeros(nt)
     xs4 = zeros(nt)
+    xnr = zeros(nt)
+    non_radiative_sol = non_radiative_reference_solution(sim1)
 
     for i in 1:nt
         xs1[i] = sim1.sol.u[i].x[2][2]
         xs2[i] = sim2.sol.u[2i - 1].x[2][2]
         xs4[i] = sim4.sol.u[4i - 3].x[2][2]
+        xnr[i] = non_radiative_sol.u[i][2]
     end
-
-    analytic(t) = harmonic_reference_motion(sim1, t)[1]
 
     fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     plt = fig[1, 1] = GridLayout()
     leg1 = fig[2, 1] = GridLayout()
 
-    ax = Axis(plt[1, 1]; title=L"\textrm{Particle Position}",
-              limits=(-0.025, 0.025, 0, sim1.sol.t[end]))
+    ax = Axis(plt[1, 1]; title=L"\textrm{Particle Position}")
+    #,
+    #          limits=(-0.025, 0.025, 0, sim1.sol.t[end]))
     palette = mytheme.palette
     color_ref = palette.color[][1]
     color_low = palette.color[][2]
@@ -1142,7 +1553,7 @@ function plot_particle_position_resolutions(sim1, sim2, sim4;
 
     # Plot the data
     if invert
-        lines!(ax, analytic.(sim1.sol.t), sim1.sol.t; color=color_ref, linestyle=:solid,
+        lines!(ax, xnr, sim1.sol.t; color=color_ref, linestyle=:solid,
                linewidth=1.2)
         lines!(ax, xs4, sim1.sol.t; color=color_high, linestyle=high_style, linewidth=1.4)
         lines!(ax, xs2, sim1.sol.t; color=color_mid, linestyle=mid_style, linewidth=1.4)
@@ -1151,9 +1562,10 @@ function plot_particle_position_resolutions(sim1, sim2, sim4;
         ax.xlabel = L"z(t)"
         ax.ylabel = L"t"
     else
-        lines!(ax, sim1.sol.t, xs1)
-        lines!(ax, sim1.sol.t, xs2)
-        lines!(ax, sim1.sol.t, xs4)
+        lines!(ax, sim1.sol.t, xnr; color=color_ref, linestyle=:solid, linewidth=1.2)
+        lines!(ax, sim1.sol.t, xs4; color=color_high, linestyle=high_style, linewidth=1.4)
+        lines!(ax, sim1.sol.t, xs2; color=color_mid, linestyle=mid_style, linewidth=1.4)
+        lines!(ax, sim1.sol.t, xs1; color=color_low, linestyle=low_style, linewidth=1.6)
         ax.ylabel = L"z(t)"
         ax.xlabel = L"t"
     end
@@ -1199,14 +1611,15 @@ function plot_particle_velocity_resolutions(sim1, sim2, sim4; invert=true, paper
     xs1 = zeros(nt)
     xs2 = zeros(nt)
     xs4 = zeros(nt)
+    vnr = zeros(nt)
+    non_radiative_sol = non_radiative_reference_solution(sim1)
 
     for i in 1:nt
         xs1[i] = sim1.sol.u[i].x[2][3]
         xs2[i] = sim2.sol.u[2i - 1].x[2][3]
         xs4[i] = sim4.sol.u[4i - 3].x[2][3]
+        vnr[i] = non_radiative_sol.u[i][3]
     end
-
-    analytic(t) = harmonic_reference_motion(sim1, t)[2]
 
     fig = Figure(; size=(253, 200))
     plt = fig[1, 1] = GridLayout()
@@ -1223,7 +1636,7 @@ function plot_particle_velocity_resolutions(sim1, sim2, sim4; invert=true, paper
     high_style = :dot
 
     # Plot the data
-    lines!(ax, sim1.sol.t, analytic.(sim1.sol.t); color=color_ref, linestyle=:solid,
+    lines!(ax, sim1.sol.t, vnr; color=color_ref, linestyle=:solid,
            linewidth=1.2)
     lines!(ax, sim1.sol.t, xs4; color=color_high, linestyle=high_style, linewidth=1.4)
     lines!(ax, sim1.sol.t, xs2; color=color_mid, linestyle=mid_style, linewidth=1.4)
@@ -1255,6 +1668,71 @@ function plot_particle_velocity_resolutions(sim1, sim2, sim4; invert=true, paper
     # Removed colsize! restriction to fix right spacing
 
     savename = simple_name("particle_velocity_resolutions")
+    save(joinpath(get_fig_path(), savename), fig)
+    if paper
+        save(joinpath(get_paper_fig_path(), savename), fig)
+    end
+    return fig
+end
+
+function plot_self_force_resolutions(sim1, sim2, sim4; paper=false)
+    CairoMakie.activate!()
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    nt = length(sim1.sol.t)
+    f1 = zeros(nt)
+    f2 = zeros(nt)
+    f4 = zeros(nt)
+
+    for i in 1:nt
+        f1[i] = relativistic_self_force_at_particle(sim1, i)
+        f2[i] = relativistic_self_force_at_particle(sim2, 2i - 1)
+        f4[i] = relativistic_self_force_at_particle(sim4, 4i - 3)
+    end
+
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
+    plt = fig[1, 1] = GridLayout()
+    leg1 = fig[2, 1] = GridLayout()
+
+    ax = Axis(plt[1, 1]; title=L"\textrm{Self Force}")
+    palette = mytheme.palette
+    color_zero = palette.color[][1]
+    color_low = palette.color[][2]
+    color_mid = palette.color[][3]
+    color_high = palette.color[][4]
+    low_style = :solid
+    mid_style = :dash
+    high_style = :dot
+
+    lines!(ax, sim1.sol.t, zeros(nt); color=color_zero, linestyle=:solid, linewidth=1.2)
+    lines!(ax, sim1.sol.t, f4; color=color_high, linestyle=high_style, linewidth=1.4)
+    lines!(ax, sim1.sol.t, f2; color=color_mid, linestyle=mid_style, linewidth=1.4)
+    lines!(ax, sim1.sol.t, f1; color=color_low, linestyle=low_style, linewidth=1.6)
+
+    ax.ylabel = L"F_{\mathrm{sf}}(t)"
+    ax.xlabel = L"t"
+    apply_scientific_notation_if_needed!(ax)
+
+    Legend(leg1[1, 1],
+           [LineElement(; color=color_low, linestyle=low_style),
+            LineElement(; color=color_mid, linestyle=mid_style),
+            LineElement(; color=color_high, linestyle=high_style),
+            LineElement(; color=color_zero, linestyle=:solid)],
+           [L"\textrm{low res}", L"\textrm{mid res}", L"\textrm{high res}", L"0"];
+           halign=:center,
+           valign=:top,
+           tellwidth=false,
+           nbanks=2,
+           tellheight=true,
+           orientation=:horizontal)
+
+    rowsize!(fig.layout, 1, Auto())
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowsize!(fig.layout, 2, Auto())
+    rowgap!(fig.layout, 0)
+
+    savename = simple_name("self_force_resolutions")
     save(joinpath(get_fig_path(), savename), fig)
     if paper
         save(joinpath(get_paper_fig_path(), savename), fig)
@@ -1434,6 +1912,87 @@ function plot_particle_velocity_self_convergence_order(sim1, sim2, sim4; paper=f
     return fig
 end
 
+function plot_self_force_self_convergence_order(sim1, sim2, sim4; paper=false)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+    nt = length(sim1.sol.t)
+
+    convfac = zeros(nt)
+    for i in 1:nt
+        f1 = relativistic_self_force_at_particle(sim1, i)
+        f2 = relativistic_self_force_at_particle(sim2, 2i - 1)
+        f4 = relativistic_self_force_at_particle(sim4, 4i - 3)
+
+        diff1 = abs(f1 - f2)
+        diff2 = abs(f2 - f4)
+        convfac[i] = diff1 / (diff2 + eps(Float64))
+    end
+
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
+    ax = Axis(fig[1, 1];
+              xlabel=L"t",
+              title=L"\textrm{Convergence order of } F_{\mathrm{sf}}(t)")
+    lines!(ax, sim1.sol.t[2:end], log2.(convfac[2:end]); linewidth=1)
+
+    rowsize!(fig.layout, 1, Auto())
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowgap!(fig.layout, 0)
+
+    savename = simple_name("self_force_convord_potential")
+    save(joinpath(get_fig_path(), savename), fig)
+    if paper
+        save(joinpath(get_paper_fig_path(), savename), fig)
+    end
+    return fig
+end
+
+function plot_self_force_diff_scaled(sim1, sim2, sim4; paper=false)
+    CairoMakie.activate!()
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+    nt = length(sim1.sol.t)
+
+    diff1 = zeros(nt)
+    diff2_scaled = zeros(nt)
+    for i in 1:nt
+        f1 = relativistic_self_force_at_particle(sim1, i)
+        f2 = relativistic_self_force_at_particle(sim2, 2i - 1)
+        f4 = relativistic_self_force_at_particle(sim4, 4i - 3)
+
+        diff1[i] = abs(f1 - f2)
+        diff2_scaled[i] = 2^1 * abs(f2 - f4)
+    end
+
+    fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
+    ax = Axis(fig[1, 1];
+              xlabel=L"t",
+              ylabel=L"\Delta F_{\mathrm{sf}}",
+              title=L"\textrm{Scaled Self-Force Error}")
+
+    palette = mytheme.palette
+    color1 = palette.color[][1]
+    color2 = palette.color[][2]
+
+    lines!(ax, sim1.sol.t, diff1;
+           label=L"|F_{\mathrm{sf},\mathrm{low}} - F_{\mathrm{sf},\mathrm{mid}}|",
+           color=color1)
+    lines!(ax, sim1.sol.t, diff2_scaled;
+           label=L"2 \cdot |F_{\mathrm{sf},\mathrm{mid}} - F_{\mathrm{sf},\mathrm{high}}|",
+           color=color2, linestyle=:dash)
+
+    axislegend(ax; position=:lt, labelsize=10, rowgap=0.1)
+    rowsize!(fig.layout, 1, Auto())
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowgap!(fig.layout, 0)
+
+    savename = simple_name("self_force_diff_scaled_potential")
+    save(joinpath(get_fig_path(), savename), fig)
+    if paper
+        save(joinpath(get_paper_fig_path(), savename), fig)
+    end
+    return fig
+end
+
 ## 
 function plot_energy(sim1; paper=false)
     CairoMakie.activate!()
@@ -1446,8 +2005,10 @@ function plot_energy(sim1; paper=false)
 
     nt = length(sim1.sol.t)
 
+    dt = sim1.params.dt
     q = sim1.params.q
     h = sim1.params.dx
+    m0 = 1.0
 
     k = sim1.params.k
     V(x) = InitialData.Harmonic(x, k)
@@ -1455,22 +2016,37 @@ function plot_energy(sim1; paper=false)
     field_energy = zeros(nt)
     potential_energy = zeros(nt)
     kinetic_energy = zeros(nt)
+    boundary_flux = zeros(nt)
+    particle_cross_term = zeros(nt)
+    self_energy = zeros(nt)
     for i in 1:nt
         m = sim1.sol.u[i].x[2][1]
         z = sim1.sol.u[i].x[2][2]
         v = sim1.sol.u[i].x[2][3]
-        Πr = @view sim1.sol.u[i].x[1][mask, 1]
-        Ψr = @view sim1.sol.u[i].x[1][mask, 2]
+        Q_field = sim1.sol.u[i].x[1]
+        Πr = @view Q_field[mask, 1]
+        Ψr = @view Q_field[mask, 2]
+        Φrz = ODE.gather_muscl(@view(Q_field[:, 3]), z, sim1.sol.prob.p)
+
         Πs = ScalarField.Πs.(x_filtered, z, v, q)
         Ψs = ScalarField.Ψs.(x_filtered, z, v, q)
+        Πtot = Πr .+ Πs
+        Ψtot = Ψr .+ Ψs
 
-        Hf = @. 0.5 * ((Πr + Πs)^2 + (Ψr + Ψs)^2)
-        field_energy[i] = trapezoidal(Hf, h)
+        Hf = @. 0.5 * (Πr^2 + Ψr^2) + Πr * Πs + Ψr * Ψs
+        Hfr = @. 0.5 * (Πr^2 + Ψr^2)
+        field_energy[i] = trapezoidal(Hf, h) #- q^2 / 8
         potential_energy[i] = V(z)
+        # With the repo convention Π = ∂ₜΦ and signature (-,+), the energy flux is
+        # T^{01} = -ΠΨ, so the boundary contribution is T^{01}(x_R)-T^{01}(x_L).
+        boundary_flux[i] = -Πtot[end] * Ψtot[end] + Πtot[1] * Ψtot[1]
 
         γ = inv(sqrt(1.0 - v * v))
-        kinetic_energy[i] = m * (γ - 1.0)
+        kinetic_energy[i] = (m0 - q * Φrz) * (γ - 1.0)
+        self_energy[i] = 0#-2q * Φrz * γ
+        particle_cross_term[i] = particle_singular_cross_term(sim1, i)
     end
+    #cumulative_boundary_flux = cumulative_trapezoidal(ts2plot, dt, boundary_flux)
 
     fig = Figure(; size=(253, 200), figure_padding=(1, 5, 5, 1))
     ax = Axis(fig[1, 1];
@@ -1481,42 +2057,48 @@ function plot_energy(sim1; paper=false)
     color2 = palette.color[][2]
     color3 = palette.color[][3]
     color4 = palette.color[][4]
+    color5 = palette.color[][5]
+    color6 = palette.color[][6]
 
     # Plot the data
-    total_energy = field_energy .+ potential_energy .+ kinetic_energy
+    # potential_energy /= max(potential_energy...)
+    # kinetic_energy /= max(kinetic_energy...)
+    # field_energy /= max(field_energy...)
+    total_energy = field_energy .+ potential_energy .+ kinetic_energy .+ self_energy
+    # total_energy /= max(total_energy...)
+    # cumulative_boundary_flux /= max(cumulative_boundary_flux...)
 
-    ymin = minimum([minimum(field_energy), minimum(potential_energy),
-                    minimum(kinetic_energy),
-                    minimum(total_energy)])
-    ymax = maximum([maximum(field_energy), maximum(potential_energy),
-                    maximum(kinetic_energy),
-                    maximum(total_energy)])
-
-    yrange = ymax - ymin
-    if yrange == 0
-        yrange = 1.0 # Default range if flat
-    end
-
-    ylims!(ax, ymin - 0.1 * yrange, ymax + 0.1 * yrange)
+    # ylims!(ax, ymin - 0.1 * yrange, ymax + 0.1 * yrange)
 
     lines!(ax, ts2plot, field_energy; label=L"E_{\mathrm{field}}", color=color1,
            linewidth=1.2)
-    lines!(ax, ts2plot, potential_energy; label=L"E_{\mathrm{potential}}", color=color2,
-           linewidth=1.2)
-    lines!(ax, ts2plot, kinetic_energy; label=L"E_{\mathrm{kinetic}}", color=color3,
-           linewidth=1.2)
+    # lines!(ax, ts2plot, potential_energy; label=L"E_{\mathrm{potential}}", color=color2,
+    #        linewidth=1.2)
+    # lines!(ax, ts2plot, kinetic_energy; label=L"E_{\mathrm{kinetic}}", color=color3,
+    #        linewidth=1.2)
+    # # lines!(ax, ts2plot, self_energy; label=L"E_{\mathrm{self}}", color=color4,
+    #        linewidth=1.2)
     lines!(ax, ts2plot, total_energy;
            label=L"E_{\mathrm{total}}", color=color4, linewidth=1.2)
+    # # lines!(ax, ts2plot, particle_cross_term;
+    #        label=L"\Psi_r(z)\bar{\Psi}_s-\Pi_r(z)\bar{\Pi}_s",
+    #        color=color5, linewidth=1.2, linestyle=:dash)
+    # # lines!(ax, ts2plot[1:(end - 30)], boundary_flux[1:(end - 30)];
+    #        label=L"\mathcal{F}", color=color5, linewidth=1.2)
+    # lines!(ax, ts2plot, corrected_total_energy;
+    #        label=L"E_{\mathrm{total}}+\mathcal{F}", color=color6, linewidth=1.2,
+    #        linestyle=:dash)
 
     # ax.ylabel = L""
     ax.xlabel = L"t"
 
-    leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
+    leg = Legend(fig[2, 1], ax; orientation=:horizontal, nbanks=2,
+                 tellwidth=false, tellheight=true)
 
     # Adjust layout to ensure proper spacing
     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
     colsize!(fig.layout, 1, Relative(0.9))
-    rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
+    rowsize!(fig.layout, 2, Relative(0.16)) # Space for the legend (adjustable)
     rowgap!(fig.layout, 0)                 # Gap between plot and legend
     # Save the figure
     savename = simple_name("energy_conservation")
@@ -1563,15 +2145,19 @@ function plot_raw_energy_balance(sim1; paper=false)
         Πtot = Πr .+ Πs
         Ψtot = Ψr .+ Ψs
 
-        γ = inv(sqrt(1.0 - v * v))
-        particle_energy[i] = (γ - 1.0) * m + V(z)
+        Φrz = ODE.gather_muscl(@view(sim1.sol.u[i].x[1][:, 3]), z, sim1.sol.prob.p)
 
-        Hfield = @. 0.5 * (Πtot^2 + Ψtot^2)
+        m0 = hasproperty(sim1.params, :m0) ? sim1.params.m0 : 1.0
+        γ = inv(sqrt(1.0 - v * v))
+        particle_energy[i] = (m0 - q * Φrz) * (γ - 1.0) + V(z)
+
+        Hfield = @. 0.5 * (-Πtot^2 + Ψtot^2)
         field_energy[i] = trapezoidal(Hfield, h)
         inside_energy[i] = particle_energy[i] + field_energy[i]
 
-        # On a finite interval, energy that leaves through xL/xR must be accounted
-        # for explicitly through the outward boundary flux.
+        # With Π = ∂ₜΦ and signature (-,+), T^{01} = -ΠΨ. On a finite interval,
+        # energy that leaves through xL/xR must be accounted for explicitly via
+        # T^{01}(x_R)-T^{01}(x_L).
         outward_flux[i] = -Πtot[end] * Ψtot[end] + Πtot[1] * Ψtot[1]
     end
 
@@ -1698,710 +2284,771 @@ function plot_fluxes(r, sim1; paper=false)
     rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
     rowgap!(fig.layout, 0)                 # Gap between plot and legend
     # Save the figure
-    savename = name("particle_potential/fluxes", sim1)
-    save(joinpath(FIG_PATH, savename), fig)
+    savename = simple_name("fluxes")
+    save(joinpath(get_fig_path(), savename), fig)
     if paper
         save(joinpath(get_paper_fig_path(), savename), fig)
     end
     return fig
 end
 
-########################################
-
-# function plot_work(sim1; F=2, paper=false)
-#     CairoMakie.activate!()
-#     mytheme = mytheme_aps()
-#     set_theme!(mytheme)
-#     # Get time points and assert equality
-
-#     # Create figure and axis
-#     L = sim1.params.L
-#     x_range = (-L / F, L / F)
-#     @show x_range
-#     mask = (sim1.params.x .>= -L / F) .& (sim1.params.x .<= L / F)
-#     x_filtered = sim1.params.x[mask]
-
-#     nt = length(sim1.sol.t)
-#     work = zeros(nt)
-#     work_potential = zeros(nt)
-#     dEfrdt_analytic = zeros(nt)
-#     dEfrdt_numerical = zeros(nt)
-#     dEpdt = zeros(nt)
-#     fluxes1 = zeros(nt)
-#     temp = zeros(nt)
-#     q = sim1.params.q
-#     sf = sim1.params.sf
-#     dx = sim1.params.dx
-#     xs = sim1.params.x
-
-#     function deriv(y, h)
-#         n = length(y)
-#         dy = zeros(eltype(y), n)
-#         for i in 2:(n - 1)
-#             dy[i] = (y[i - 1] - y[i + 1]) / (2h)
-#         end
-
-#         dy[1] = (y[1] - y[2]) / h
-#         dy[n] = (y[n - 1] - y[n]) / h
-#         return dy
-#     end
-
-#     k = sim1.params.k
-#     V(x) = InitialData.Harmonic(x, k)
-#     dxV(x) = InitialData.dxHarmonic(x, k)
-#     m0 = sim1.sol.u[1].x[2][1]
-#     for i in 1:nt
-#         m = sim1.sol.u[i].x[2][1]
-#         z = sim1.sol.u[i].x[2][2]
-#         v = sim1.sol.u[i].x[2][3]
-#         Φr = @view sim1.sol.u[i].x[1][mask, 3]
-#         Πr = @view sim1.sol.u[i].x[1][mask, 1]
-#         Ψr = @view sim1.sol.u[i].x[1][mask, 2]
-
-#         interpolator_Φ = PCHIPInterpolation(Φr, x_filtered;
-#                                             extrapolation=ExtrapolationType.Extension)
-#         interpolator_Π = PCHIPInterpolation(Πr, x_filtered;
-#                                             extrapolation=ExtrapolationType.Extension)
-#         interpolator_Ψ = PCHIPInterpolation(Ψr, x_filtered;
-#                                             extrapolation=ExtrapolationType.Extension)
-
-#         Φrz = interpolator_Φ(z)
-#         Πrz = interpolator_Π(z)
-#         Ψrz = interpolator_Ψ(z)
-#         Φs = ScalarField.Φs.(x_filtered, q, z, v)
-#         Πs = ScalarField.Πs.(x_filtered, q, z, v)
-#         Ψs = ScalarField.Ψs.(x_filtered, q, z, v)
-#         ∂vΠs = ScalarField.∂vΠs.(x_filtered, q, z, v)
-#         ∂vΨs = ScalarField.∂vΨs.(x_filtered, q, z, v)
-#         dxΠr = deriv(Πr, dx)
-#         dxΨr = deriv(Ψr, dx)
-
-#         a2 = 1.0 - v * v
-#         γ = 1.0 / sqrt(a2)
-
-#         kinetic[i] = γ * m0
-#         potential[i] = q * V(z)
-#         self_potential[i] = -γ * q * Φrz
-
-#         particle_energy[i] = kinetic[i] + potential[i] + self_potential[i]
-#         Π = Πr .+ Πs
-#         Ψ = Ψr .+ Ψs
-#         ## This is with Φr and z as a generalized coordinate:
-#         Hfr = @. Πr * Π + 0.5 * (-Π^2 + Ψ^2) + v * (Π * ∂vΠs - Ψ * ∂vΨs)
-#         regular_field_energy[i] = trapezoidal(Hfr, dx)
-#     end
-
-#     fig = Figure(; size=(2 * 253, 2 * 200))
-#     ax = Axis(fig[1, 1];
-#               title=L"\textrm{Work}")
-#     # Plot the data
-#     lines!(ax, sim1.sol.t, work;
-#            label=L"\textrm{work}")
-#     # lines!(ax, sim1.sol.t, work_potential;
-#     #        label=L"\textrm{work of potential}")
-
-#     # lines!(ax, sim1.sol.t, work_potential .- dEfrdt;
-#     #        label=L"\textrm{work of potential}")
-
-#     # lines!(ax, sim1.sol.t, dEfrdt;
-#     #        label=L"\textrm{dE_fr/dt}")
-#     # lines!(ax, sim1.sol.t, dEfsdt;
-#     #        label=L"\textrm{dE_fs/dt}")
-#     # lines!(ax, sim1.sol.t, dEpdt; linestyle=:dash,
-#     #        label=L"\textrm{dE_p/dt}")
-#     # lines!(ax, sim1.sol.t, fluxes1;
-#     #        label=L"\textrm{flux}")
-#     # lines!(ax, sim1.sol.t, temp;
-#     #        label=L"\textrm{dEp/dt}")
-
-#     # lines!(ax, sim1.sol.t, fluxes1 .+ temp;
-#     #        label=L"\textrm{total}", linestyle=:dash)
-#     ax.ylabel = L"work"
-#     ax.xlabel = L"t"
-
-#     leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
-
-#     # Adjust layout to ensure proper spacing
-#     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
-#     colsize!(fig.layout, 1, Relative(0.9))
-#     rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
-#     rowgap!(fig.layout, 0)                 # Gap between plot and legend
-#     # Save the figure
-#     savename = name("particle_potential/work", sim1)
-#     save(joinpath(FIG_PATH, savename), fig)
-#     if paper
-#         save(joinpath(get_paper_fig_path(), savename), fig)
-#     end
-#     return fig
-# end
-
-# using RegularizationTools
-
-# function plot_balance_law(sim1; F=2, paper=false)
-#     CairoMakie.activate!()
-#     mytheme = mytheme_aps()
-#     set_theme!(mytheme)
-#     # Get time points and assert equality
-
-#     # Create figure and axis
-#     # F = 6
-#     L = sim1.params.L
-#     Nosc = sim1.params.Nosc
-#     k = sim1.params.k
-#     T = 2π / sqrt(abs(k))
-#     tf = Nosc * T
-#     L0 = 2tf
-#     x_range2 = (-L0 / 2, L0 / 2)
-#     x_range = (-L0 / 2, L0 / 2) #(-100, 100)
-#     @show x_range
-#     mask = (sim1.params.x .>= x_range[1]) .& (sim1.params.x .<= x_range[2])
-#     mask2 = (sim1.params.x .>= x_range2[1]) .& (sim1.params.x .<= x_range2[2])
-
-#     x_filtered = sim1.params.x[mask]
-#     x_filtered2 = sim1.params.x[mask2]
-
-#     nt = length(sim1.sol.t)
-#     particle_energy = zeros(nt)
-#     potential = zeros(nt)
-#     kinetic = zeros(nt)
-#     self_potential = zeros(nt)
-#     regular_field_energy = zeros(nt)
-#     # total_energyr = zeros(nt)
-#     # total_energys = zeros(nt)
-#     flux = zeros(nt)
-#     flux_analytic = zeros(nt)
-#     bl = zeros(nt)
-#     dxTi0 = zeros(nt, length(x_filtered))
-#     Hfr = zeros(nt, length(x_filtered))
-#     Hfr2 = zeros(nt, length(x_filtered))
-#     dHpdt_analytic = zeros(nt)
-#     dHfrdt_analytic2 = zeros(nt, length(x_filtered))
-#     tmp = zeros(nt, length(x_filtered))
-#     # fluxes2 = zeros(nt)
-#     # fluxes3 = zeros(nt)
-#     # fluxes4 = zeros(nt)
-
-#     dHfrdt_analytic = zeros(nt)
-
-#     q = sim1.params.q
-#     sf = sim1.params.sf
-#     dx = sim1.params.dx
-#     xs = sim1.params.x
-#     dt = sim1.params.dt
-
-#     function deriv(y, h)
-#         n = length(y)
-#         dy = zeros(eltype(y), n)
-#         for i in 2:(n - 1)
-#             dy[i] = (y[i + 1] - y[i - 1]) / (2h)
-#         end
-
-#         dy[1] = (y[1] - y[2]) / h
-#         dy[n] = (y[n - 1] - y[n]) / h
-#         return dy
-#     end
-#     # V(x) = ScalarField.Φs(x, -q, xpot, 0.0)
-
-#     V(x) = InitialData.Harmonic(x, k)
-#     dxV(x) = InitialData.dxHarmonic(x, k)
-#     m0 = sim1.sol.u[1].x[2][1]
-
-#     function delta(x, z, h)
-#         x_left = x - h / 2
-#         x_right = x + h / 2
-#         return (z >= x_left && z < x_right) ? 1.0 : 0.0
-#     end
-#     for i in 1:nt
-#         m = sim1.sol.u[i].x[2][1]
-#         z = sim1.sol.u[i].x[2][2]
-#         v = sim1.sol.u[i].x[2][3]
-#         δ = delta.(x_filtered, z, dx)
-#         ## This is with Φr and z as a generalized coordinate:
-#         Φr = @view sim1.sol.u[i].x[1][mask, 3]
-#         Πr = @view sim1.sol.u[i].x[1][mask, 1]
-#         Ψr = @view sim1.sol.u[i].x[1][mask, 2]
-
-#         interpolator_Φ = AkimaInterpolation(Φr, x_filtered;
-#                                             extrapolation=ExtrapolationType.Extension)
-#         interpolator_Π = AkimaInterpolation(Πr, x_filtered;
-#                                             extrapolation=ExtrapolationType.Extension)
-#         interpolator_Ψ = AkimaInterpolation(Ψr, x_filtered;
-#                                             extrapolation=ExtrapolationType.Extension)
-
-#         Φrz = interpolator_Φ(z)
-#         Πrz = interpolator_Π(z)
-#         Ψrz = interpolator_Ψ(z)
-#         # Φrz = Φr .* δ
-#         # Πrz = Πr .* δ
-#         # Ψrz = Ψr .* δ
-
-#         Φs = ScalarField.Φs.(x_filtered, z, v, q)
-#         Πs = ScalarField.Πs.(x_filtered, z, v, q)
-#         Ψs = ScalarField.Ψs.(x_filtered, z, v, q)
-
-#         ∂vΦs = ScalarField.Φs001.(x_filtered, z, v, q)
-#         ∂vΠs = ScalarField.Πs001.(x_filtered, z, v, q)
-#         ∂vΨs = ScalarField.Ψs001.(x_filtered, z, v, q)
-#         ∂zΠs = ScalarField.Πs010.(x_filtered, z, v, q)
-#         ∂xΨs = ScalarField.Ψs100.(x_filtered, z, v, q)
-
-#         dxΠr = deriv(Πr, dx)
-#         dxΨr = deriv(Ψr, dx)
-
-#         a2 = 1.0 - v * v
-#         γ = 1.0 / sqrt(a2)
-#         signxz = sign.(x_filtered .- z)
-
-#         δ2 = delta.(x_filtered2, z, dx)
-#         ## This is with Φr and z as a generalized coordinate:
-#         Φr2 = @view sim1.sol.u[i].x[1][mask2, 3]
-#         Πr2 = @view sim1.sol.u[i].x[1][mask2, 1]
-#         Ψr2 = @view sim1.sol.u[i].x[1][mask2, 2]
-
-#         interpolator_Φ2 = ConstantInterpolation(Φr2, x_filtered;
-#                                                 extrapolation=ExtrapolationType.Extension)
-#         interpolator_Π2 = ConstantInterpolation(Πr2, x_filtered;
-#                                                 extrapolation=ExtrapolationType.Extension)
-#         interpolator_Ψ2 = ConstantInterpolation(Ψr2, x_filtered;
-#                                                 extrapolation=ExtrapolationType.Extension)
-
-#         Φrz2 = interpolator_Φ2(z)
-#         Πrz2 = interpolator_Π2(z)
-#         Ψrz2 = interpolator_Ψ2(z)
-#         # Φrz = Φr .* δ
-#         # Πrz = Πr .* δ
-#         # Ψrz = Ψr .* δ
-
-#         Φs2 = ScalarField.Φs.(x_filtered2, z, v, q)
-#         Πs2 = ScalarField.Πs.(x_filtered2, z, v, q)
-#         Ψs2 = ScalarField.Ψs.(x_filtered2, z, v, q)
-
-#         ∂vΦs2 = ScalarField.Φs001.(x_filtered2, z, v, q)
-#         ∂vΠs2 = ScalarField.Πs001.(x_filtered2, z, v, q)
-#         ∂vΨs2 = ScalarField.Ψs001.(x_filtered2, z, v, q)
-#         ∂zΠs2 = ScalarField.Πs010.(x_filtered2, z, v, q)
-#         ∂xΨs2 = ScalarField.Ψs100.(x_filtered2, z, v, q)
-
-#         dxΠr2 = deriv(Πr2, dx)
-#         dxΨr2 = deriv(Ψr2, dx)
-
-#         signxz2 = sign.(x_filtered2 .- z)
-
-#         ### calculate Acceleration
-#         term1 = @. -q^2 * signxz2^2 / (4(-1 + v^2)^3)
-#         term2 = @. q * signxz2 * (3Πr2 * v + Ψr2 * (1 + 2v^2)) / (2a2^2.5)
-#         # term3 = @. -δ2 * (q * Φr2) * γ^3 + term2 + term1
-#         # m = -m0 * γ^3 + trapezoidal(term3, dx)
-#         term3 = @. term2 + 0term1
-#         m = -(m0 + q * Φrz2) * γ^3 + trapezoidal(term3, dx)
-
-#         temp = @. -0.5q * signxz2 * (v * dxΠr2 + dxΨr2) * γ^3
-#         # numerator = @. q * δ2 * (Ψr2 * v^2 - dxV.(x_filtered2) * a2^1.5 + Πr2 * v) * γ^3 +
-#         #                temp
-#         # acc = trapezoidal(numerator, dx) / m
-#         numerator = q * (Ψrz2 * v^2 + Πrz2 * v) * γ^3 + q * dxV(z) +
-#                     trapezoidal(temp, dx)
-#         acc = numerator / m
-#         ####
-
-#         kinetic[i] = γ * m0
-#         potential[i] = q * V(z) # trapezoidal(q * V.(x_filtered) .* δ, dx)
-#         self_potential[i] = γ * q * Φrz # trapezoidal(γ * q * Φr .* δ, dx)
-#         particle_energy[i] = kinetic[i] + potential[i] + self_potential[i]
-#         Π = Πr .+ Πs
-#         Ψ = Ψr .+ Ψs
-#         Φ = Φr .+ Φs
-
-#         tmp = @. 0.5((Πr + Πs)^2 + Ψ^2) +
-#                  v * (Π * ∂vΠs -
-#                       Ψ * ∂vΨs)
-#         regular_field_energy[i] = γ * (m0 + q * Φrz) + q * V(z) + trapezoidal(tmp, dx)
-#         ## This is with Φr and z as a generalized coordinate:
-#         # Hfr[i, :] .= @. Πr * Π + 0.5 * (-Π^2 + Ψ^2) + v * (Π * ∂vΠs - Ψ * ∂vΨs)
-#         # Hfr[i, :] .= @. 0.5(Πr^2 - 2Πr * v * ∂vΠs + Ψr * Ψr + 2Ψr * Ψs - Ψr * 2v * ∂vΨs)
-#         # term1 = @. -q * signxz * (Πr * v - Ψr * (1 - 2v^2)) / (2a2^1.5)
-#         # term1 = @. -0.5q * (Πr * v + Ψr * (-1 + 2v^2)) * γ^3
-
-#         # ##################################################################################
-#         # term2 = -q^2 * (-1 + 2v^2) / (8 * (-1 + v^2)) ## this term is the missing piece
-#         # # term2 = -0.5q^2 * v^2  ## this term is the missing piece
-#         # # D[(-1 + 2 v[t]^2)/(8 (-1 + v[t]^2)), t] // FullSimplifyterm2 = -v * acc / (4(-1 + v^2)^2)
-#         # ## but I dont remember how I derived IT !!!!
-#         # ##
-#         # # @show term2
-#         # # Hfr[i, :] .= term1
-#         # Hfr[i, :] .= @. 0.5 * (Πr^2 + Ψr^2) + signxz * term1 #+ term2 # + q^2 / 8# + q * V.(x_filtered) .* δ +
-#         # # γ * q * Φr .* δ + δ * γ * m0 #+ term2
-
-#         # ρ = q * δ
-#         # L = @. -ρ * V.(x_filtered) + 0.5 * (Π^2 - Ψ^2) - δ * m0 * sqrt(a2) -
-#         #        ρ * Φ * sqrt(a2)
-#         # DLdΠr = Π
-#         # ## maybe m0 should get removed?
-#         # # DLdz = @. Π * ∂vΠs + γ * ((δ * m0 + ρ * Φ) * v - ρ * a2 * ∂vΦs) - Ψ * ∂vΨs
-#         # DLdz = @. Π * ∂vΠs + γ * ((δ * m0 + ρ * Φ) * v - ρ * a2 * ∂vΦs) - Ψ * ∂vΨs
-#         # # DLdz = @. δ * m0 * v * γ + γ * ρ * Φ * v + Π * ∂vΠs - ρ * sqrt(a2) * ∂vΦs -
-#         # #           Ψ * ∂vΨs -
-#         # #           γ^3 * V.(x_filtered) *
-#         # #           (-∂zΠs +
-#         # #            v * (-a2 * ScalarField.Πs011.(x_filtered, z, v, q) +
-#         # #                 ScalarField.Ψs100.(x_filtered, z, v, q)) +
-#         # #            a2 * ScalarField.Ψs101.(x_filtered, z, v, q)) -
-#         # #           γ^2 * Φ *
-#         # #           (-ScalarField.Πs010.(x_filtered, z, v, q) +
-#         # #            v * (-a2 * ScalarField.Πs011.(x_filtered, z, v, q) +
-#         # #                 ScalarField.Ψs100.(x_filtered, z, v, q)) +
-#         # #            a2 * ScalarField.Ψs101.(x_filtered, z, v, q))
-
-#         # temp1 = @. (1 / 8) * (q^2 * signxz^2)
-#         # Hfr[i, :] .= @. 0.5 * (Πr^2 + Ψr^2) * γ^2 + signxz * term1 +
-#         #                 abs.(x_filtered .- z) * δ * q^2 + temp1
-#         # #Hfr[i, :] .= @. DLdΠr * Πr + DLdz * v - L
-#         # # Hfr[i, :] .-= Hfr[i, 1]
-#         # # D[H,t] + D[Ti0,x]
-#         # #
-#         # bl[i] = 2q * v * dxV(z) - 0.5q * v * γ^3 * (Πrz * v + Ψrz * (-1 + 2v^2))
-#         # # D[H,t] only
-#         # # bl[i] = -0.5 * γ^3 *
-#         # #         (q * Φrz * v * (-1 + 2v^2) + q * Πrz * (-2 + 3v^2) +
-#         # #          (-1 + v^2) * (4q * dxV(z) * v * sqrt(a2))) +
-#         # #         0.5 * γ^3 * a2 *
-#         # #         trapezoidal(q .* signxz .* dxΠr .+ 2sqrt(a2) .* (Ψr .* dxΠr .+ Πr .* dxΨr),
-#         # #                     dx)
-#         # # Hfr[i, :] .= Hfr[i, :] .- Hfr[i, 1]
-#         # # regular_field_energy[i] = q * V(z) + m0 * γ + q * Φrz * γ +
-#         # #                           trapezoidal(Hfr[i, :], dx)
-#         # regular_field_energy[i] = m0 * γ + trapezoidal(Hfr[i, :], dx)
-#         # # @show regular_field_energy[i]
-#         # ## After substituting particle and field eq.of.motion
-#         # # dHfrdt_analytic2[i, :] .= @. Ψr * dxΠr + Πr * dxΨr +
-#         # #                              q * γ * Πr * δ +
-#         # #                              0.5q * γ * signxz * dxΠr
-
-#         # ## After substituting field eq.of.motion only (no particle eqs)
-
-#         # denom = 2a2^2.5
-#         # # dHfrdt_analytic2[i, :] .= @. (-2q * δ * dxV.(x_filtered) * v * a2^2.5 +
-#         # #                               +2q * δ * Φr * v * a2 * acc + q * signxz * a2 * dxΠr -
-#         # #                               2q * signxz * v^2 * a2 * dxΠr -
-#         # #                               Ψr * (2q * δ * v^5 + q * signxz * v * acc -
-#         # #                                     2q * v^3 * (δ - signxz * acc) - 2sqrt(a2) * dxΠr +
-#         # #                                     4v^2 * sqrt(a2) * dxΠr - 2v^4 * sqrt(a2) * dxΠr) -
-#         # #                               q * signxz * v * a2 * dxΨr +
-#         # #                               Πr *
-#         # #                               (2v^4 * sqrt(a2) * dxΨr + 2(q * δ + sqrt(a2)dxΨr) -
-#         # #                                v^2 *
-#         # #                                (2q * δ + 3q * signxz * acc + 4sqrt(a2) * dxΨr))) /
-#         # #                              denom +
-#         # #                              δ * m0 * v * acc / a2^1.5
-
-#         # ######### field part only
-#         # #########
-#         # ######### sign^2 term after substituting acceleration
-#         # tmp = @. q^3 * signxz * v * (v * dxΠr + dxΨr) /
-#         #          ((4(-1 + v^2)^2 * (2m0 * (-1 + v^2) + 2q * δ * Φr * (-1 + v^2) +
-#         #                             q * signxz * (Ψr + 3Πr * v + 2Ψr * v^2))))
-
-#         # # dHfrdt_analytic2[i, :] .= @. (Ψr * (2sqrt(a2) * dxΠr +
-#         # #                                     v * (q * δ * (-1 + 3v^2 - 2v^4) -
-#         # #                                          q * signxz * (1 + 2v^2) * acc -
-#         # #                                          4v * sqrt(a2) * dxΠr + 2v^3 * sqrt(a2) * dxΠr)) +
-#         # #                               q * signxz * (-1 + v^2) *
-#         # #                               ((-1 + 2v^2) * dxΠr + v * dxΨr) +
-#         # #                               Πr * (2sqrt(a2) * dxΨr +
-#         # #                                     v^2 *
-#         # #                                     (q * δ - 3q * signxz * acc - 4sqrt(a2) * dxΨr) +
-#         # #                                     v^4 * (-q * δ + 2sqrt(a2) * dxΨr))) / denom # -
-#         # # # q^2 * v * acc / (4a2^3)
-#         # dHfrdt_analytic2[i, :] .= @. 0.5 *
-#         #                              (-q * δ * Ψr * v / a2^1.5 + q * δ * Πr * v^2 / a2^1.5) +
-#         #                              q * δ * Ψr * v^3 / a2^1.5 + tmp + Ψr * dxΠr +
-#         #                              Πr * dxΨr -
-#         #                              0.5(q * signxz *
-#         #                                  (3Πr * v^2 * acc + Ψr * v * (1 + 2v^2) * acc +
-#         #                                   a2 * ((-1 + 2v^2) * dxΠr + v * dxΨr)))
-
-#         # ## D[Hf,t] with substitutions, but not substituting acceleration
-#         # ## agrees with my pure numerical results
-#         # ## so not subtracting stuff
-#         # ## if I put the sign^2 term to zero, it agrees with the expression above. and
-#         # ## cancels with the fluxes
-#         # temp = @. Ψr * dxΠr + Πr * dxΨr +
-#         #           signxz * (-0.5q * γ^5 *
-#         #                     (3Πr * v^2 * acc + Ψr * v * (1 + 2v^2) * acc +
-#         #                      a2 * ((-1 + 2v^2) * dxΠr + v * dxΨr))) +
-#         #           0signxz^2 * (q^2 * v * acc) / (4 * (-1 + v^2)^3)
-#         # dHfrdt_analytic[i] = 0.5q * v * γ^3 * (Πrz * v + Ψrz * (-1 + 2 * v^2)) +
-#         #                      trapezoidal(temp, dx)
-
-#         # dHpdt_analytic[i] = -(-q * dxV(z) * v * a2^1.5 -
-#         #                       v * ((m0 + q * Φrz) * acc + q * a2 * Ψrz) + q * a2 * Πrz) /
-#         #                     a2^1.5
-
-#         # dHfrdt_analytic[i] = trapezoidal(dHfrdt_analytic2[i, :], dx)
-#         Ti0 = -Πr .* Ψ
-#         #intTi0 = AkimaInterpolation(Ti0, x_filtered)
-#         #dxti0(x) = derivative(intTi0, x, 1)
-#         #dxTi0[i, :] .= dxti0.(x_filtered)
-#         dxTi0[i, :] .= deriv(Ti0, dx)
-
-#         tmp2 = @. -Ψ * dxΠr - Πr * (dxΨr + ∂xΨs)
-#         flux_analytic[i] = Ti0[end] - Ti0[begin] # trapezoidal(tmp2, dx)
-#         flux[i] = trapezoidal(dxTi0[i, :], dx)
-#         bl[i] = regular_field_energy[i] + flux[i]
-#     end
-
-#     # Ep = AkimaInterpolation(particle_energy, sim1.sol.t)
-#     # dEdtp(t) = derivative(Ep, t, 1)
-
-#     Er = AkimaInterpolation(regular_field_energy, sim1.sol.t)
-#     dEdtr(t) = derivative(Er, t, 1)
-
-#     function time_derivative(y, h, ti)
-#         nt, nx = size(y)
-#         dy = zeros(eltype(y), nx)
-#         if ti == -1
-#             ti = nt
-#         end
-
-#         if ti == 1
-#             dy[:] .= @. (y[1, :] - y[2, :]) / h
-#         elseif ti == nt
-#             dy[:] .= @. (y[nt - 1, :] - y[nt, :]) / h
-#         else
-#             dy[:] .= @. (y[ti + 1, :] - y[ti - 1, :]) / (2h)
-#         end
-#         return dy
-#     end
-#     fig = Figure(; size=(2 * 253, 2 * 200))
-#     ax = Axis(fig[1, 1];
-#               title=L"\textrm{Energy}")
-#     # Plot the data
-#     # ylims!(ax, -0.0001, 0.0001)
-#     # lines!(ax, sim1.sol.t, dEdtp.(sim1.sol.t); label="dEpdt")
-#     # lines!(ax, sim1.sol.t, bl; label="fa")
-#     ti = 100
-#     # lines!(ax, x_filtered, time_derivative(Hfr, dt, ti) .+ dxTi0[ti, :];
-#     #        label="Balance with dHfrdt")
-
-#     # lines!(ax, x_filtered, time_derivative(Hfr, dt, ti) .+ dxTi0[ti, :];
-#     #        label="adf")
-
-#     # lines!(ax, x_filtered,
-#     #        time_derivative(Hfr, dt, ti);
-#     #        label="dHfrdt")
-#     # lines!(ax, x_filtered, dHfrdt_analytic2[ti, :]; label="analytic",
-#     #        linestyle=:dash)
-
-#     # lines!(ax, x_filtered, dxTi0[ti, :];
-#     #        label="dxTi0")
-#     # lines!(ax, x_filtered,
-#     #        time_derivative(Hfr, dt, ti) .+ dxTi0[ti, :];
-#     #        label="dHfrdt")
-#     # lines!(ax, x_filtered, dHfrdt_analytic2[ti, :] .+ dxTi0[ti, :]; label="analytic",
-#     #        linestyle=:dash)
-
-#     # lines!(ax, x_filtered[(end - 200):end], Hfr[ti, (end - 200):end];
-#     #        label="Hfr")
-
-#     # tmp = time_derivative(Hfr, dt, ti) .- dHfrdt_analytic2[ti, :]
-#     # @show tmp[1:5]
-
-#     # lines!(ax, x_filtered, tmp;
-#     #        label="num-analytic",
-#     #        linestyle=:dash)
-
-#     # lines!(ax, x_filtered, tmp[ti, :]; label="tmp")
-
-#     # lines!(ax, x_filtered, dHfrdt_analytic2[ti, :] .+ dxTi0[ti, :]; label="balance")
-#     # lines!(ax, x_filtered, dxTi0[ti, :]; label="dxTi0")
-#     # lines!(ax, x_filtered[1:300], Hfr[ti - 1, 1:300]; label="dHfrdt")
-#     # lines!(ax, x_filtered[1:300], Hfr[ti + 1, 1:300]; label="dHfrdt")
-#     # lines!(ax, x_filtered[1:300], Hfr2[ti - 1, 1:300]; label="dxTi0")
-#     # lines!(ax, x_filtered[1:300], Hfr2[ti + 2, 1:300]; label="dxTi0")
-#     # @show regular_field_energy[1]
-#     # lines!(ax, sim1.sol.t, regular_field_energy .- regular_field_energy[1];
-#     #        label=L"field energy")
-#     # lines!(ax, sim1.sol.t, particle_energy .- particle_energy[1]; label=L"particle energy")
-#     # lines!(ax, sim1.sol.t,
-#     #        regular_field_energy .+ particle_energy .- 0particle_energy[1] .-
-#     #        0regular_field_energy[1];
-#     #        label=L"Total energy")
-#     # function filter(y, e)
-#     #     n = length(y)
-#     #     for i in 2:(n - 1)
-#     #         if abs(y[i]) > e
-#     #             y[i] = 0.5(y[i - 1] + y[i + 1])
-#     #         end
-#     #     end
-#     #     if abs(y[1]) > e
-#     #         y[1] = 0.0
-#     #     end
-#     #     return y
-#     # end
-#     # y = deriv(regular_field_energy .+ 0particle_energy, dt)
-#     # A = RegularizationSmooth(filter(y, 0.0004), sim1.sol.t, 3; alg=:gcv_svd)
-#     # yhat = A.û
-
-#     # lines!(ax, sim1.sol.t, yhat;
-#     #        label=L"\textrm{total_energy FD}")
-#     # lines!(ax, sim1.sol.t, yhat;
-#     #        label=L"\textrm{total_energy FD}")
-
-#     # lines!(ax, sim1.sol.t, dEdtr.(sim1.sol.t);
-#     #        label=L"\textrm{total_energy int}")
-#     # lines!(ax, sim1.sol.t, dHfrdt_analytic;
-#     #        label=L"\textrm{dHfrdt analytic}")
-
-#     # lines!(ax, sim1.sol.t, dEdtp.(sim1.sol.t);
-#     #        label=L"\textrm{particle_energy dt}")
-#     # lines!(ax, sim1.sol.t, dHpdt_analytic;
-#     #        label=L"\textrm{particle_energy dt analytic}")
-#     lines!(ax, sim1.sol.t[10:end], dEdtr.(sim1.sol.t[10:end]);
-#            label=L"\textrm{dHdt}")
-#     lines!(ax, sim1.sol.t, regular_field_energy .- regular_field_energy[1];
-#            label=L"\textrm{H}")
-
-#     # lines!(ax, sim1.sol.t, dEdtr.(sim1.sol.t) .+ dEdtp.(sim1.sol.t);
-
-#     #        label=L"\textrm{dt total energy num}")
-#     # lines!(ax, sim1.sol.t, dHfrdt_analytic .+ dHpdt_analytic;
-#     #        label=L"\textrm{dt total energy analytic}")
-#     # lines!(ax, sim1.sol.t, bl; linestyle=:dash,
-#     #        label=L"\textrm{bl}")
-
-#     ######
-#     # lines!(ax, sim1.sol.t, flux_analytic; label=L"\textrm{fluxes}")
-#     # lines!(ax, sim1.sol.t, flux; label=L"\textrm{flux}")
-
-#     # lines!(ax, sim1.sol.t, deriv(particle_energy, dt);
-#     #        label=L"\textrm{particle deriv}")
-#     # lines!(ax, sim1.sol.t, dHfrdt_analytic;
-#     #        label=L"\textrm{dHdt analytic}")
-#     # lines!(ax, sim1.sol.t, dHfrdt_analytic + flux;
-#     #        label="total")
-#     # lines!(ax, sim1.sol.t, deriv(regular_field_energy .+ particle_energy, dt) + flux;
-#     #        label="total")
-
-#     # lines!(ax, sim1.sol.t, flux_analytic;
-#     #        label="flux analytic")
-
-#     # lines!(ax, sim1.sol.t, deriv(regular_field_energy, dt) .+ flux_analytic;
-#     #        label="balance")
-
-#     # lines!(ax, sim1.sol.t, fluxes1; linestyle=:dash,
-#     #        label=L"\textrm{T_r^{i0}}")
-#     # lines!(ax, sim1.sol.t, fluxes2; linestyle=:dash,
-#     #        label=L"\textrm{T_r^{0i}}")
-
-#     # lines!(ax, sim1.sol.t, fluxes3; linestyle=:dash,
-#     #        label=L"\textrm{T_s^{i0}}")
-#     # lines!(ax, sim1.sol.t, fluxes4; linestyle=:dash,
-#     #        label=L"\textrm{T_s^{0i}}")
-
-#     ax.xlabel = L"t"
-
-#     leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
-
-#     # Adjust layout to ensure proper spacing
-#     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
-#     colsize!(fig.layout, 1, Relative(0.9))
-#     rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
-#     rowgap!(fig.layout, 0)                 # Gap between plot and legend
-#     # Save the figure
-#     savename = name("particle_potential/balance_law", sim1)
-#     save(joinpath(FIG_PATH, savename), fig)
-#     if paper
-#         save(joinpath(get_paper_fig_path(), savename), fig)
-#     end
-#     return fig
-# end
-
-# function plot_hamiltonian_time_derivative(sim; paper=false)
-#     CairoMakie.activate!()
-#     mytheme = mytheme_aps()
-#     set_theme!(mytheme)
-#     # Get time points and assert equality
-
-#     # Create figure and axis
-#     L = sim.params.L
-#     x_range = (-L / 2, L / 2)
-#     mask = (sim.params.x .>= -L / 2) .& (sim.params.x .<= L / 2)
-#     x_filtered = sim.params.x[mask]
-
-#     nt = length(sim.sol.t)
-
-#     q = sim1.params.q
-#     sf = sim1.params.sf
-#     dx = sim1.params.dx
-#     xs = sim1.params.x
-
-#     vs = zeros(nt)
-#     for i in 1:nt
-#         vs[i] = sim.sol.u[i].x[2][3]
-#     end
-
-#     vint = PCHIPInterpolation(vs, sim.sol.t; extrapolation=ExtrapolationType.Extension)
-#     a(t) = derivative(vint, t, 1)
-#     # V(x) = ScalarField.Φs(x, -q, xpot, 0.0)
-#     k = sim.params.k
-#     V(x) = InitialData.Harmonic(0.0, x, k)
-#     for i in 1:nt
-#         ti = sim.sol.t[i]
-#         zi = sim.sol.u[i].x[2][2]
-#         vi = sim.sol.u[i].x[2][3]
-#         ai = a(t)
-#         # Φ = @view sim1.sol.u[i].x[1][:, 3]
-#         Π = @view sim.sol.u[i].x[1][:, 1]
-#         Ψ = @view sim.sol.u[i].x[1][:, 2]
-
-#         γ = 1.0 / sqrt(1.0 - v * v)
-
-#         denom1 = (1.0 - vi * vi)^1.5
-#         denom2 = (1.0 - vi * vi)^2.5
-#         term1 = @. (3q * sign(x - zi) * Ψ[mask] * vi * ai) / (2denom2)
-#         term2 = @. (-3q * sign(x - zi) * Π[mask] * vi * vi * ai) / (2denom2)
-#         term3 = @. (-3q * sign(x - zi) * Ψ[mask] * vi * vi * vi * ai) / denom2
-#         term4 = @. (Q * sign(x - zi) * Π[mask] * ai) / (2denom1)
-#         term5 = @. (-2q * sign(x - zi) * Ψ[mask] * vi * ai) / denom1
-#         term6 = @. Π[mask] * dtΠ[mask] # how can I calculate the time deriv of Π?
-#         term7 = @. (-q * sign(x - zi) * vi * dtΠ[mask]) / (2denom1)
-#         term8 = @. Ψ[mask] * dtΨ[mask]
-#         term9 = @. (q * sign(x - zi) * dtΨ[mask]) / (2denom1)
-#         term10 = @. (-q * sign(x - zi) * vi * vi * dtΨ[mask]) / denom1
-#     end
-
-#     fig = Figure(; size=(253, 200))
-#     ax = Axis(fig[1, 1];
-#               title=L"\textrm{Energy}")
-#     # Plot the data
-#     lines!(ax, sim.sol.t, regular_field_energy1;
-#            label=L"\textrm{no singular}")
-
-#     # lines!(ax, sim1.sol.t,
-#     #        regular_field_energy .- regular_field_energy[1] +
-#     #        particle_energy .- particle_energy[1]; linestyle=:dash,
-#     #        label=L"\textrm{total}")
-
-#     lines!(ax, sim.sol.t, particle_energy .- particle_energy[1]; linestyle=:dash,
-#            label=L"\textrm{particle}")
-#     ax.ylabel = L"energy"
-#     ax.xlabel = L"t"
-
-#     leg = Legend(fig[2, 1], ax; orientation=:horizontal, tellwidth=false, tellheight=true)
-
-#     # Adjust layout to ensure proper spacing
-#     rowsize!(fig.layout, 1, Auto())  # Let the axis size adjust
-#     colsize!(fig.layout, 1, Relative(0.9))
-#     rowsize!(fig.layout, 2, Relative(0.1)) # Space for the legend (adjustable)
-#     rowgap!(fig.layout, 0)                 # Gap between plot and legend
-#     # Save the figure
-#     savename = name("particle_potential/hamiltonian_time_derivative", sim)
-#     save(joinpath(FIG_PATH, savename), fig)
-#     if paper
-#         save(joinpath(get_paper_fig_path(), savename), fig)
-#     end
-#     return fig
-# end
+function plot_work_balance_laws(sim1; paper=false)
+    CairoMakie.activate!()
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    ts = sim1.sol.t
+    tf = ts[end]
+    boundary = tf / 3
+    mask = (sim1.params.x .>= -boundary) .& (sim1.params.x .<= boundary)
+    if iszero(tf)
+        mask = trues(length(sim1.params.x))
+    end
+    x_filtered = sim1.params.x[mask]
+
+    nt = length(ts)
+    q = sim1.params.q
+    h = sim1.params.dx
+    k = sim1.params.k
+    dt = sim1.params.dt
+    V(x) = InitialData.Harmonic(x, k)
+
+    v_arr = [sim1.sol.u[i].x[2][3] for i in 1:nt]
+    v_interp = PCHIPInterpolation(v_arr, ts)
+    a_arr = [DataInterpolations.derivative(v_interp, t) for t in ts]
+
+    particle_energy = zeros(nt)
+    field_energy = zeros(nt)
+    inside_energy = zeros(nt)
+    outward_flux = zeros(nt)
+    W_src = zeros(nt)
+    m0 = hasproperty(sim1.params, :m0) ? sim1.params.m0 : 1.0
+    for i in 1:nt
+        # m = sim1.sol.u[i].x[2][1]
+        z = sim1.sol.u[i].x[2][2]
+        v = v_arr[i]
+        a = a_arr[i]
+        Πs = ScalarField.Πs.(x_filtered, z, v, q)
+        Ψs = ScalarField.Ψs.(x_filtered, z, v, q)
+        Πr = @view sim1.sol.u[i].x[1][mask, 1]
+        Ψr = @view sim1.sol.u[i].x[1][mask, 2]
+        Φr = @view sim1.sol.u[i].x[1][mask, 3]
+
+        Φrz = ODE.gather_muscl(@view(sim1.sol.u[i].x[1][:, 3]), z, sim1.sol.prob.p)
+
+        γ = inv(sqrt(1.0 - v * v))
+
+        particle_energy[i] = (m0 - q * Φrz) * (γ - 1.0) + V(z)
+
+        Hfield = @. 0.5 * (Πr^2 + Ψr^2) #+ Πr * Πs + Ψr * Ψs
+        field_energy[i] = trapezoidal(Hfield, h)
+        inside_energy[i] = particle_energy[i] + field_energy[i]
+
+        outward_flux[i] = -Πr[end] * Ψr[end] + Πr[1] * Ψr[1]
+
+        W_sum = 0.0
+
+        for (idx, x_i) in enumerate(x_filtered)
+            S_Pi, S_Psi = -a * ScalarField.cell_average_dvΠs(x_i, h, z, v, q),
+                          -a * ScalarField.cell_average_dvΨs(x_i, h, z, v, q)
+            W_sum += Πr[idx] * S_Pi + Ψr[idx] * S_Psi
+        end
+        W_src[i] = W_sum * h
+    end
+
+    E_tot_interp = PCHIPInterpolation(inside_energy, ts)
+    dE_tot_dt = [DataInterpolations.derivative(E_tot_interp, t) for t in ts]
+
+    rhs_rate = -outward_flux .+ W_src
+    rate_residual = dE_tot_dt .- rhs_rate
+
+    cumulative_flux = cumulative_trapezoidal(ts, dt, outward_flux)
+    cumulative_work = cumulative_trapezoidal(ts, dt, W_src)
+
+    inside_energy_change = inside_energy .- inside_energy[1]
+    rhs_int = -cumulative_flux .+ cumulative_work
+    int_residual = inside_energy_change .- rhs_int
+
+    fig = Figure(; size=(253, 550), figure_padding=(1, 5, 5, 1))
+
+    # 1. Plot of W_src
+    ax_work = Axis(fig[1, 1];
+                   title=L"\textrm{Work Term}",
+                   ylabel=L"W_{\mathrm{src},h}")
+    lines!(ax_work, ts, W_src; label=L"W_{\mathrm{src},h}",
+           color=mytheme.palette.color[][1], linewidth=1.5)
+    apply_scientific_notation_if_needed!(ax_work)
+
+    # 2. Rate Form Balance
+    ax_rate = Axis(fig[3, 1];
+                   title=L"\textrm{Rate Form Balance}",
+                   ylabel=L"\mathrm{Rate}")
+    lines!(ax_rate, ts, dE_tot_dt; label=L"\frac{d(E_{\mathrm{part},h} + E_{r,h})}{dt}",
+           color=mytheme.palette.color[][1], linewidth=1.5)
+    lines!(ax_rate, ts, rhs_rate;
+           label=L"-\mathcal{F}_{\mathrm{bdry},h} + W_{\mathrm{src},h}",
+           color=mytheme.palette.color[][2], linestyle=:dash, linewidth=1.5)
+    lines!(ax_rate, ts, rate_residual; label=L"\mathrm{Residual}",
+           color=mytheme.palette.color[][4], linewidth=1.2, linestyle=:dot)
+    apply_scientific_notation_if_needed!(ax_rate)
+
+    # 3. Integral Form Balance
+    ax_int = Axis(fig[5, 1];
+                  title=L"\textrm{Integral Form Balance}",
+                  xlabel=L"t",
+                  ylabel=L"\mathrm{Energy}")
+    lines!(ax_int, ts, inside_energy_change; label=L"\Delta(E_{\mathrm{part},h} + E_{r,h})",
+           color=mytheme.palette.color[][1], linewidth=1.5)
+    lines!(ax_int, ts, rhs_int; label=L"-E_{\mathrm{flux},h} + \int W_{\mathrm{src},h} dt",
+           color=mytheme.palette.color[][2], linestyle=:dash, linewidth=1.5)
+    lines!(ax_int, ts, int_residual; label=L"\mathrm{Residual}",
+           color=mytheme.palette.color[][4], linewidth=1.2, linestyle=:dot)
+    apply_scientific_notation_if_needed!(ax_int)
+
+    # Legends
+    Legend(fig[2, 1], ax_work; orientation=:horizontal, tellwidth=false, tellheight=true)
+    Legend(fig[4, 1], ax_rate; orientation=:horizontal, tellwidth=false, tellheight=true)
+    Legend(fig[6, 1], ax_int; orientation=:horizontal, tellwidth=false, tellheight=true)
+
+    rowsize!(fig.layout, 1, Auto())
+    rowsize!(fig.layout, 2, Relative(0.08))
+    rowsize!(fig.layout, 3, Auto())
+    rowsize!(fig.layout, 4, Relative(0.08))
+    rowsize!(fig.layout, 5, Auto())
+    rowsize!(fig.layout, 6, Relative(0.08))
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowgap!(fig.layout, 0)
+
+    savename = simple_name("work_balance_laws")
+    save(joinpath(get_fig_path(), savename), fig)
+    if paper
+        save(joinpath(get_paper_fig_path(), savename), fig)
+    end
+    return fig
+end
+
+function plot_field_energy_split_balance(sim1; paper=false)
+    CairoMakie.activate!()
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    ts = sim1.sol.t
+    tf = ts[end]
+    x = sim1.params.x
+    boundary = tf / 3
+    mask = (x .>= -boundary) .& (x .<= boundary)
+    if iszero(tf) || !any(mask)
+        mask = trues(length(x))
+    end
+    x_filtered = x[mask]
+    left_idx = findfirst(mask)
+    right_idx = findlast(mask)
+
+    nt = length(ts)
+    q = sim1.params.q
+    h = sim1.params.dx
+    params = sim1.sol.prob.p
+    equation = params.equation
+    slope_limiter = params.slope_limiter
+    N = params.N
+    L = Equations.left_eigenmatrix(equation)
+    R = Equations.right_eigenmatrix(equation)
+    v_arr = [sim1.sol.u[i].x[2][3] for i in 1:nt]
+    v_interp = PCHIPInterpolation(v_arr, ts)
+    a_arr = [DataInterpolations.derivative(v_interp, t) for t in ts]
+
+    E_r = zeros(nt)
+    E_corr = zeros(nt)
+    E_tot = zeros(nt)
+
+    outward_flux_r = zeros(nt)
+    outward_flux_corr = zeros(nt)
+    outward_flux_tot = zeros(nt)
+    exchange_rate = zeros(nt)
+
+    for i in 1:nt
+        z = sim1.sol.u[i].x[2][2]
+        v = v_arr[i]
+        a = a_arr[i]
+        Q_field = sim1.sol.u[i].x[1]
+
+        Πr = @view Q_field[mask, 1]
+        Ψr = @view Q_field[mask, 2]
+
+        Πs = similar(Πr)
+        Ψs = similar(Ψr)
+        source_density = similar(Πr)
+
+        @inbounds for (idx, x_i) in pairs(x_filtered)
+            Πs[idx], Ψs[idx] = ScalarField.cell_average_Πs(x_i, h, z, v, q),
+                               ScalarField.cell_average_Ψs(x_i, h, z, v, q)
+            S_Pi, S_Psi = -a * ScalarField.cell_average_dvΠs(x_i, h, z, v, q),
+                          -a * ScalarField.cell_average_dvΨs(x_i, h, z, v, q)
+            source_density[idx] = Πr[idx] * S_Pi + Ψr[idx] * S_Psi
+        end
+
+        e_r = @. 0.5 * (Πr^2 + Ψr^2)
+        e_cross = @. Πr * Πs + Ψr * Ψs
+        e_s = @. 0.5 * (Πs^2 + Ψs^2)
+        e_corr = e_s .+ e_cross
+
+        E_r[i] = h * sum(e_r)
+        E_corr[i] = h * sum(e_corr)
+        E_tot[i] = E_r[i] + E_corr[i]
+        exchange_rate[i] = h * sum(source_density)
+
+        q_left_minus, _ = ODE.reconstruct_cell(Q_field, left_idx, N, L, R, slope_limiter)
+        _, q_right_plus = ODE.reconstruct_cell(Q_field, right_idx, N, L, R, slope_limiter)
+
+        Πr_left_face = q_left_minus[1]
+        Ψr_left_face = q_left_minus[2]
+        Πr_right_face = q_right_plus[1]
+        Ψr_right_face = q_right_plus[2]
+
+        left_face_x = x[left_idx] - 0.5 * h
+        right_face_x = x[right_idx] + 0.5 * h
+        Πs_left_face, Ψs_left_face = ScalarField.singular_face_trace(left_face_x, z, v, q,
+                                                                     one(v))
+        Πs_right_face, Ψs_right_face = ScalarField.singular_face_trace(right_face_x, z, v,
+                                                                       q,
+                                                                       -one(v))
+
+        outward_flux_r[i] = -Πr_right_face * Ψr_right_face + Πr_left_face * Ψr_left_face
+        outward_flux_corr[i] = -(Πs_right_face * Ψs_right_face +
+                                 Πr_right_face * Ψs_right_face +
+                                 Πs_right_face * Ψr_right_face) +
+                               (Πs_left_face * Ψs_left_face +
+                                Πr_left_face * Ψs_left_face +
+                                Πs_left_face * Ψr_left_face)
+
+        Πtot_left_face = Πr_left_face + Πs_left_face
+        Ψtot_left_face = Ψr_left_face + Ψs_left_face
+        Πtot_right_face = Πr_right_face + Πs_right_face
+        Ψtot_right_face = Ψr_right_face + Ψs_right_face
+        outward_flux_tot[i] = -Πtot_right_face * Ψtot_right_face +
+                              Πtot_left_face * Ψtot_left_face
+    end
+
+    E_r_interp = PCHIPInterpolation(E_r, ts)
+    E_corr_interp = PCHIPInterpolation(E_corr, ts)
+    E_tot_interp = PCHIPInterpolation(E_tot, ts)
+    dE_r_dt = [DataInterpolations.derivative(E_r_interp, t) for t in ts]
+    dE_corr_dt = [DataInterpolations.derivative(E_corr_interp, t) for t in ts]
+    dE_tot_dt = [DataInterpolations.derivative(E_tot_interp, t) for t in ts]
+
+    rhs_regular = -outward_flux_r .+ exchange_rate
+    rhs_correction = -outward_flux_corr .- exchange_rate
+    rhs_total = -outward_flux_tot
+
+    residual_regular = dE_r_dt .- rhs_regular
+    residual_correction = dE_corr_dt .- rhs_correction
+    residual_total = dE_tot_dt .- rhs_total
+
+    fig = Figure(; size=(560, 620), figure_padding=(6, 8, 8, 6))
+
+    palette = mytheme.palette
+    color1 = palette.color[][1]
+    color2 = palette.color[][2]
+    color3 = palette.color[][3]
+    color4 = palette.color[][4]
+    color5 = palette.color[][5]
+
+    panel11 = GridLayout(fig[1, 1])
+    panel12 = GridLayout(fig[1, 2])
+    panel21 = GridLayout(fig[3, 1])
+    panel22 = GridLayout(fig[3, 2])
+
+    ax_energy = Axis(panel11[1, 1];
+                     title=L"\textrm{Field-Energy Split}",
+                     ylabel=L"E")
+    lines!(ax_energy, ts, E_r; label=L"E_r",
+           color=color1, linewidth=1.5)
+    lines!(ax_energy, ts, E_corr; label=L"E_{\mathrm{corr}}",
+           color=color2, linestyle=:dash, linewidth=1.5)
+    lines!(ax_energy, ts, E_tot; label=L"E_{\mathrm{tot}}",
+           color=color3, linewidth=1.4)
+
+    ax_regular = Axis(panel12[1, 1];
+                      title=L"\textrm{Regular Balance}",
+                      ylabel=L"\mathrm{Rate}")
+    lines!(ax_regular, ts, dE_r_dt;
+           label=L"\frac{dE_r}{dt}",
+           color=color1, linewidth=1.5)
+    lines!(ax_regular, ts, rhs_regular;
+           label=L"-\mathcal{F}_{r} + \int_{\Omega}(-\Pi_r R_2 - \Psi_r R_3)\,dx",
+           color=color2, linestyle=:dash, linewidth=1.5)
+    lines!(ax_regular, ts, residual_regular;
+           label=L"\mathrm{Residual}",
+           color=color4, linestyle=:dot, linewidth=1.2)
+
+    ax_correction = Axis(panel21[1, 1];
+                         title=L"\textrm{Correction Balance}",
+                         xlabel=L"t",
+                         ylabel=L"\mathrm{Rate}")
+    lines!(ax_correction, ts, dE_corr_dt;
+           label=L"\frac{dE_{\mathrm{corr}}}{dt}",
+           color=color1, linewidth=1.5)
+    lines!(ax_correction, ts, rhs_correction;
+           label=L"-\mathcal{F}_{\mathrm{corr}} - \int_{\Omega}(-\Pi_r R_2 - \Psi_r R_3)\,dx",
+           color=color2, linestyle=:dash, linewidth=1.5)
+    lines!(ax_correction, ts, residual_correction;
+           label=L"\mathrm{Residual}",
+           color=color4, linestyle=:dot, linewidth=1.2)
+
+    ax_total = Axis(panel22[1, 1];
+                    title=L"\textrm{Total Balance}",
+                    xlabel=L"t",
+                    ylabel=L"\mathrm{Rate}")
+    lines!(ax_total, ts, dE_tot_dt;
+           label=L"\frac{dE_{\mathrm{tot}}}{dt}",
+           color=color1, linewidth=1.5)
+    lines!(ax_total, ts, rhs_total;
+           label=L"-\mathcal{F}_{\mathrm{tot}}",
+           color=color5, linestyle=:dash, linewidth=1.5)
+    lines!(ax_total, ts, residual_total;
+           label=L"\mathrm{Residual}",
+           color=color4, linestyle=:dot, linewidth=1.2)
+
+    apply_scientific_notation_if_needed!(ax_energy)
+    apply_scientific_notation_if_needed!(ax_regular)
+    apply_scientific_notation_if_needed!(ax_correction)
+    apply_scientific_notation_if_needed!(ax_total)
+
+    Legend(panel11[2, 1], ax_energy; orientation=:horizontal, tellwidth=false,
+           tellheight=true, nbanks=3)
+    Legend(panel12[2, 1], ax_regular; orientation=:horizontal, tellwidth=false,
+           tellheight=true, nbanks=1)
+    Legend(panel21[2, 1], ax_correction; orientation=:horizontal, tellwidth=false,
+           tellheight=true, nbanks=1)
+    Legend(panel22[2, 1], ax_total; orientation=:horizontal, tellwidth=false,
+           tellheight=true, nbanks=1)
+
+    rowsize!(panel11, 1, Auto())
+    rowsize!(panel11, 2, Relative(0.14))
+    rowsize!(panel12, 1, Auto())
+    rowsize!(panel12, 2, Relative(0.14))
+    rowsize!(panel21, 1, Auto())
+    rowsize!(panel21, 2, Relative(0.14))
+    rowsize!(panel22, 1, Auto())
+    rowsize!(panel22, 2, Relative(0.14))
+
+    colsize!(fig.layout, 1, Relative(0.5))
+    colsize!(fig.layout, 2, Relative(0.5))
+    rowsize!(fig.layout, 1, Auto())
+    rowsize!(fig.layout, 2, Fixed(8))
+    rowsize!(fig.layout, 3, Auto())
+    colgap!(fig.layout, 8)
+    rowgap!(fig.layout, 0)
+
+    savename = simple_name("field_energy_split_balance")
+    save(joinpath(get_fig_path(), savename), fig)
+    if paper
+        save(joinpath(get_paper_fig_path(), savename), fig)
+    end
+    return fig
+end
+
+function plot_particle_field_energy_balance(sim1; paper=false)
+    CairoMakie.activate!()
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    ts = sim1.sol.t
+    tf = ts[end]
+    x = sim1.params.x
+    boundary = tf / 3
+    mask = (x .>= -boundary) .& (x .<= boundary)
+    if iszero(tf) || !any(mask)
+        mask = trues(length(x))
+    end
+    x_filtered = x[mask]
+    left_idx = findfirst(mask)
+    right_idx = findlast(mask)
+
+    nt = length(ts)
+    q = sim1.params.q
+    h = sim1.params.dx
+    m0 = hasproperty(sim1.params, :m) ? sim1.params.m : 1.0
+    k = sim1.params.k
+    V(x) = InitialData.Harmonic(x, k)
+    params = sim1.sol.prob.p
+    equation = params.equation
+    slope_limiter = params.slope_limiter
+    N = params.N
+    L = Equations.left_eigenmatrix(equation)
+    R = Equations.right_eigenmatrix(equation)
+    v_arr = [sim1.sol.u[i].x[2][3] for i in 1:nt]
+    v_interp = PCHIPInterpolation(v_arr, ts)
+    a_arr = [DataInterpolations.derivative(v_interp, t) for t in ts]
+
+    E_p = zeros(nt)
+    E_r = zeros(nt)
+    E_corr = zeros(nt)
+    E_pr = zeros(nt)
+    E_prcorr = zeros(nt)
+
+    particle_power = zeros(nt)
+    outward_flux_r = zeros(nt)
+    outward_flux_corr = zeros(nt)
+    outward_flux_tot = zeros(nt)
+    exchange_rate = zeros(nt)
+
+    for i in 1:nt
+        z = sim1.sol.u[i].x[2][2]
+        v = v_arr[i]
+        a = a_arr[i]
+        Q_field = sim1.sol.u[i].x[1]
+
+        Πr = @view Q_field[mask, 1]
+        Ψr = @view Q_field[mask, 2]
+        _, Ψrz = ODE.gather_muscl(@view(Q_field[:, 1:2]), z, params)
+
+        E_p[i] = 0.5 * m0 * v * v + V(z)
+        particle_power[i] = q * v * Ψrz
+
+        Πs = similar(Πr)
+        Ψs = similar(Ψr)
+        source_density = similar(Πr)
+
+        @inbounds for (idx, x_i) in pairs(x_filtered)
+            Πs[idx], Ψs[idx] = ScalarField.cell_average_Πs(x_i, h, z, v, q),
+                               ScalarField.cell_average_Ψs(x_i, h, z, v, q)
+            S_Pi, S_Psi = -a * ScalarField.cell_average_dvΠs(x_i, h, z, v, q),
+                          -a * ScalarField.cell_average_dvΨs(x_i, h, z, v, q)
+            source_density[idx] = Πr[idx] * S_Pi + Ψr[idx] * S_Psi
+        end
+
+        e_r = @. 0.5 * (Πr^2 + Ψr^2)
+        e_cross = @. Πr * Πs + Ψr * Ψs
+        e_s = @. 0.5 * (Πs^2 + Ψs^2)
+        e_corr = e_s .+ e_cross
+
+        E_r[i] = h * sum(e_r)
+        E_corr[i] = h * sum(e_corr)
+        E_pr[i] = E_p[i] + E_r[i]
+        E_prcorr[i] = E_pr[i] + E_corr[i]
+        exchange_rate[i] = h * sum(source_density)
+
+        q_left_minus, _ = ODE.reconstruct_cell(Q_field, left_idx, N, L, R, slope_limiter)
+        _, q_right_plus = ODE.reconstruct_cell(Q_field, right_idx, N, L, R, slope_limiter)
+
+        Πr_left_face = q_left_minus[1]
+        Ψr_left_face = q_left_minus[2]
+        Πr_right_face = q_right_plus[1]
+        Ψr_right_face = q_right_plus[2]
+
+        left_face_x = x[left_idx] - 0.5 * h
+        right_face_x = x[right_idx] + 0.5 * h
+        Πs_left_face, Ψs_left_face = ScalarField.singular_face_trace(left_face_x, z, v, q,
+                                                                     one(v))
+        Πs_right_face, Ψs_right_face = ScalarField.singular_face_trace(right_face_x, z, v,
+                                                                       q,
+                                                                       -one(v))
+
+        outward_flux_r[i] = -Πr_right_face * Ψr_right_face + Πr_left_face * Ψr_left_face
+        outward_flux_corr[i] = -(Πs_right_face * Ψs_right_face +
+                                 Πr_right_face * Ψs_right_face +
+                                 Πs_right_face * Ψr_right_face) +
+                               (Πs_left_face * Ψs_left_face +
+                                Πr_left_face * Ψs_left_face +
+                                Πs_left_face * Ψr_left_face)
+
+        Πtot_left_face = Πr_left_face + Πs_left_face
+        Ψtot_left_face = Ψr_left_face + Ψs_left_face
+        Πtot_right_face = Πr_right_face + Πs_right_face
+        Ψtot_right_face = Ψr_right_face + Ψs_right_face
+        outward_flux_tot[i] = -Πtot_right_face * Ψtot_right_face +
+                              Πtot_left_face * Ψtot_left_face
+    end
+
+    E_p_interp = PCHIPInterpolation(E_p, ts)
+    E_pr_interp = PCHIPInterpolation(E_pr, ts)
+    E_prcorr_interp = PCHIPInterpolation(E_prcorr, ts)
+    dE_p_dt = [DataInterpolations.derivative(E_p_interp, t) for t in ts]
+    dE_pr_dt = [DataInterpolations.derivative(E_pr_interp, t) for t in ts]
+    dE_prcorr_dt = [DataInterpolations.derivative(E_prcorr_interp, t) for t in ts]
+
+    rhs_particle = particle_power
+    rhs_pr = particle_power .- outward_flux_r .+ exchange_rate
+    lhs_prcorr_remainder = dE_prcorr_dt .+ outward_flux_tot
+    rhs_prcorr_remainder = particle_power
+
+    residual_particle = dE_p_dt .- rhs_particle
+    residual_pr = dE_pr_dt .- rhs_pr
+    residual_prcorr = lhs_prcorr_remainder .- rhs_prcorr_remainder
+
+    fig = Figure(; size=(560, 620), figure_padding=(6, 8, 8, 6))
+
+    palette = mytheme.palette
+    color1 = palette.color[][1]
+    color2 = palette.color[][2]
+    color3 = palette.color[][3]
+    color4 = palette.color[][4]
+    color5 = palette.color[][5]
+
+    panel11 = GridLayout(fig[1, 1])
+    panel12 = GridLayout(fig[1, 2])
+    panel21 = GridLayout(fig[3, 1])
+    panel22 = GridLayout(fig[3, 2])
+
+    ax_energy = Axis(panel11[1, 1];
+                     title=L"\textrm{Particle + Field Energies}",
+                     ylabel=L"E")
+    lines!(ax_energy, ts, E_p; label=L"E_p = \frac12 m_0 v^2 + V(z)",
+           color=color1, linewidth=1.5)
+    lines!(ax_energy, ts, E_r; label=L"E_r",
+           color=color2, linestyle=:dash, linewidth=1.5)
+    lines!(ax_energy, ts, E_corr; label=L"E_{\mathrm{corr}}",
+           color=color3, linestyle=:dot, linewidth=1.5)
+    lines!(ax_energy, ts, E_prcorr; label=L"E_p + E_r + E_{\mathrm{corr}}",
+           color=color5, linewidth=1.4)
+
+    ax_particle = Axis(panel12[1, 1];
+                       title=L"\textrm{Particle Balance}",
+                       ylabel=L"\mathrm{Rate}")
+    lines!(ax_particle, ts, dE_p_dt;
+           label=L"\frac{dE_p}{dt}",
+           color=color1, linewidth=1.5)
+    lines!(ax_particle, ts, rhs_particle;
+           label=L"q v \Psi_r(z)",
+           color=color2, linestyle=:dash, linewidth=1.5)
+    lines!(ax_particle, ts, residual_particle;
+           label=L"\mathrm{Residual}",
+           color=color4, linestyle=:dot, linewidth=1.2)
+
+    ax_pr = Axis(panel21[1, 1];
+                 title=L"\textrm{Particle + Regular Balance}",
+                 xlabel=L"t",
+                 ylabel=L"\mathrm{Rate}")
+    lines!(ax_pr, ts, dE_pr_dt;
+           label=L"\frac{d(E_p+E_r)}{dt}",
+           color=color1, linewidth=1.5)
+    lines!(ax_pr, ts, rhs_pr;
+           label=L"q v \Psi_r(z) - \mathcal{F}_r + \int_{\Omega}(-\Pi_r R_2 - \Psi_r R_3)\,dx",
+           color=color2, linestyle=:dash, linewidth=1.5)
+    lines!(ax_pr, ts, residual_pr;
+           label=L"\mathrm{Residual}",
+           color=color4, linestyle=:dot, linewidth=1.2)
+
+    ax_prcorr = Axis(panel22[1, 1];
+                     title=L"\textrm{After Adding } E_{\mathrm{corr}}",
+                     xlabel=L"t",
+                     ylabel=L"\mathrm{Rate}")
+    lines!(ax_prcorr, ts, lhs_prcorr_remainder;
+           label=L"\frac{d(E_p+E_r+E_{\mathrm{corr}})}{dt} + \mathcal{F}_{\mathrm{tot}}",
+           color=color1, linewidth=1.5)
+    lines!(ax_prcorr, ts, rhs_prcorr_remainder;
+           label=L"q v \Psi_r(z)",
+           color=color3, linestyle=:dash, linewidth=1.5)
+    lines!(ax_prcorr, ts, residual_prcorr;
+           label=L"\mathrm{Residual}",
+           color=color4, linestyle=:dot, linewidth=1.2)
+
+    apply_scientific_notation_if_needed!(ax_energy)
+    apply_scientific_notation_if_needed!(ax_particle)
+    apply_scientific_notation_if_needed!(ax_pr)
+    apply_scientific_notation_if_needed!(ax_prcorr)
+
+    Legend(panel11[2, 1], ax_energy; orientation=:horizontal, tellwidth=false,
+           tellheight=true, nbanks=2)
+    Legend(panel12[2, 1], ax_particle; orientation=:horizontal, tellwidth=false,
+           tellheight=true, nbanks=1)
+    Legend(panel21[2, 1], ax_pr; orientation=:horizontal, tellwidth=false,
+           tellheight=true, nbanks=1)
+    Legend(panel22[2, 1], ax_prcorr; orientation=:horizontal, tellwidth=false,
+           tellheight=true, nbanks=1)
+
+    rowsize!(panel11, 1, Auto())
+    rowsize!(panel11, 2, Relative(0.14))
+    rowsize!(panel12, 1, Auto())
+    rowsize!(panel12, 2, Relative(0.14))
+    rowsize!(panel21, 1, Auto())
+    rowsize!(panel21, 2, Relative(0.14))
+    rowsize!(panel22, 1, Auto())
+    rowsize!(panel22, 2, Relative(0.14))
+
+    colsize!(fig.layout, 1, Relative(0.5))
+    colsize!(fig.layout, 2, Relative(0.5))
+    rowsize!(fig.layout, 1, Auto())
+    rowsize!(fig.layout, 2, Fixed(8))
+    rowsize!(fig.layout, 3, Auto())
+    colgap!(fig.layout, 8)
+    rowgap!(fig.layout, 0)
+
+    savename = simple_name("particle_field_energy_balance")
+    save(joinpath(get_fig_path(), savename), fig)
+    if paper
+        save(joinpath(get_paper_fig_path(), savename), fig)
+    end
+    return fig
+end
+
+function plot_total_field_balance(sim1; paper=false)
+    CairoMakie.activate!()
+    mytheme = mytheme_aps()
+    set_theme!(mytheme)
+
+    ts = sim1.sol.t
+    x = sim1.params.x
+
+    nt = length(ts)
+    q = sim1.params.q
+    h = sim1.params.dx
+    boundary = 0.18 / 2
+    mask = (x .>= -boundary) .& (x .<= boundary)
+    if !any(mask)
+        mask = trues(length(x))
+    end
+    x_filtered = x[mask]
+    left_idx = findfirst(mask)
+    right_idx = findlast(mask)
+    params = sim1.sol.prob.p
+    equation = params.equation
+    slope_limiter = params.slope_limiter
+    N = params.N
+    L = Equations.left_eigenmatrix(equation)
+    R = Equations.right_eigenmatrix(equation)
+
+    E_field_tot = zeros(nt)
+    particle_energy = zeros(nt)
+    E_total = zeros(nt)
+    outward_flux = zeros(nt)
+    particle_inside_mask = falses(nt)
+    m0 = hasproperty(sim1.params, :m0) ? sim1.params.m0 : 1.0
+    k = sim1.params.k
+    V(x) = InitialData.Harmonic(x, k)
+
+    for i in 1:nt
+        z = sim1.sol.u[i].x[2][2]
+        v = sim1.sol.u[i].x[2][3]
+        Q_field = sim1.sol.u[i].x[1]
+
+        Πr = @view Q_field[mask, 1]
+        Ψr = @view Q_field[mask, 2]
+        Φr = @view Q_field[mask, 3]
+
+        Πs = similar(Πr)
+        Ψs = similar(Ψr)
+        @inbounds for (idx, x_i) in pairs(x_filtered)
+            Πs[idx], Ψs[idx] = ScalarField.cell_average_Πs(x_i, h, z, v, q),
+                               ScalarField.cell_average_Ψs(x_i, h, z, v, q)
+        end
+
+        Πtot = Πr .+ Πs
+        Ψtot = Ψr .+ Ψs
+
+        # Use cell-average total fields in the masked control volume.
+        Htot = @. 0.5 * (Πtot^2 + Ψtot^2) - 0.5 * (Πs^2 + Ψs^2)
+        E_field_tot[i] = h * sum(Htot)
+        q_left_minus, _ = ODE.reconstruct_cell(Q_field, left_idx, N, L, R, slope_limiter)
+        _, q_right_plus = ODE.reconstruct_cell(Q_field, right_idx, N, L, R, slope_limiter)
+        left_face_x = x[left_idx] - 0.5 * h
+        right_face_x = x[right_idx] + 0.5 * h
+        Πs_left_face, Ψs_left_face = ScalarField.singular_face_trace(left_face_x, z, v, q,
+                                                                     one(v))
+        Πs_right_face, Ψs_right_face = ScalarField.singular_face_trace(right_face_x, z, v,
+                                                                       q,
+                                                                       -one(v))
+        Πtot_left_face = q_left_minus[1] + Πs_left_face
+        Ψtot_left_face = q_left_minus[2] + Ψs_left_face
+        Πtot_right_face = q_right_plus[1] + Πs_right_face
+        Ψtot_right_face = q_right_plus[2] + Ψs_right_face
+
+        # Flux through the masked control-volume faces, evaluated at the faces.
+        outward_flux[i] = -Πtot_right_face * Ψtot_right_face +
+                          Πtot_left_face * Ψtot_left_face
+
+        γ = inv(sqrt(1.0 - v * v))
+        Φrz = ODE.gather_muscl(@view(Q_field[:, 3]), z, params)
+        Φsz = ODE.gather_muscl(ScalarField.cell_averages_Φs(params.x, h, z, v, q), z,
+                               params)
+        Φtot_worldline = Φrz + Φsz
+
+        # In the total-field bookkeeping, the particle Hamiltonian is
+        # γ (m0 - q Φ_tot(z)) + V(z).
+        if first(x_filtered) <= z <= last(x_filtered)
+            particle_inside_mask[i] = true
+            particle_energy[i] = γ * (m0 - q * Φtot_worldline) + V(z)
+        else
+            particle_energy[i] = 0.0
+        end
+        E_total[i] = E_field_tot[i] + particle_energy[i]
+    end
+
+    E_interp = PCHIPInterpolation(E_total, ts)
+    dE_dt = [DataInterpolations.derivative(E_interp, t) for t in ts]
+    rhs_rate = -outward_flux
+    rate_residual = dE_dt .- rhs_rate
+
+    # `cumulative_trapezoidal(ts, y)` uses the actual solver time grid `ts`.
+    cumulative_rhs = cumulative_trapezoidal(ts, rhs_rate)
+    delta_E = E_total .- E_total[1]
+    int_residual = delta_E .- cumulative_rhs
+
+    println("max |rate_residual| = ", maximum(abs.(rate_residual)))
+    println("mean(rate_residual) = ", sum(rate_residual) / length(rate_residual))
+    println("max |int_residual| = ", maximum(abs.(int_residual)))
+    println("particle inside masked control volume for ",
+            count(particle_inside_mask), " / ", nt, " timesteps")
+    println("field energy range = [", minimum(E_field_tot), ", ", maximum(E_field_tot), "]")
+    println("particle energy range = [", minimum(particle_energy), ", ",
+            maximum(particle_energy), "]")
+
+    fig = Figure(; size=(253, 520), figure_padding=(1, 5, 5, 1))
+
+    ax_rate = Axis(fig[1, 1];
+                   title=L"\textrm{Rate Balance}",
+                   ylabel=L"\mathrm{Rate}")
+    ax_int = Axis(fig[3, 1];
+                  title=L"\textrm{Integral Balance}",
+                  xlabel=L"t",
+                  ylabel=L"\mathrm{Energy}")
+
+    palette = mytheme.palette
+    color1 = palette.color[][1]
+    color2 = palette.color[][2]
+    color4 = palette.color[][4]
+
+    lines!(ax_rate, ts, dE_dt;
+           label=L"\frac{dE_{\mathrm{tot}}}{dt}",
+           color=color1, linewidth=1.5)
+    lines!(ax_rate, ts, rhs_rate;
+           label=L"-\mathcal{F}_{\partial\Omega}",
+           color=color2, linestyle=:dash, linewidth=1.5)
+    lines!(ax_rate, ts, rate_residual;
+           label=L"\mathrm{Residual}",
+           color=color4, linestyle=:dot, linewidth=1.2)
+
+    lines!(ax_int, ts, delta_E;
+           label=L"\Delta E_{\mathrm{tot}}",
+           color=color1, linewidth=1.5)
+    lines!(ax_int, ts, cumulative_rhs;
+           label=L"-\int_0^t \mathcal{F}_{\partial\Omega}\,dt",
+           color=color2, linestyle=:dash, linewidth=1.5)
+    lines!(ax_int, ts, int_residual;
+           label=L"\mathrm{Residual}",
+           color=color4, linestyle=:dot, linewidth=1.2)
+
+    apply_scientific_notation_if_needed!(ax_rate)
+    apply_scientific_notation_if_needed!(ax_int)
+
+    Legend(fig[2, 1], ax_rate; orientation=:horizontal, tellwidth=false, tellheight=true)
+    Legend(fig[4, 1], ax_int; orientation=:horizontal, tellwidth=false, tellheight=true)
+
+    rowsize!(fig.layout, 1, Auto())
+    rowsize!(fig.layout, 2, Relative(0.09))
+    rowsize!(fig.layout, 3, Auto())
+    rowsize!(fig.layout, 4, Relative(0.09))
+    colsize!(fig.layout, 1, Relative(0.9))
+    rowgap!(fig.layout, 0)
+
+    savename = simple_name("total_field_balance")
+    save(joinpath(get_fig_path(), savename), fig)
+    if paper
+        save(joinpath(get_paper_fig_path(), savename), fig)
+    end
+
+    return fig
+end
 
 end # end of module

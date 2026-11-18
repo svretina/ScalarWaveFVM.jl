@@ -14,6 +14,7 @@ using ..ScalarField
 
 using GridFunctions
 using RecursiveArrayTools
+using DiffEqBase
 using OrdinaryDiffEq
 using DataInterpolations
 # using DiffEqCallbacks
@@ -38,11 +39,6 @@ function forced_motion(Nosc, dx, cfl, vmax, q, sf=true, muscl=true)
         grid = UniformStaggeredGrid1D(Float64[-L, L], N)
         x = coords(grid) # cell centers
 
-        Φ = zeros(Float64, length(grid))
-        Π = zeros(Float64, length(grid))
-        Ψ = zeros(Float64, length(grid))
-
-        statevector = hcat(Π, Ψ, Φ)
         dx = spacing(grid)
 
         dt = cfl * dx / c
@@ -57,6 +53,16 @@ function forced_motion(Nosc, dx, cfl, vmax, q, sf=true, muscl=true)
 
         tf = Nosc * T
         L0 = ceil(2Nosc * T)
+
+        Φ = zeros(Float64, length(grid))
+        Π = zeros(Float64, length(grid))
+        Ψ = zeros(Float64, length(grid))
+
+        # Φ = -ScalarField.cell_average_Φs.(x, dx, z0, vmax, q, 0.0)
+        # Π = -ScalarField.cell_average_Πs.(x, dx, z0, vmax, q)
+        # Ψ = -ScalarField.cell_average_Ψs.(x, dx, z0, vmax, q)
+
+        statevector = hcat(Π, Ψ, Φ)
 
         tspan = (0.0, tf)
         t = 0.0:dt:(tf + dt)
@@ -79,7 +85,8 @@ function forced_motion(Nosc, dx, cfl, vmax, q, sf=true, muscl=true)
                                        statevector, tspan, params;
                                        saveat=t)
             else
-                ode = ODEProblem{true}(ODE.muscl!, statevector, tspan, params; saveat=t)
+                ode = ODEProblem{true}(ODE.muscl_optimized!, statevector, tspan, params;
+                                       saveat=t)
             end
         else
             alg = Euler()
@@ -107,7 +114,7 @@ function particle_in_potential(Nosc, dx, cfl, vmax, q, sf=true)
         println("==========================================")
         println("Attempt $attempt / $max_retries (cfl = $cfl)")
 
-        A = 0.01
+        A = 0.001
         ω = round(vmax / A; digits=9)
         T = 2π / ω
 
@@ -143,12 +150,12 @@ function particle_in_potential(Nosc, dx, cfl, vmax, q, sf=true)
 
         ## Particle 1
         m0 = 1.0
-        z0 = 0.0
-        v0 = vmax
+        z0 = A
+        v0 = 0.0
         # z0 = 0.0
         # v0 = 0.6283185307179586
 
-        k = (m0 / q) * ω^2
+        k = (m0) * ω^2 # (m0 / q) * ω^2
 
         V(x) = InitialData.Harmonic(x, k)
         dxV(x) = InitialData.dxHarmonic(x, k)
@@ -213,7 +220,7 @@ function particle_in_potential_relativistic(Nosc, dx, cfl, vmax, q, sf=true)
         println("==========================================")
         println("Attempt $attempt / $max_retries (cfl = $cfl)")
 
-        A = 0.01
+        A = 0.0001
         ω = round(vmax / A; digits=9)
         T = 2π / ω
 
@@ -228,9 +235,6 @@ function particle_in_potential_relativistic(Nosc, dx, cfl, vmax, q, sf=true)
         tspan = (0.0, tf)
         dt = cfl * dx / c
         t = 0.0:dt:tf
-        tspan = (0.0, tf)
-        dt = cfl * dx / c
-        t = 0.0:dt:tf
 
         N = Int64(2L / dx)
 
@@ -240,21 +244,22 @@ function particle_in_potential_relativistic(Nosc, dx, cfl, vmax, q, sf=true)
         @assert spacing(grid) == dx
 
         N = length(x)
-
-        Φ = zeros(Float64, length(x))
-        Π = zeros(Float64, length(x))
-        Ψ = zeros(Float64, length(x))
-
-        field_statevector = hcat(Π, Ψ, Φ)
-
-        ## Particle 1
+        ## Particle   
         m0 = 1.0
-        z0 = 0.0
-        v0 = vmax
-        # z0 = 0.0
-        # v0 = 0.6283185307179586
+        #z0 = 0.0
+        #v0 = vmax
+        z0 = A
+        v0 = 0.0 #0.6283185307179586
 
-        k = (m0 / q) * ω^2
+        # Regular Field
+        Φr = -0ScalarField.Φs.(x, z0, v0, q) #zeros(Float64, length(x))
+        Πr = -0ScalarField.Πs.(x, z0, v0, q) #zeros(Float64, length(x))
+        Ψr = -0ScalarField.Ψs.(x, z0, v0, q) #zeros(Float64, length(x))
+
+        field_statevector = hcat(Πr, Ψr, Φr)
+
+        # k = (m0 / q) * ω^2
+        k = m0 * ω^2
 
         V(x) = InitialData.Harmonic(x, k)
         dxV(x) = InitialData.dxHarmonic(x, k)
@@ -308,6 +313,28 @@ function particle_in_potential_relativistic(Nosc, dx, cfl, vmax, q, sf=true)
         end
     end
     error("Simulation failed after $max_retries attempts")
+end
+
+function solve_non_radiative_relativistic_particle(params::SimulationParameters1D)
+    isfinite(params.ω) && params.ω > 0 ||
+        throw(ArgumentError("Expected a positive finite driving frequency ω, got $(params.ω)."))
+    isfinite(params.dt) && params.dt > 0 ||
+        throw(ArgumentError("Expected a positive finite timestep dt, got $(params.dt)."))
+
+    tf = params.Nosc * (2π / params.ω)
+    t = collect(0.0:(params.dt):tf)
+    tspan = (first(t), last(t))
+    particle_statevector = [params.m, params.z0, params.v0]
+    ode_params = (k=params.k,)
+
+    alg = SSPRK54()
+    f = DiffEqBase.ODEFunction{true,DiffEqBase.SciMLBase.FullSpecialize}(ODE.non_radiative_particle_rhs_relativistic!)
+    ode = ODEProblem(f, particle_statevector, tspan, ode_params; saveat=t)
+    return solve(ode, alg; adaptive=false, dt=params.dt)
+end
+
+function solve_non_radiative_relativistic_particle(sim::Simulation)
+    return solve_non_radiative_relativistic_particle(sim.params)
 end
 
 # function particle_given_potential(tf, dt)

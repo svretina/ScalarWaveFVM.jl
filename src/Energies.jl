@@ -59,13 +59,13 @@ function regular_hamiltonian_density(i, sim)
     vp1 = Upart[3]
     vp2 = Upart[6]
 
-    Φs1 = ScalarField.Φs.(x, q1, xp1, vp1)
-    Πs1 = ScalarField.Πs.(x, q1, xp1, vp1)
-    Ψs1 = ScalarField.Ψs.(x, q1, xp1, vp1)
+    Φs1 = ScalarField.Φs.(x, xp1, vp1, q1)
+    Πs1 = ScalarField.Πs.(x, xp1, vp1, q1)
+    Ψs1 = ScalarField.Ψs.(x, xp1, vp1, q1)
 
-    Φs2 = ScalarField.Φs.(x, q2, xp2, vp2)
-    Πs2 = ScalarField.Πs.(x, q2, xp2, vp2)
-    Ψs2 = ScalarField.Ψs.(x, q2, xp2, vp2)
+    Φs2 = ScalarField.Φs.(x, xp2, vp2, q2)
+    Πs2 = ScalarField.Πs.(x, xp2, vp2, q2)
+    Ψs2 = ScalarField.Ψs.(x, xp2, vp2, q2)
     Πr = @views Ufield[:, 1]
     Ψr = @views Ufield[:, 2]
 
@@ -85,13 +85,13 @@ function interaction_hamiltonian_density(i, sim)
     vp1 = Upart[3]
     vp2 = Upart[6]
 
-    Φs1 = ScalarField.Φs.(x, q1, xp1, vp1)
-    Πs1 = ScalarField.Πs.(x, q1, xp1, vp1)
-    Ψs1 = ScalarField.Ψs.(x, q1, xp1, vp1)
+    Φs1 = ScalarField.Φs.(x, xp1, vp1, q1)
+    Πs1 = ScalarField.Πs.(x, xp1, vp1, q1)
+    Ψs1 = ScalarField.Ψs.(x, xp1, vp1, q1)
 
-    Φs2 = ScalarField.Φs.(x, q2, xp2, vp2)
-    Πs2 = ScalarField.Πs.(x, q2, xp2, vp2)
-    Ψs2 = ScalarField.Ψs.(x, q2, xp2, vp2)
+    Φs2 = ScalarField.Φs.(x, xp2, vp2, q2)
+    Πs2 = ScalarField.Πs.(x, xp2, vp2, q2)
+    Ψs2 = ScalarField.Ψs.(x, xp2, vp2, q2)
     Πr = @views Ufield[:, 1]
     Ψr = @views Ufield[:, 2]
 
@@ -113,11 +113,11 @@ function singular_hamiltonian_density(i, sim)
     vp1 = Upart[3]
     vp2 = Upart[6]
 
-    Πs1 = ScalarField.Πs.(x, q1, xp1, vp1)
-    Ψs1 = ScalarField.Ψs.(x, q1, xp1, vp1)
+    Πs1 = ScalarField.Πs.(x, xp1, vp1, q1)
+    Ψs1 = ScalarField.Ψs.(x, xp1, vp1, q1)
 
-    Πs2 = ScalarField.Πs.(x, q2, xp2, vp2)
-    Ψs2 = ScalarField.Ψs.(x, q2, xp2, vp2)
+    Πs2 = ScalarField.Πs.(x, xp2, vp2, q2)
+    Ψs2 = ScalarField.Ψs.(x, xp2, vp2, q2)
 
     Hs = @. 0.5(Πs1 + Πs2)^2 + 0.5(Ψs1 + Ψs2)^2
     return Hs
@@ -137,9 +137,9 @@ function hamiltonian_density_1(i, sim)
     q = sim.params.q
     xp, v, _ = ParticleMotion.oscillator(sim.sol.t[i], sim.params.x0, sim.params.A,
                                          sim.params.ω)
-    # Φs = ScalarField.Φs.(x, q, xp, v)
-    Πs = ScalarField.Πs.(x, q, xp, v)
-    Ψs = ScalarField.Ψs.(x, q, xp, v)
+    # Φs = ScalarField.Φs.(x, xp, v, q)
+    Πs = ScalarField.Πs.(x, xp, v, q)
+    Ψs = ScalarField.Ψs.(x, xp, v, q)
 
     Πr = @views Ufield[:, 1]
     Ψr = @views Ufield[:, 2]
@@ -166,8 +166,8 @@ function regular_hamiltonian(i, sim)
     vp1 = Upart[3]
     vp2 = Upart[6]
 
-    Φs1_at_2 = ScalarField.Φs.(xp2, q1, xp1, vp1)
-    Φs2_at_1 = ScalarField.Φs.(xp1, q2, xp2, vp2)
+    Φs1_at_2 = ScalarField.Φs.(xp2, xp1, vp1, q1)
+    Φs2_at_1 = ScalarField.Φs.(xp1, xp2, vp2, q2)
 
     interpolator_Φr = PCHIPInterpolation(Φr, x)
     Φrz1 = interpolator_Φr(xp1)
@@ -197,8 +197,8 @@ function singular_hamiltonian(i, sim)
     vp1 = Upart[3]
     vp2 = Upart[6]
 
-    Φs1_at_2 = ScalarField.Φs.(xp2, q1, xp1, vp1)
-    Φs2_at_1 = ScalarField.Φs.(xp1, q2, xp2, vp2)
+    Φs1_at_2 = ScalarField.Φs.(xp2, xp1, vp1, q1)
+    Φs2_at_1 = ScalarField.Φs.(xp1, xp2, vp2, q2)
     # energy += -q1 * Φs2_at_1 - q2 * Φs1_at_2
     return energy
 end
@@ -240,13 +240,13 @@ function interaction_momentum_density(i, sim)
     xp2 = Upart[5]
     vp1 = Upart[3]
     vp2 = Upart[6]
-    # Φs1 = ScalarField.Φs.(x, q1, xp1, vp1)
-    Πs1 = ScalarField.Πs.(x, q1, xp1, vp1)
-    Ψs1 = ScalarField.Ψs.(x, q1, xp1, vp1)
+    # Φs1 = ScalarField.Φs.(x, xp1, vp1, q1)
+    Πs1 = ScalarField.Πs.(x, xp1, vp1, q1)
+    Ψs1 = ScalarField.Ψs.(x, xp1, vp1, q1)
 
-    # Φs2 = ScalarField.Φs.(x, q2, xp2, vp2)
-    Πs2 = ScalarField.Πs.(x, q2, xp2, vp2)
-    Ψs2 = ScalarField.Ψs.(x, q2, xp2, vp2)
+    # Φs2 = ScalarField.Φs.(x, xp2, vp2, q2)
+    Πs2 = ScalarField.Πs.(x, xp2, vp2, q2)
+    Ψs2 = ScalarField.Ψs.(x, xp2, vp2, q2)
     Πr = @views Ufield[:, 1]
     Ψr = @views Ufield[:, 2]
 
@@ -266,13 +266,13 @@ function singular_momentum_density(i, sim)
     vp1 = Upart[3]
     vp2 = Upart[6]
 
-    Φs1 = ScalarField.Φs.(x, q1, xp1, vp1)
-    Πs1 = ScalarField.Πs.(x, q1, xp1, vp1)
-    Ψs1 = ScalarField.Ψs.(x, q1, xp1, vp1)
+    Φs1 = ScalarField.Φs.(x, xp1, vp1, q1)
+    Πs1 = ScalarField.Πs.(x, xp1, vp1, q1)
+    Ψs1 = ScalarField.Ψs.(x, xp1, vp1, q1)
 
-    Φs2 = ScalarField.Φs.(x, q2, xp2, vp2)
-    Πs2 = ScalarField.Πs.(x, q2, xp2, vp2)
-    Ψs2 = ScalarField.Ψs.(x, q2, xp2, vp2)
+    Φs2 = ScalarField.Φs.(x, xp2, vp2, q2)
+    Πs2 = ScalarField.Πs.(x, xp2, vp2, q2)
+    Ψs2 = ScalarField.Ψs.(x, xp2, vp2, q2)
     Πr = @views Ufield[:, 1]
     Ψr = @views Ufield[:, 2]
     Ts = @. -Πs1 * Ψs1 - Πs2 * Ψs1 - Πs1 * Ψs2 - Πs2 * Ψs2
@@ -344,26 +344,26 @@ function total_hamiltonian_density(i, sim)
     xp2 = Upart[5]
     vp2 = Upart[6]
 
-    Φs1(x) = ScalarField.Φs(x, q1, xp1, vp1)
-    Φs2(x) = ScalarField.Φs(x, q2, xp2, vp2)
+    Φs1(x) = ScalarField.Φs(x, xp1, vp1, q1)
+    Φs2(x) = ScalarField.Φs(x, xp2, vp2, q2)
     Φs(x) = Φs1(x) + Φs2(x)
 
-    Πs1(x) = ScalarField.Πs(x, q1, xp1, vp1)
-    Πs2(x) = ScalarField.Πs(x, q2, xp2, vp2)
+    Πs1(x) = ScalarField.Πs(x, xp1, vp1, q1)
+    Πs2(x) = ScalarField.Πs(x, xp2, vp2, q2)
     Πs(x) = Πs1(x) + Πs2(x)
 
-    Ψs1(x) = ScalarField.Ψs(x, q1, xp1, vp1)
-    Ψs2(x) = ScalarField.Ψs(x, q2, xp2, vp2)
+    Ψs1(x) = ScalarField.Ψs(x, xp1, vp1, q1)
+    Ψs2(x) = ScalarField.Ψs(x, xp2, vp2, q2)
     Ψs(x) = Ψs1(x) + Ψs2(x)
 
-    Πs1v1(x) = ScalarField.∂vΠ(x, q1, xp1, vp1)
-    Πs2v2(x) = ScalarField.∂vΠ(x, q2, xp2, vp2)
+    Πs1v1(x) = ScalarField.∂vΠ(x, xp1, vp1, q1)
+    Πs2v2(x) = ScalarField.∂vΠ(x, xp2, vp2, q2)
 
-    Ψs1v1(x) = ScalarField.∂vΨ(x, q1, xp1, vp1)
-    Ψs2v2(x) = ScalarField.∂vΨ(x, q2, xp2, vp2)
+    Ψs1v1(x) = ScalarField.∂vΨ(x, xp1, vp1, q1)
+    Ψs2v2(x) = ScalarField.∂vΨ(x, xp2, vp2, q2)
 
-    # Φs1_at_2 = ScalarField.Φs.(xp2, q1, xp1, vp1)
-    # Φs2_at_1 = ScalarField.Φs.(xp1, q2, xp2, vp2)
+    # Φs1_at_2 = ScalarField.Φs.(xp2, xp1, vp1, q1)
+    # Φs2_at_1 = ScalarField.Φs.(xp1, xp2, vp2, q2)
 
     # interpolator_Φr = PCHIPInterpolation(Φr, x)
     # Φrz1 = interpolator_Φr(xp1)

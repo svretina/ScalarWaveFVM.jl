@@ -37,26 +37,66 @@ function prepare_forced_plots(sim1, sim2, sim4; paper=true)
     @assert sim1.sol.t[tidx_end] == sim2.sol.t[tidx_end2]
     @assert sim1.sol.t[tidx_end] == sim4.sol.t[tidx_end4]
 
-    Nosc = sim1.params.Nosc
-    dx0 = sim1.params.dx
-    cfl = sim1.params.cfl
-    vmax = sim1.params.vmax
-    q = sim1.params.q
-
     ## 1) Πr + Retarded field
     ForcedPlots.plot_pifield_resolutions_vs_retarded(tidx_end2, sim2, sim4; paper=paper)
     ## 2) Ψr + Retarded field
     ForcedPlots.plot_psifield_resolutions_vs_retarded(tidx_end2, sim2, sim4; paper=paper)
     ## 3) Convergence of Πr vs Retarded field
-    ForcedPlots.plot_pifield_error_convergence(tidx_end, Nosc, dx0, cfl, vmax, q;
-                                               paper=paper)
+    sim8 = Run.forced_motion(sim1.params.Nosc, sim1.params.dx / 8, sim1.params.cfl,
+                             sim1.params.vmax, sim1.params.q)
+    sim16 = Run.forced_motion(sim1.params.Nosc, sim1.params.dx / 16, sim1.params.cfl,
+                              sim1.params.vmax, sim1.params.q)
+    sim32 = Run.forced_motion(sim1.params.Nosc, sim1.params.dx / 32, sim1.params.cfl,
+                              sim1.params.vmax, sim1.params.q)
+    plot_time = sim1.sol.t[tidx_end]
+    ForcedPlots.plot_pifield_error_convergence(plot_time, sim1, sim2, sim4, sim8, sim16,
+                                               sim32; paper=paper)
     ## 4) Convergence of Ψr vs Retarded field
-    ForcedPlots.plot_psifield_error_convergence(tidx_end, Nosc, dx0, cfl, vmax, q;
-                                                paper=paper)
+    ForcedPlots.plot_psifield_error_convergence(plot_time, sim1, sim2, sim4, sim8, sim16,
+                                                sim32; paper=paper)
     ## 5) Self Convergence Πr
     ForcedPlots.plot_pifield_self_convergence_order(sim1, sim2, sim4; paper=paper)
     ## 6) Self Convergence Ψr
     ForcedPlots.plot_psifield_self_convergence_order(sim1, sim2, sim4; paper=paper)
+    ## 7) Particle-sampled Ψr(z) and Πr(z)
+    ForcedPlots.plot_particle_regular_fields(sim4; paper=paper)
+    ## 7a) Particle regularized trace values used in the particle equation
+    ForcedPlots.plot_particle_regularized_trace_fields(sim4; paper=paper)
+    ## 7a) Exact particle-sampled regular combination
+    ForcedPlots.plot_particle_exact_regular_combo(sim4; paper=paper)
+    ## 7b) Effective Mass and Mass Loss Rate
+    ForcedPlots.plot_particle_mass(sim4; paper=paper)
+    ## 8) Particle-sampled Ψr(z) + v Πr(z) and Πr(z) + v Ψr(z)
+    ForcedPlots.plot_particle_regular_field_combos(sim4; paper=paper)
+    ## 9) Resolutions of Ψr(z), Πr(z), and v Πr(z)
+    ForcedPlots.plot_particle_regular_fields_resolutions(sim1, sim2, sim4; paper=paper)
+    ## 9a) Full-domain and near-particle spacetime plots
+    ForcedPlots.plot_pifield_spacetime(sim4; paper=paper)
+    ForcedPlots.plot_psifield_spacetime(sim4; paper=paper)
+    ForcedPlots.plot_pifield_spacetime_near_particle(sim4; paper=paper)
+    ForcedPlots.plot_psifield_spacetime_near_particle(sim4; paper=paper)
+    ## 9b) Πr near-particle resolution snapshot with bracketing cell markers
+    ForcedPlots.plot_pifield_resolutions_near_particle(tidx_end, sim1, sim2, sim4;
+                                                       paper=paper)
+    ## 9c) Ψr near-particle resolution snapshot with bracketing cell markers
+    ForcedPlots.plot_psifield_resolutions_near_particle(tidx_end, sim1, sim2, sim4;
+                                                        paper=paper)
+    ## 10) Resolutions of Ψr(z) + v Πr(z) and Πr(z) + v Ψr(z)
+    ForcedPlots.plot_particle_regular_field_combos_resolutions(sim1, sim2, sim4; paper=paper)
+    ## 11) Force resolutions at prescribed particle
+    ForcedPlots.plot_force_resolutions(sim1, sim2, sim4; paper=paper)
+    ## 11b) Πr traces at nearest left/right cell centers
+    ForcedPlots.plot_pifield_bracketing_resolutions(sim1, sim2, sim4; paper=paper)
+    ## 11c) Ψr traces at nearest left/right cell centers
+    ForcedPlots.plot_psifield_bracketing_resolutions(sim1, sim2, sim4; paper=paper)
+    ## 11d) One-sided extrapolated Πr limits at the particle
+    ForcedPlots.plot_pifield_extrapolated_limits(sim1, sim2, sim4; paper=paper)
+    ## 11e) One-sided extrapolated Ψr limits at the particle
+    ForcedPlots.plot_psifield_extrapolated_limits(sim1, sim2, sim4; paper=paper)
+    ## 12) Convergence of Ψr(z) + v Πr(z)
+    ForcedPlots.plot_combo_self_convergence_order(sim1, sim2, sim4; paper=paper)
+    ## 13) Higher-resolution overlays of Ψr(z) + v Πr(z)
+    ForcedPlots.plot_combo_resolutions(sim1, sim2, sim4; sim8=sim8, paper=paper)
     return nothing
 end
 
@@ -78,47 +118,82 @@ function prepare_potential_plots(sim1, sim2, sim4; paper=true)
     ## 2) Ψr Resolutions
     ParticlePotentialPlots.plot_psifield_resolutions(tidx_end, sim1, sim2, sim4;
                                                      paper=paper)
+    ## 2b) Πr Resolutions in particle-centered coordinates
+    ParticlePotentialPlots.plot_pifield_resolutions_particle_centered(tidx_end,
+                                                                      sim1,
+                                                                      sim2,
+                                                                      sim4;
+                                                                      paper=paper)
+    ## 2c) Ψr Resolutions in particle-centered coordinates
+    ParticlePotentialPlots.plot_psifield_resolutions_particle_centered(tidx_end,
+                                                                       sim1,
+                                                                       sim2,
+                                                                       sim4;
+                                                                       paper=paper)
     ## 3) Self Convergence Πr
     ParticlePotentialPlots.plot_pifield_self_convergence_order(sim1, sim2, sim4;
                                                                paper=paper)
     ## 4) Self Convergence Ψr
     ParticlePotentialPlots.plot_psifield_self_convergence_order(sim1, sim2, sim4;
                                                                 paper=paper)
+    ## 4b) Self Convergence Πr in particle-centered coordinates
+    ParticlePotentialPlots.plot_pifield_self_convergence_order_particle_centered(sim1,
+                                                                                 sim2,
+                                                                                 sim4;
+                                                                                 paper=paper)
+    ## 4c) Self Convergence Ψr in particle-centered coordinates
+    ParticlePotentialPlots.plot_psifield_self_convergence_order_particle_centered(sim1,
+                                                                                  sim2,
+                                                                                  sim4;
+                                                                                  paper=paper)
     ## 5) Position
     ParticlePotentialPlots.plot_particle_position(sim1; paper=paper)
     ## 6) Velocity
     ParticlePotentialPlots.plot_particle_velocity(sim1; paper=paper)
+    ## 6b) Effective Mass and Mass Loss Rate
+    ParticlePotentialPlots.plot_particle_mass(sim1; paper=paper)
     ## 7) Position Resolutions
     ParticlePotentialPlots.plot_particle_position_resolutions(sim1, sim2, sim4;
                                                               paper=paper)
     ## 8) Velocity Resolutions
     ParticlePotentialPlots.plot_particle_velocity_resolutions(sim1, sim2, sim4;
                                                               paper=paper)
-    # ## 9) Position Self Convergence
+    ## 9) Self-force Resolutions
+    ParticlePotentialPlots.plot_self_force_resolutions(sim1, sim2, sim4; paper=paper)
+    # ## 10) Position Self Convergence
     # ParticlePotentialPlots.plot_particle_position_self_convergence_order(sim1, sim2, sim4;
     #                                                                      paper=paper)
-    # ## 10) Velocity Self Convergence
+    # ## 11) Velocity Self Convergence
     # ParticlePotentialPlots.plot_particle_velocity_self_convergence_order(sim1, sim2, sim4;
     #                                                                      paper=paper)
-    ## 11) Energy
+    ## 12) Energy
     ParticlePotentialPlots.plot_energy(sim4; paper=paper)
-    ## 12) Scaled Differences (Position)
+    ## 12b) Regular/correction/total field-energy balance
+    ParticlePotentialPlots.plot_field_energy_split_balance(sim4; paper=paper)
+    ## 12c) Particle + regular + correction balance
+    ParticlePotentialPlots.plot_particle_field_energy_balance(sim4; paper=paper)
+    ## 13) Scaled Differences (Position)
     ParticlePotentialPlots.plot_particle_position_diff_scaled(sim1, sim2, sim4; paper=paper)
-    ## 13) Scaled Differences (Velocity)
+    ## 14) Scaled Differences (Velocity)
     ParticlePotentialPlots.plot_particle_velocity_diff_scaled(sim1, sim2, sim4; paper=paper)
+    ## 15) Self-force self convergence
+    ParticlePotentialPlots.plot_self_force_self_convergence_order(sim1, sim2, sim4;
+                                                                  paper=paper)
+    ## 16) Self-force scaled differences
+    ParticlePotentialPlots.plot_self_force_diff_scaled(sim1, sim2, sim4; paper=paper)
     return nothing
 end
 
-function prepare_all_plots(; paper=true, q=1.0)
+function prepare_all_plots(; paper=true, q=2.0)
     ## forced motion case
     println("\n" * "="^50)
     println("PREPARING PLOTS: Forced Motion")
     println("="^50)
-    vmax = 0.2
+    vmax = 0.4
     cfl = 0.1
     Nosc = 4
 
-    dx = 0.05
+    dx = 0.0025
     # Create experiment folder
     PlottingUtils.set_experiment_path!("forced_motion", q, vmax, Nosc, dx, cfl)
 
@@ -181,8 +256,8 @@ function plot_source_kink_harmonic(; n_crossings=4, q=1.0, paper=false)
 
         # Logic
         base_val = 0.5 * q * acc
-        val_L = -base_val / (1.0 + v)^2
-        val_R = base_val / (1.0 - v)^2
+        val_L = base_val / (1.0 + v)^2
+        val_R = -base_val / (1.0 - v)^2
         term_to_subtract = 0.0
 
         if z >= right_face

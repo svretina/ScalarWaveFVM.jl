@@ -6,7 +6,6 @@ using ..ScalarField
 using ..Equations
 using StaticArrays
 using Polyester
-using DataInterpolations
 
 function muscl!(dQ, Q, params, t)
     equation = params.equation
@@ -93,6 +92,16 @@ end
     return SVector{2}(Q[i, 1], Q[i, 2])
 end
 
+@inline function get_scalar_periodic(q, idx, N)
+    i = mod(idx - 1, N) + 1
+    return q[i]
+end
+
+@inline function cell_index(z, x, h, N)
+    left_face = x[1] - 0.5 * h
+    return mod(floor(Int, (z - left_face) / h), N) + 1
+end
+
 # Helper: Purely stack-allocated reconstruction
 @inline function reconstruct_cell(Q, idx, N, L, R, slope_limiter)
     # 1. Load data directly into registers (avoids SubArray views)
@@ -120,6 +129,74 @@ end
     q_plus = Qi + 0.5 * σi
 
     return q_minus, q_plus
+end
+
+@inline function gather_muscl(q::AbstractVector, z, params)
+    x = params.x
+    N = params.N
+    h = params.h
+    slope_limiter = params.slope_limiter
+
+    i = cell_index(z, x, h, N)
+
+    qi = get_scalar_periodic(q, i, N)
+    qim1 = get_scalar_periodic(q, i - 1, N)
+    qip1 = get_scalar_periodic(q, i + 1, N)
+
+    Δminus = qi - qim1
+    Δplus = qip1 - qi
+    σi = slope_limiter(Δminus, Δplus)
+
+    ξ = (z - x[i]) / h
+    return qi + σi * ξ
+end
+
+@inline function gather_muscl(cell_average::F, z, params, args...) where {F<:Function}
+    x = params.x
+    N = params.N
+    h = params.h
+    slope_limiter = params.slope_limiter
+
+    i = cell_index(z, x, h, N)
+
+    qi = cell_average(x[i], h, z, args...)
+    qim1 = cell_average(get_scalar_periodic(x, i - 1, N), h, z, args...)
+    qip1 = cell_average(get_scalar_periodic(x, i + 1, N), h, z, args...)
+
+    Δminus = qi - qim1
+    Δplus = qip1 - qi
+    σi = slope_limiter(Δminus, Δplus)
+
+    ξ = (z - x[i]) / h
+    return qi + σi * ξ
+end
+
+@inline function gather_muscl(Q::AbstractMatrix, z, params)
+    x = params.x
+    N = params.N
+    h = params.h
+    equation = params.equation
+    slope_limiter = params.slope_limiter
+
+    L = Equations.left_eigenmatrix(equation)
+    R = Equations.right_eigenmatrix(equation)
+
+    i = cell_index(z, x, h, N)
+
+    Qi = get_q_periodic(Q, i, N)
+    Qim1 = get_q_periodic(Q, i - 1, N)
+    Qip1 = get_q_periodic(Q, i + 1, N)
+
+    Δminus = Qi - Qim1
+    Δplus = Qip1 - Qi
+
+    aminus = L * Δminus
+    aplus = L * Δplus
+    si = slope_limiter.(aminus, aplus)
+    σi = R * si
+
+    ξ = (z - x[i]) / h
+    return Qi + σi * ξ
 end
 
 function muscl_optimized!(dQ, Q, params, t)
@@ -174,6 +251,278 @@ function muscl_optimized!(dQ, Q, params, t)
     return nothing
 end
 
+function muscl_optimized!_experimental(dQ, Q, params, t)
+    equation = params.equation
+    numerical_flux = params.numerical_flux
+    slope_limiter = params.slope_limiter
+
+    h = params.h
+    N = params.N
+    _h = one(h) / h
+
+    # This branch uses Π = -∂tΦ, so the homogeneous [Π, Ψ] system is
+    # ∂tΠ = -∂xΨ, ∂tΨ = -∂xΠ and ∂tΦ = -Π.
+    L = Equations.left_eigenmatrix_experimental(equation)
+    R = Equations.right_eigenmatrix_experimental(equation)
+
+    @inbounds begin
+        # --- Startup: Interface 1/2 ---
+        # We need the Right face of ghost cell '0' and Left face of cell '1'
+        _, q_0_plus = reconstruct_cell(Q, 0, N, L, R, slope_limiter)
+        q_1_minus, q_1_plus = reconstruct_cell(Q, 1, N, L, R, slope_limiter)
+
+        # Compute Flux at first interface
+        Fl = Equations.Aplus_experimental(equation) * q_0_plus +
+             Equations.Aminus_experimental(equation) * q_1_minus
+
+        # Save the "Right face of current cell" state for the loop
+        q_i_plus = q_1_plus
+
+        # --- Main Loop: Sliding Window ---
+        for i in 1:N
+            # We already have Fl (Flux on Left).
+            # We need Fr (Flux on Right).
+
+            # Reconstruct the NEXT cell (i+1) to get its Left Face
+            q_ip1_minus, q_ip1_plus = reconstruct_cell(Q, i + 1, N, L, R, slope_limiter)
+
+            # Compute Flux
+            Fr = Equations.Aplus_experimental(equation) * q_i_plus +
+                 Equations.Aminus_experimental(equation) * q_ip1_minus
+
+            # Update dQ
+            # Manual indexing avoids allocating a view for dQ[i, 1:2]
+            diff_flux = -(Fr - Fl) * _h
+            dQ[i, 1] = diff_flux[1]
+            dQ[i, 2] = diff_flux[2]
+
+            # Slide window: Current Right Flux becomes Next Left Flux
+            Fl = Fr
+            # Current i+1 reconstruction becomes i for next step
+            q_i_plus = q_ip1_plus
+        end
+        dQ[:, 3] .= -(@view Q[:, 1])
+    end
+    return nothing
+end
+
+# Kept for bookkeeping: old sign convention
+#   Φs = +(q/2)|x-z|/(1-vσ), Πs = -(q/2)vσ/(1-vσ), Ψs = +(q/2)σ/(1-vσ)
+@inline function add_singular_sources_old_convention!(dQ, idx, x_i, half_h, _h, z, v, q, a)
+    # Pre-calculate faces
+    left_face = x_i - half_h
+    right_face = x_i + half_h
+
+    one_v = one(v)
+    inv_L = inv((one_v + v)^2)
+    inv_R = inv((one_v - v)^2)
+
+    # -a * ∂ᵥΠs and -a * ∂ₓ∂ᵥΦs = -a * ∂ᵥΨs are piecewise constant.
+    pi_val_L = 0.5 * q * a * inv_L
+    pi_val_R = -0.5 * q * a * inv_R
+    psi_val_L = 0.5 * q * a * inv_L
+    psi_val_R = 0.5 * q * a * inv_R
+
+    # -a * ∂ᵥΦs is piecewise linear, so we keep exact cell averages.
+    phi_slope_L = -0.5 * q * a * inv_L
+    phi_slope_R = 0.5 * q * a * inv_R
+    if z >= right_face
+        # CASE A: Particle is to the right. 
+        # Entire cell is in the Left Regime (x < z).
+        @inbounds begin
+            dQ[idx, 1] += pi_val_L
+            dQ[idx, 2] += psi_val_L
+            dQ[idx, 3] += phi_slope_L * (z - x_i)
+        end
+
+    elseif z <= left_face
+        # CASE B: Particle is to the left.
+        # Entire cell is in the Right Regime (x > z).
+        @inbounds begin
+            dQ[idx, 1] += pi_val_R
+            dQ[idx, 2] += psi_val_R
+            dQ[idx, 3] += phi_slope_R * (x_i - z)
+        end
+
+    else
+        # CASE C: Particle is Inside (Split Domain).
+        # We sum the contributions from both sides.
+
+        # Fraction of cell to the left of z: (z - left_face) / h
+        frac_L = (z - left_face) * _h
+
+        # Fraction of cell to the right of z
+        frac_R = one(frac_L) - frac_L
+
+        dx_L = z - left_face
+        dx_R = right_face - z
+
+        @inbounds begin
+            dQ[idx, 1] += frac_L * pi_val_L + frac_R * pi_val_R
+            dQ[idx, 2] += frac_L * psi_val_L + frac_R * psi_val_R
+            dQ[idx, 3] += 0.5 * _h * (phi_slope_L * dx_L^2 + phi_slope_R * dx_R^2)
+        end
+    end
+    return nothing
+end
+
+# Adds the exact cell averages implied by the singular-field ansatz in
+# `ScalarField.Φs/Πs/Ψs`, namely the sources `-a∂ᵥΠs`, `-a∂ᵥΨs`, and `-a∂ᵥΦs`.
+# With the current convention
+#   Φs = +(q/2)|x-z|/(1-vσ), Πs = -(q/2)vσ/(1-vσ), Ψs = +(q/2)σ/(1-vσ),
+# the Π and Ψ pieces are piecewise constant while the Φ piece is piecewise
+# linear, so we insert exact cell averages rather than point values.
+@inline function add_singular_sources!(dQ, idx, x_i, h, z, v, q, a, t)
+    @inbounds begin
+        dQ[idx, 1] += -a * ScalarField.cell_average_dvΠs(x_i, h, z, v, q)
+        dQ[idx, 2] += -a * ScalarField.cell_average_dvΨs(x_i, h, z, v, q)
+        dQ[idx, 3] += -a * ScalarField.cell_average_dvΦs(x_i, h, z, v, q, t)
+    end
+    return nothing
+end
+
+function field_rhs_forced!(dQ, Q, params, t)
+    x = params.x
+    N = params.N
+    q = params.q
+    h = params.h
+
+    z0 = params.z0
+    A = params.A
+    ω = params.ω
+
+    muscl_optimized!(dQ, Q, params, t)
+
+    z, v, a = ParticleMotion.oscillator(t, z0, A, ω)
+
+    # dtΠ = @view dQ[:, 1]
+    # dtΦ = @view dQ[:, 3]
+    @inbounds for i in 1:N
+        add_singular_sources!(dQ, i, x[i], h, z, v, q, a, t)
+    end
+    return nothing
+end
+
+function field_rhs!(dQ, Q, params, t)
+    x = params.x
+    N = params.N
+    q = params.q
+    h = params.h
+
+    Q_field = Q.x[1]
+    Q_particle = Q.x[2]
+    dQ_field = dQ.x[1]
+    dQ_particle = dQ.x[2]
+
+    a = dQ_particle[3]
+    z = Q_particle[2]
+    v = Q_particle[3] ### ASK ERIK dQ or Q ?
+
+    muscl_optimized!(dQ_field, Q_field, params, t)
+
+    @inbounds for i in 1:N
+        add_singular_sources!(dQ_field, i, x[i], h, z, v, q, a, t)
+    end
+    return nothing
+end
+
+function radiation_reaction_rhs!(dQ, Q, params, t)
+    particle_rhs!(dQ, Q, params, t)
+    field_rhs!(dQ, Q, params, t)
+    return nothing
+end
+
+function radiation_reaction_rhs_relativistic!(dQ, Q, params, t)
+    particle_rhs_relativistic!(dQ, Q, params, t)
+    field_rhs!(dQ, Q, params, t)
+    return nothing
+end
+
+@inline function find_cell_index(x, dx, grid_origin)
+    return floor(Int64, (x - grid_origin) / dx) + 1
+end
+
+function particle_rhs!(dQ, Q, params, t)
+    Q_field = Q.x[1]
+    Q_particle = Q.x[2]
+    dQ_particle = dQ.x[2]
+
+    q = params.q
+    m0 = params.m0
+    dxV = params.dxPotential
+
+    # m = Q_particle[1]
+    z = Q_particle[2]
+    v = Q_particle[3]
+
+    vel = 0.999999
+    abs(v) <= vel || throw("v=$v > $(vel), at t=$(t), a = $(dQ_particle[3])")
+
+    Πrz, Ψrz = gather_muscl(@view(Q_field[:, 1:2]), z, params)
+
+    @inbounds dQ_particle[1] = q * (v * Ψrz + Πrz)
+    @inbounds dQ_particle[2] = v
+    @inbounds dQ_particle[3] = (q * Ψrz - dxV(z)) / m
+    return nothing
+end
+
+function particle_rhs_relativistic!(dQ, Q, params, t)
+    Q_field = Q.x[1]
+    Q_particle = Q.x[2]
+    dQ_particle = dQ.x[2]
+
+    q = params.q
+    dxV = params.dxPotential
+    # m0 = params.m0
+
+    m = Q_particle[1]
+    z = Q_particle[2]
+    v = Q_particle[3]
+    cell_idx = cell_index(z, params.x, params.h, params.N)
+
+    # @show cell_idx
+
+    Πrz = Q_field[cell_idx, 1]
+    Ψrz = Q_field[cell_idx, 2]
+    Φrz = Q_field[cell_idx, 3]
+
+    #Πrz, Ψrz = gather_muscl(@view(Q_field[:, 1:2]), z, params)
+    #Φrz = gather_muscl(@view(Q_field[:, 3]), z, params)
+    # The extra self-force contribution in dm_eff/dt uses the singular Φ_s piece.
+    # dvΦsz = gather_muscl(ScalarField.cell_average_dvΦs, z, params, v, q)
+
+    vel = 0.999999
+    abs(v) <= vel ||
+        throw("v=$v > $(vel), at t=$(t), a = $(dQ_particle[3]), meff= $(m0 + q * Φrz)")
+
+    @inbounds dQ_particle[2] = v
+    # Julia expression for the provided equation
+    # Literal translation of the pasted Mathematica snippet
+    literal_expr = (-(1 - v^2) * (dxV(z) * sqrt(1 - v^2) - q * (v * Πrz + Ψrz)))
+
+    @inbounds dQ_particle[3] = literal_expr / m#(m0 + q * Φrz)
+    @inbounds dQ_particle[1] = -q * (Πrz + v * Ψrz)#- dQ_particle[3] * dvΦsz)
+    return nothing
+end
+
+function non_radiative_particle_rhs_relativistic!(du, u, params, t)
+    k = params.k
+
+    m = u[1]
+    z = u[2]
+    v = u[3]
+    #dxV(x) = k * x
+
+    vel = 0.999999
+    abs(v) <= vel || throw("v=$v > $(vel), at t=$(t)")
+
+    @inbounds du[1] = zero(m)
+    @inbounds du[2] = v
+    @inbounds du[3] = -k * z * (1 - v * v)^1.5
+    return nothing
+end
+
+#################################################################################
 # Pure scalar WENO-5 reconstruction
 # Reconstructs value at right face (i+1/2) using stencil (i-2, i-1, i, i+1, i+2)
 @inline function weno5_scalar(v1, v2, v3, v4, v5)
@@ -211,7 +560,6 @@ end
     # 6. Final Combination
     return w0 * q0 + w1 * q1 + w2 * q2
 end
-
 # Characteristic-wise WENO5 Reconstruction
 @inline function reconstruct_cell_weno5(Q, idx, N, L, R)
     # 1. Load Stencil (5 points: i-2 to i+2)
@@ -301,213 +649,6 @@ function muscl_weno5!(dQ, Q, params, t)
         end
         dQ[:, 3] .= @view Q[:, 1]
     end
-    return nothing
-end
-
-# Helper: purely scalar math, updates dQ in place
-@inline function add_singular_sources!(dQ, idx, x_i, half_h, _h, z, v, q, a)
-    # Pre-calculate faces
-    left_face = x_i - half_h
-    right_face = x_i + half_h
-
-    one_v = one(v)
-    inv_L = inv((one_v + v)^2)
-    inv_R = inv((one_v - v)^2)
-
-    # -a * ∂ᵥΠs and -a * ∂ₓ∂ᵥΦs = -a * ∂ᵥΨs are piecewise constant.
-    pi_val_L = -0.5 * q * a * inv_L
-    pi_val_R = 0.5 * q * a * inv_R
-    psi_val_L = -0.5 * q * a * inv_L
-    psi_val_R = -0.5 * q * a * inv_R
-
-    # -a * ∂ᵥΦs is piecewise linear, so we keep exact cell averages.
-    phi_slope_L = 0.5 * q * a * inv_L
-    phi_slope_R = -0.5 * q * a * inv_R
-    if z >= right_face
-        # CASE A: Particle is to the right. 
-        # Entire cell is in the Left Regime (x < z).
-        @inbounds begin
-            dQ[idx, 1] += pi_val_L
-            dQ[idx, 2] += psi_val_L
-            dQ[idx, 3] += phi_slope_L * (z - x_i)
-        end
-
-    elseif z <= left_face
-        # CASE B: Particle is to the left.
-        # Entire cell is in the Right Regime (x > z).
-        @inbounds begin
-            dQ[idx, 1] += pi_val_R
-            dQ[idx, 2] += psi_val_R
-            dQ[idx, 3] += phi_slope_R * (x_i - z)
-        end
-
-    else
-        # CASE C: Particle is Inside (Split Domain).
-        # We sum the contributions from both sides.
-
-        # Fraction of cell to the left of z: (z - left_face) / h
-        frac_L = (z - left_face) * _h
-
-        # Fraction of cell to the right of z
-        frac_R = one(frac_L) - frac_L
-
-        dx_L = z - left_face
-        dx_R = right_face - z
-
-        @inbounds begin
-            dQ[idx, 1] += frac_L * pi_val_L + frac_R * pi_val_R
-            dQ[idx, 2] += frac_L * psi_val_L + frac_R * psi_val_R
-            dQ[idx, 3] += 0.5 * _h * (phi_slope_L * dx_L^2 + phi_slope_R * dx_R^2)
-        end
-    end
-    return nothing
-end
-
-function field_rhs_forced!(dQ, Q, params, t)
-    x = params.x
-    N = params.N
-    q = params.q
-    h = params.h
-
-    z0 = params.z0
-    A = params.A
-    ω = params.ω
-
-    muscl_optimized!(dQ, Q, params, t)
-
-    z, v, a = ParticleMotion.oscillator(t, z0, A, ω)
-
-    dtΠ = @view dQ[:, 1]
-    dtΦ = @view dQ[:, 3]
-    _h = one(h) / h
-    half_h = 0.5 * h
-    @inbounds for i in 1:N
-        add_singular_sources!(dQ, i, x[i], half_h, _h, z, v, q, a)
-    end
-    return nothing
-end
-
-function field_rhs!(dQ, Q, params, t)
-    x = params.x
-    N = params.N
-    q = params.q
-    h = params.h
-
-    Q_field = Q.x[1]
-    Q_particle = Q.x[2]
-    dQ_field = dQ.x[1]
-    dQ_particle = dQ.x[2]
-
-    a = dQ_particle[3]
-    z = Q_particle[2]
-    v = Q_particle[3] ### ASK ERIK dQ or Q ?
-
-    muscl_optimized!(dQ_field, Q_field, params, t)
-
-    # dtΠ = @view dQ_field[:, 1]
-    # dtΦ = @view dQ_field[:, 3]
-
-    _h = one(h) / h
-    half_h = 0.5 * h
-    @inbounds for i in 1:N
-        add_singular_sources!(dQ_field, i, x[i], half_h, _h, z, v, q, a)
-    end
-    return nothing
-end
-
-function radiation_reaction_rhs!(dQ, Q, params, t)
-    particle_rhs!(dQ, Q, params, t)
-    field_rhs!(dQ, Q, params, t)
-    return nothing
-end
-
-function radiation_reaction_rhs_relativistic!(dQ, Q, params, t)
-    particle_rhs_relativistic!(dQ, Q, params, t)
-    field_rhs!(dQ, Q, params, t)
-    return nothing
-end
-
-@inline function find_cell_index(x, dx, grid_origin)
-    return floor(Int64, (x - grid_origin) / dx) + 1
-end
-
-function particle_rhs!(dQ, Q, params, t)
-    Q_field = Q.x[1]
-    Q_particle = Q.x[2]
-    dQ_particle = dQ.x[2]
-
-    q = params.q
-    h = params.h
-    xs = params.x
-    dxV = params.dxPotential
-    sf = params.sf
-    m0 = params.m0
-
-    interpolation_method = params.interpolation_method
-
-    # m = Q_particle[1]
-    z = Q_particle[2]
-    v = Q_particle[3]
-
-    vel = 0.999999
-    abs(v) <= vel || throw("v=$v > $(vel), at t=$(t), a = $(dQ_particle[3])")
-
-    Ψr = @view Q_field[:, 2]
-    Φr = @view Q_field[:, 3]
-    interpolator_Ψ = interpolation_method(Ψr, xs;
-                                          extrapolation=ExtrapolationType.Extension)
-    interpolator_Φ = interpolation_method(Φr, xs;
-                                          extrapolation=ExtrapolationType.Extension)
-    Φrz = interpolator_Φ(z)
-    Ψrz = interpolator_Ψ(z)
-
-    @inbounds dQ_particle[2] = v
-    @inbounds dQ_particle[3] = -q * (Ψrz + dxV(z)) / (m0 + q * Φrz)
-    return nothing
-end
-
-function particle_rhs_relativistic!(dQ, Q, params, t)
-    Q_field = Q.x[1]
-    Q_particle = Q.x[2]
-    dQ_particle = dQ.x[2]
-
-    q = params.q
-    h = params.h
-    xs = params.x
-    dxV = params.dxPotential
-    # V = params.Potential
-    # sf = params.sf
-    m0 = params.m0
-
-    interpolation_method = params.interpolation_method
-
-    # m = Q_particle[1]
-    z = Q_particle[2]
-    v = Q_particle[3]
-
-    Πr = @view Q_field[:, 1]
-    Ψr = @view Q_field[:, 2]
-    Φr = @view Q_field[:, 3]
-    interpolator_Ψ = interpolation_method(Ψr, xs;
-                                          extrapolation=ExtrapolationType.Extension)
-    interpolator_Π = interpolation_method(Πr, xs;
-                                          extrapolation=ExtrapolationType.Extension)
-    interpolator_Φ = interpolation_method(Φr, xs;
-                                          extrapolation=ExtrapolationType.Extension)
-    Φrz = interpolator_Φ(z)
-    Πrz = interpolator_Π(z)
-    Ψrz = interpolator_Ψ(z)
-
-    vel = 0.999999
-    abs(v) <= vel ||
-        throw("v=$v > $(vel), at t=$(t), a = $(dQ_particle[3]), den= $(m0 - q * Φrz)")
-
-    @inbounds dQ_particle[1] = q * (v * Ψrz + Πrz)
-    @inbounds dQ_particle[2] = v
-
-    num = -q * dxV(z) * (1 - v * v)^1.5 + q * (1 - v * v) * (v * Πrz + Ψrz)
-    den = m0 - q * Φrz
-    @inbounds dQ_particle[3] = num / den
     return nothing
 end
 

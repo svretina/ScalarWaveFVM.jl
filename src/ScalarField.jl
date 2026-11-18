@@ -8,24 +8,198 @@ end
 
 # boost with +v
 
-@inline function Φs(x, z, v, q)
+"""
+    Φs(x, z, v, q)
+
+Singular field convention used throughout the code, with `σ = sign(x - z)`:
+
+`Φs = +(q/2) * |x - z| / (1 - vσ)`
+`Πs = -(q/2) * vσ / (1 - vσ)`
+`Ψs = +(q/2) * σ / (1 - vσ) = ∂ₓΦs`
+
+The singular-source insertion in `ODE.add_singular_sources!` is derived from this
+ansatz by adding the cell averages of `-a∂ᵥΠs`, `-a∂ᵥΨs`, and `-a∂ᵥΦs`.
+"""
+@inline function Φs(x, z, v, q, t)
     # return 0.5q * abs(x - z) * cosh(v)
     # return (q / 2) * abs(x - z) / (sqrt(one(v) - v * v))
-    return 0.5q * abs(x - z) / (one(v) - v * sign(x - z))
+    return 0.5 * q * sqrt(one(v) - v * v) * (abs(x - z) / (one(v) - v * sign(x - z)) - t)
 end
 
 @inline function Πs(x, z, v, q)
     # return -0.5q * sinh(v) * sign(x - z)
     # return -q * v * sign(x - z) / (2sqrt(one(v) - v * v))
-    σ = sign(x - z)
-    return -0.5q * v * σ / (one(v) - v * σ)
+    #  return -0.5 * q * v * sign(x - z) / (one(v) - v * sign(x - z))
+    return -(q / 2) * sqrt(one(v) - v * v) / (one(v) - v * sign(x - z))
 end
 
 @inline function Ψs(x, z, v, q)
+    return q / 2 * (sign(x - z) * sqrt(one(v) - v * v)) / (one(v) - sign(x - z) * v)
+    # return 0.5 * q * sign(x - z) / (one(v) - v * sign(x - z))
     # return q * sign(x - z) / (2sqrt(one(v) - v * v))
-    σ = sign(x - z)
-    return 0.5q * σ / (one(v) - v * σ)
 end
+
+@inline function _cell_faces(xi, h)
+    half_h = 0.5 * h
+    return xi - half_h, xi + half_h
+end
+
+@inline function _singular_cell_geometry(xi, h, z)
+    left_face, right_face = _cell_faces(xi, h)
+    dxL = z - left_face
+    dxR = right_face - z
+    lenL = clamp(dxL, zero(h), h)
+    lenR = h - lenL
+    return left_face, right_face, dxL, dxR, lenL, lenR
+end
+
+"""
+    cell_average_Φs(xi, h, z, v, q)
+
+Return the exact finite-volume cell average of `Φs` over
+`[xi - h/2, xi + h/2]`.
+"""
+# @inline function cell_average_Φs(xi, h, z, v, q, t)
+#     left_face, right_face, _, _, lenL, lenR = _singular_cell_geometry(xi, h, z)
+
+#     if z >= right_face
+#         return 0.5 * (Φs(left_face, z, v, q, t) + Φs(right_face, z, v, q, t))
+#     elseif z <= left_face
+#         return 0.5 * (Φs(left_face, z, v, q, t) + Φs(right_face, z, v, q, t))
+#     else
+#         return 0.5 *
+#                (lenL * Φs(left_face, z, v, q, t) + lenR * Φs(right_face, z, v, q, t)) / h
+#     end
+# end
+
+@inline function cell_average_Φs(xi, h, z, v, q, t)
+    left_face, right_face, _, _, lenL, lenR = _singular_cell_geometry(xi, h, z)
+
+    if z >= right_face
+        return 0.5 * (Φs(left_face, z, v, q, t) + Φs(right_face, z, v, q, t))
+    elseif z <= left_face
+        return 0.5 * (Φs(left_face, z, v, q, t) + Φs(right_face, z, v, q, t))
+    else
+        Φz = -0.5 * q * sqrt(one(v) - v * v) * t
+
+        return 0.5 *
+               (lenL * Φs(left_face, z, v, q, t) +
+                lenR * Φs(right_face, z, v, q, t) +
+                h * Φz) / h
+    end
+end
+
+"""
+    cell_average_Πs(xi, h, z, v, q)
+
+Return the exact finite-volume cell average of `Πs` over
+`[xi - h/2, xi + h/2]`.
+"""
+@inline function cell_average_Πs(xi, h, z, v, q)
+    left_face, right_face, _, _, lenL, lenR = _singular_cell_geometry(xi, h, z)
+
+    if z >= right_face
+        return Πs(xi, z, v, q)
+    elseif z <= left_face
+        return Πs(xi, z, v, q)
+    else
+        xL = 0.5 * (left_face + z)
+        xR = 0.5 * (z + right_face)
+        return (lenL * Πs(xL, z, v, q) + lenR * Πs(xR, z, v, q)) / h
+    end
+end
+
+"""
+    cell_average_Ψs(xi, h, z, v, q)
+
+Return the exact finite-volume cell average of `Ψs` over
+`[xi - h/2, xi + h/2]`.
+"""
+@inline function cell_average_Ψs(xi, h, z, v, q)
+    left_face, right_face, _, _, lenL, lenR = _singular_cell_geometry(xi, h, z)
+
+    if z >= right_face
+        return Ψs(xi, z, v, q)
+    elseif z <= left_face
+        return Ψs(xi, z, v, q)
+    else
+        xL = 0.5 * (left_face + z)
+        xR = 0.5 * (z + right_face)
+        return (lenL * Ψs(xL, z, v, q) + lenR * Ψs(xR, z, v, q)) / h
+    end
+end
+
+"""
+    cell_average_dvΦs(xi, h, z, v, q)
+
+Return the exact finite-volume cell average of `∂vΦs` over
+`[xi - h/2, xi + h/2]`.
+"""
+@inline function cell_average_dvΦs(xi, h, z, v, q, t)
+    return derivative(vv -> cell_average_Φs(xi, h, z, vv, q, t), v)
+end
+
+"""
+    cell_average_dvΠs(xi, h, z, v, q)
+
+Return the exact finite-volume cell average of `∂vΠs` over
+`[xi - h/2, xi + h/2]`.
+"""
+@inline function cell_average_dvΠs(xi, h, z, v, q)
+    return derivative(vv -> cell_average_Πs(xi, h, z, vv, q), v)
+end
+
+"""
+    cell_average_dvΨs(xi, h, z, v, q)
+
+Return the exact finite-volume cell average of `∂vΨs` over
+`[xi - h/2, xi + h/2]`.
+"""
+@inline function cell_average_dvΨs(xi, h, z, v, q)
+    return derivative(vv -> cell_average_Ψs(xi, h, z, vv, q), v)
+end
+
+"""
+    cell_averages_Φs(x, h, z, v, q)
+
+Return exact finite-volume cell averages of `Φs` over the cells centered at `x`.
+"""
+@inline cell_averages_Φs(x, h, z, v, q) = cell_average_Φs.(x, h, z, v, q)
+
+"""
+    cell_averages_Πs(x, h, z, v, q)
+
+Return exact finite-volume cell averages of `Πs` over the cells centered at `x`.
+"""
+@inline cell_averages_Πs(x, h, z, v, q) = cell_average_Πs.(x, h, z, v, q)
+
+"""
+    cell_averages_Ψs(x, h, z, v, q)
+
+Return exact finite-volume cell averages of `Ψs` over the cells centered at `x`.
+"""
+@inline cell_averages_Ψs(x, h, z, v, q) = cell_average_Ψs.(x, h, z, v, q)
+
+"""
+    cell_averages_dvΦs(x, h, z, v, q)
+
+Return exact finite-volume cell averages of `∂vΦs` over the cells centered at `x`.
+"""
+@inline cell_averages_dvΦs(x, h, z, v, q) = cell_average_dvΦs.(x, h, z, v, q)
+
+"""
+    cell_averages_dvΠs(x, h, z, v, q)
+
+Return exact finite-volume cell averages of `∂vΠs` over the cells centered at `x`.
+"""
+@inline cell_averages_dvΠs(x, h, z, v, q) = cell_average_dvΠs.(x, h, z, v, q)
+
+"""
+    cell_averages_dvΨs(x, h, z, v, q)
+
+Return exact finite-volume cell averages of `∂vΨs` over the cells centered at `x`.
+"""
+@inline cell_averages_dvΨs(x, h, z, v, q) = cell_average_dvΨs.(x, h, z, v, q)
 
 ## Φ
 @inline function Φs001(x, z, v, q)

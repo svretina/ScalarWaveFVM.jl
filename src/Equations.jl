@@ -34,6 +34,12 @@ end
                      -one(c) zero(c)]
 end
 
+@inline function principal_part_experimental(equation::LinearScalarWaveEquation1D)
+    c = equation.velocity
+    return @SMatrix [zero(c) c * c
+                     one(c) zero(c)]
+end
+
 # @inline function right_eigenvectors(equation::LinearScalarWaveEquation1D)
 #     c = equation.velocity
 #     r1 = @SVector [c, one(c)] # eigenvalue = -c # left going
@@ -64,10 +70,22 @@ end
                      one(c) one(c)]
 end
 
+@inline function right_eigenmatrix_experimental(equation::LinearScalarWaveEquation1D)
+    c = equation.velocity
+    return @SMatrix [-c c
+                     one(c) one(c)]
+end
+
 @inline function left_eigenmatrix(equation::LinearScalarWaveEquation1D)
     c = equation.velocity
     return @SMatrix [one(c)/2c one(c)/2
                      -one(c)/2c one(c)/2]
+end
+
+@inline function left_eigenmatrix_experimental(equation::LinearScalarWaveEquation1D)
+    c = equation.velocity
+    return @SMatrix [-one(c)/2c one(c)/2
+                     one(c)/2c one(c)/2]
 end
 
 @inline function characteristic_variables(q, equation::LinearScalarWaveEquation1D)
@@ -90,12 +108,28 @@ end
     return A
 end
 
+@inline function Aplus_experimental(equation::LinearScalarWaveEquation1D)
+    c = equation.velocity
+    A = @SMatrix [c/2 c * c/2
+                  one(c)/2 c/2]
+
+    return A
+end
+
 @inline function Aminus(equation::LinearScalarWaveEquation1D)
     c = equation.velocity
     # A = @SMatrix [-c/2 -c * c/2
     #               -one(c)/2 -c/2]
     A = @SMatrix [-c/2 -c * c/2
                   -one(c)/2 -c/2]
+
+    return A
+end
+
+@inline function Aminus_experimental(equation::LinearScalarWaveEquation1D)
+    c = equation.velocity
+    A = @SMatrix [-c/2 c * c/2
+                  one(c)/2 -c/2]
 
     return A
 end

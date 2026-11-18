@@ -1027,8 +1027,8 @@ function plot_panel(sim1, ticklabelsize=20)
             x2 = sim1.sol.u[i].x[2][5]
             v2 = sim1.sol.u[i].x[2][6]
 
-            Φs1 = ScalarField.Φs.(x_filtered, q1, x1, v1)
-            Φs2 = ScalarField.Φs.(x_filtered, q2, x2, v2)
+            Φs1 = ScalarField.Φs.(x_filtered, x1, v1, q1)
+            Φs2 = ScalarField.Φs.(x_filtered, x2, v2, q2)
             y_raw = sim1.sol.u[i].x[1][:, 3]
             Φ_tot = y_raw[mask]
             y1 = Φ_tot .+ Φs2
@@ -1148,18 +1148,18 @@ function plot_particle_energies(sim1, sim2, sim4; ticklabelsize=20, paper=false)
         ke24[i] = Energies.KineticEnergy(mp24, vp24)
 
         pe11[i] = Energies.PotentialEnergy(xp11, x1, Φ1) +
-                  ScalarField.Φs(xp11, q2, xp21, vp21)
+                  ScalarField.Φs(xp11, xp21, vp21, q2)
         pe12[i] = Energies.PotentialEnergy(xp12, x2, Φ2) +
-                  ScalarField.Φs(xp12, q2, xp22, vp22)
+                  ScalarField.Φs(xp12, xp22, vp22, q2)
         pe14[i] = Energies.PotentialEnergy(xp14, x4, Φ4) +
-                  ScalarField.Φs(xp14, q2, xp24, vp24)
+                  ScalarField.Φs(xp14, xp24, vp24, q2)
 
         pe21[i] = Energies.PotentialEnergy(xp21, x1, Φ1) +
-                  ScalarField.Φs(xp21, q1, xp12, vp11)
+                  ScalarField.Φs(xp21, xp12, vp11, q1)
         pe22[i] = Energies.PotentialEnergy(xp22, x2, Φ2) +
-                  ScalarField.Φs(xp22, q1, xp12, vp12)
+                  ScalarField.Φs(xp22, xp12, vp12, q1)
         pe24[i] = Energies.PotentialEnergy(xp24, x4, Φ4) +
-                  ScalarField.Φs(xp24, q1, xp14, vp14)
+                  ScalarField.Φs(xp24, xp14, vp14, q1)
 
         te11[i] = mp11 + ke11[i] + pe11[i]
         te12[i] = mp12 + ke12[i] + pe12[i]
@@ -1352,18 +1352,18 @@ function plot_particle_potential_energy(sim1; ticklabelsize=20, paper=false)
         # Φ4 = sim4.sol.u[4i - 3].x[1][:, 3]
 
         pe11[i] = q1 * (Energies.PotentialEnergy(xp11, x1, Φ1) +
-                        ScalarField.Φs(xp11, q2, xp21, vp21))
+                        ScalarField.Φs(xp11, xp21, vp21, q2))
         # pe12[i] = q1 * (Energies.PotentialEnergy(xp12, x2, Φ2) +
-        #                 ScalarField.Φs(xp12, q2, xp22, vp22))
+        #                 ScalarField.Φs(xp12, xp22, vp22, q2))
         # pe14[i] = q1 * (Energies.PotentialEnergy(xp14, x4, Φ4) +
-        #                 ScalarField.Φs(xp14, q2, xp24, vp24))
+        #                 ScalarField.Φs(xp14, xp24, vp24, q2))
 
         pe21[i] = q2 * (Energies.PotentialEnergy(xp21, x1, Φ1) +
-                        ScalarField.Φs(xp21, q1, xp11, vp11))
+                        ScalarField.Φs(xp21, xp11, vp11, q1))
         # pe22[i] = q2 * (Energies.PotentialEnergy(xp22, x2, Φ2) +
-        #                 ScalarField.Φs(xp22, q1, xp12, vp12))
+        #                 ScalarField.Φs(xp22, xp12, vp12, q1))
         # pe24[i] = q2 * (Energies.PotentialEnergy(xp24, x4, Φ4) +
-        #                 ScalarField.Φs(xp24, q1, xp14, vp14))
+        #                 ScalarField.Φs(xp24, xp14, vp14, q1))
     end
 
     fig = Figure(; size=(253, 200))
@@ -1478,18 +1478,18 @@ function plot_particle_total_energy(sim1, sim2, sim4; ticklabelsize=20, paper=fa
         ke24[i] = Energies.KineticEnergy(mp24, vp24)
 
         pe11[i] = q1 * (Energies.PotentialEnergy(xp11, x1, Φ1) +
-                        ScalarField.Φs(xp11, q2, xp21, vp21))
+                        ScalarField.Φs(xp11, xp21, vp21, q2))
         pe12[i] = q1 * (Energies.PotentialEnergy(xp12, x2, Φ2) +
-                        ScalarField.Φs(xp12, q2, xp22, vp22))
+                        ScalarField.Φs(xp12, xp22, vp22, q2))
         pe14[i] = q1 * (Energies.PotentialEnergy(xp14, x4, Φ4) +
-                        ScalarField.Φs(xp14, q2, xp24, vp24))
+                        ScalarField.Φs(xp14, xp24, vp24, q2))
 
         pe21[i] = q2 * (Energies.PotentialEnergy(xp21, x1, Φ1) +
-                        ScalarField.Φs(xp21, q1, xp11, vp11))
+                        ScalarField.Φs(xp21, xp11, vp11, q1))
         pe22[i] = q2 * (Energies.PotentialEnergy(xp22, x2, Φ2) +
-                        ScalarField.Φs(xp22, q1, xp12, vp12))
+                        ScalarField.Φs(xp22, xp12, vp12, q1))
         pe24[i] = q2 * (Energies.PotentialEnergy(xp24, x4, Φ4) +
-                        ScalarField.Φs(xp24, q1, xp14, vp14))
+                        ScalarField.Φs(xp24, xp14, vp14, q1))
 
         te11[i] = mp11 + ke11[i] + pe11[i]
         te12[i] = mp12 + ke12[i] + pe12[i]
@@ -1691,8 +1691,8 @@ function plot_particle_panel(sim1, sim2, sim4, ticklabelsize=20)
             x2 = sim1.sol.u[i].x[2][5]
             v2 = sim1.sol.u[i].x[2][6]
 
-            Φs1 = ScalarField.Φs.(x_filtered, q1, x1, v1)
-            Φs2 = ScalarField.Φs.(x_filtered, q2, x2, v2)
+            Φs1 = ScalarField.Φs.(x_filtered, x1, v1, q1)
+            Φs2 = ScalarField.Φs.(x_filtered, x2, v2, q2)
             y_raw = sim1.sol.u[i].x[1][:, 3]
             Φ_tot = y_raw[mask]
             y1 = Φ_tot .+ Φs2
@@ -2567,14 +2567,14 @@ function plot_energy_densities(sim1; ticklabelsize=20)
             vp1 = Upart[3]
             vp2 = Upart[6]
             Φr = @views Ufield[mask1, 3]
-            Πs1 = ScalarField.Πs.(x_filtered, q1, xp1, vp1)
-            Ψs1 = ScalarField.Ψs.(x_filtered, q1, xp1, vp1)
+            Πs1 = ScalarField.Πs.(x_filtered, xp1, vp1, q1)
+            Ψs1 = ScalarField.Ψs.(x_filtered, xp1, vp1, q1)
 
-            Πs2 = ScalarField.Πs.(x_filtered, q2, xp2, vp2)
-            Ψs2 = ScalarField.Ψs.(x_filtered, q2, xp2, vp2)
+            Πs2 = ScalarField.Πs.(x_filtered, xp2, vp2, q2)
+            Ψs2 = ScalarField.Ψs.(x_filtered, xp2, vp2, q2)
 
-            Φs1_at_2 = ScalarField.Φs.(xp2, q1, xp1, vp1)
-            Φs2_at_1 = ScalarField.Φs.(xp1, q2, xp2, vp2)
+            Φs1_at_2 = ScalarField.Φs.(xp2, xp1, vp1, q1)
+            Φs2_at_1 = ScalarField.Φs.(xp1, xp2, vp2, q2)
 
             interpolator_Φr = QuadraticInterpolation(Φr, x_filtered)
             Φrz1 = interpolator_Φr(xp1)
@@ -2782,8 +2782,8 @@ function plot_total_energy2(sim1; ticklabelsize=10, paper=false)
         Φrz1 = interpolator_Φr(xp1)
         Φrz2 = interpolator_Φr(xp2)
 
-        Φs1(x) = ScalarField.Φs(x, q1, xp1, vp1)
-        Φs2(x) = ScalarField.Φs(x, q2, xp2, vp2)
+        Φs1(x) = ScalarField.Φs(x, xp1, vp1, q1)
+        Φs2(x) = ScalarField.Φs(x, xp2, vp2, q2)
 
         Hfr, Hfi, Hfs, Hp1, Hp2 = Energies.total_hamiltonian_density(i, sim1)
         regular_energy[i] = Energies.newton_cotes(Hfr[mask1], h; order=1)
@@ -2901,8 +2901,8 @@ function plot_total_energy22(sim1; ticklabelsize=10, paper=false)
         mp2 = Upart[4]
         vp2 = Upart[6]
 
-        Φs1(x) = ScalarField.Φs(x, q1, xp1, vp1)
-        Φs2(x) = ScalarField.Φs(x, q2, xp2, vp2)
+        Φs1(x) = ScalarField.Φs(x, xp1, vp1, q1)
+        Φs2(x) = ScalarField.Φs(x, xp2, vp2, q2)
 
         γ1 = 1.0 / sqrt(1.0 - vp1^2)
         γ2 = 1.0 / sqrt(1.0 - vp2^2)

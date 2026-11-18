@@ -4,6 +4,7 @@ using LaTeXStrings
 using ..ParticleMotion
 using ..Run
 using LinearAlgebra
+using Printf
 using MakieCore
 using Makie
 using CairoMakie
@@ -62,29 +63,14 @@ function apply_scientific_notation_if_needed!(ax)
         exponent = floor(Int, log10(range_val))
         scale = 10.0^exponent
 
-        scaled_min = ymin / scale
-        scaled_max = ymax / scale
+        tick_values = Makie.get_tickvalues(Makie.LinearTicks(5), ymin, ymax)
+        scaled_tick_values = tick_values ./ scale
 
-        # We want integer ticks in the scaled space
-        s_min = floor(Int, scaled_min)
-        s_max = ceil(Int, scaled_max)
-
-        tick_vals_scaled = collect(s_min:s_max)
-
-        if length(tick_vals_scaled) > 8
-            step = ceil(Int, length(tick_vals_scaled) / 5)
-            tick_vals_scaled = tick_vals_scaled[1:step:end]
-        elseif length(tick_vals_scaled) < 4
-            # Fallback to a few nice points if range is too narrow for many integers
-            tick_vals_scaled = unique(round.(Int, range(scaled_min, scaled_max; length=5)))
-        end
-
-        tick_values = tick_vals_scaled .* scale
-        mask = (tick_values .>= ymin - 1e-10) .& (tick_values .<= ymax + 1e-10)
-
-        if any(mask)
-            ax.yticks = (tick_values[mask],
-                         [string(round(Int, s)) for s in tick_vals_scaled[mask]])
+        if !isempty(tick_values)
+            label_digits = clamp(2 - floor(Int, log10(range_val / scale)), 0, 6)
+            tick_labels = [@sprintf("%.*f", label_digits, round(s; digits=label_digits))
+                           for s in scaled_tick_values]
+            ax.yticks = (tick_values, tick_labels)
 
             # Use the approach suggested by the USER for scientific notation scale label
             scale_text = L"\times 10^{%$exponent}"
@@ -114,6 +100,13 @@ function apply_scientific_notation_if_needed!(ax)
     end
 
     return nothing
+end
+
+function get_velocity(sim)
+    if hasproperty(sim.sol.prob.p, :equation)
+        return sim.sol.prob.p.equation.velocity
+    end
+    return 1.0
 end
 
 function format_val(x)

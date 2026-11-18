@@ -1,0 +1,6 @@
+{
+    "[julia]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "julialang.language-julia"
+    }
+}
