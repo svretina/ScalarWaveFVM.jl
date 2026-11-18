@@ -30,4 +30,6 @@ end
 
     obs = DIAG.particle_observables(sol2.u[end].x[1], p2, params2)
     @test obs.mass_constraint ≈ 0 atol=3e-12
+    balance = DIAG.remainder_energy_balance((; sol=sol1))
+    @test maximum(abs, balance.residual) ≈ 0 atol=1e-14
 end
