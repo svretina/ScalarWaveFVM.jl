@@ -1,5 +1,9 @@
 using Test
 using ForwardDiff: derivative
+using OrdinaryDiffEq
+using QuadGK: quadgk
+using RecursiveArrayTools: ArrayPartition
+using Roots: Bisection, find_zero
 
 module ScalarWaveFVMTestHarness
 include(joinpath(@__DIR__, "..", "src", "Reconstructions.jl"))
@@ -7,6 +11,8 @@ include(joinpath(@__DIR__, "..", "src", "ParticleMotion.jl"))
 include(joinpath(@__DIR__, "..", "src", "ScalarField.jl"))
 include(joinpath(@__DIR__, "..", "src", "RetardedPotentials.jl"))
 include(joinpath(@__DIR__, "..", "src", "Equations.jl"))
+include(joinpath(@__DIR__, "..", "src", "Limiters.jl"))
+include(joinpath(@__DIR__, "..", "src", "NumericalFluxes.jl"))
 include(joinpath(@__DIR__, "..", "src", "ODE.jl"))
 include(joinpath(@__DIR__, "..", "src", "Energies.jl"))
 end
@@ -16,6 +22,8 @@ const RP = ScalarWaveFVMTestHarness.RetardedPotentials
 const ODE = ScalarWaveFVMTestHarness.ODE
 const EQ = ScalarWaveFVMTestHarness.Equations
 const EN = ScalarWaveFVMTestHarness.Energies
+const LIM = ScalarWaveFVMTestHarness.Limiters
+const NF = ScalarWaveFVMTestHarness.NumericalFluxes
 
 minmod(a, b) = signbit(a) == signbit(b) ? sign(a) * min(abs(a), abs(b)) : zero(a + b)
 
@@ -32,6 +40,15 @@ function constant_field_problem(; m=2.0, z=0.0, v=0.0, q=0.7,
               slope_limiter=minmod)
     return Q, dQ, params
 end
+
+include("validation_helpers.jl")
+include("test_conventions.jl")
+include("test_static_retarded.jl")
+include("test_uniform_retarded.jl")
+include("test_accelerated_retarded.jl")
+include("test_particle_coupling.jl")
+include("test_external_potential.jl")
+include("test_remainder_energy.jl")
 
 @testset "ScalarWaveFVM.jl" begin
     @testset "retarded-matched 1+1 puncture" begin
