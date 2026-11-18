@@ -44,7 +44,10 @@ function plot_particle_history(sim; savepath=nothing)
 end
 
 """Overlay particle trajectories and damping envelopes from several resolutions."""
-function plot_particle_trajectory_resolutions(sims, labels; savepath=nothing)
+function plot_particle_trajectory_resolutions(sims, labels;
+                                              reference=nothing,
+                                              reference_label=L"\textrm{reduced ODE}",
+                                              savepath=nothing)
     length(sims) == length(labels) ||
         throw(ArgumentError("sims and labels must have the same length"))
     isempty(sims) && throw(ArgumentError("at least one simulation is required"))
@@ -58,6 +61,15 @@ function plot_particle_trajectory_resolutions(sims, labels; savepath=nothing)
                title=L"\textrm{Trajectory Resolution Comparison}")
     axa = Axis(fig[2, 1]; xlabel=L"t", ylabel=L"|z|_{\mathrm{turn}}",
                title=L"\textrm{Damping Envelope}")
+
+    if reference !== nothing
+        peak_time, peak_amplitude = _turning_points(reference.t, reference.position)
+        lines!(axz, reference.t, reference.position;
+               color=:black, linewidth=1, label=reference_label)
+        scatterlines!(axa, peak_time, peak_amplitude;
+                      color=:black, linewidth=1, markersize=3,
+                      label=reference_label)
+    end
 
     for (i, (sim, label)) in enumerate(zip(sims, labels))
         t = sim.sol.t
