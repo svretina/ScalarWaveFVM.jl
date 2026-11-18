@@ -5,7 +5,15 @@ using LaTeXStrings
 using ..PlottingUtils: mytheme_aps
 using ..Diagnostics
 
-export plot_particle_history, plot_remainder_energy_balance
+export plot_particle_history, plot_particle_trajectory_resolutions,
+       plot_remainder_energy_balance
+
+function _turning_points(t, position)
+    indices = [i for i in 2:(length(position) - 1)
+               if abs(position[i]) >= abs(position[i - 1]) &&
+                  abs(position[i]) > abs(position[i + 1])]
+    return t[indices], abs.(position[indices])
+end
 
 """Plot the evolved dynamical mass, position, and velocity of one particle."""
 function plot_particle_history(sim; savepath=nothing)
@@ -28,6 +36,43 @@ function plot_particle_history(sim; savepath=nothing)
     hidexdecorations!(axm; grid=false)
     hidexdecorations!(axz; grid=false)
     linkxaxes!(axm, axz, axv)
+    rowgap!(fig.layout, 4)
+    colsize!(fig.layout, 1, Relative(0.9))
+
+    savepath === nothing || save(savepath, fig)
+    return fig
+end
+
+"""Overlay particle trajectories and damping envelopes from several resolutions."""
+function plot_particle_trajectory_resolutions(sims, labels; savepath=nothing)
+    length(sims) == length(labels) ||
+        throw(ArgumentError("sims and labels must have the same length"))
+    isempty(sims) && throw(ArgumentError("at least one simulation is required"))
+
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+    linestyles = (:dot, :dash, :solid)
+
+    fig = Figure(; size=(253, 390), figure_padding=(1, 5, 5, 1))
+    axz = Axis(fig[1, 1]; ylabel=L"z(t)",
+               title=L"\textrm{Trajectory Resolution Comparison}")
+    axa = Axis(fig[2, 1]; xlabel=L"t", ylabel=L"|z|_{\mathrm{turn}}",
+               title=L"\textrm{Damping Envelope}")
+
+    for (i, (sim, label)) in enumerate(zip(sims, labels))
+        t = sim.sol.t
+        particle = getindex.(getproperty.(sim.sol.u, :x), 2)
+        position = getindex.(particle, 2)
+        peak_time, peak_amplitude = _turning_points(t, position)
+        linestyle = linestyles[min(i, length(linestyles))]
+        line = lines!(axz, t, position; label, linestyle)
+        scatterlines!(axa, peak_time, peak_amplitude;
+                      color=line.color, linestyle, markersize=3, label)
+    end
+
+    axislegend(axz; position=:rb, labelsize=8, rowgap=0.1)
+    hidexdecorations!(axz; grid=false)
+    linkxaxes!(axz, axa)
     rowgap!(fig.layout, 4)
     colsize!(fig.layout, 1, Relative(0.9))
 
