@@ -41,6 +41,7 @@ The corresponding drivers are:
 julia --project=. scripts/run_damped_trajectory_resolution_comparison.jl
 julia --project=. scripts/validate_retarded_field_from_trajectory.jl
 julia --project=. scripts/plot_end_to_end_self_force_validation.jl
+julia --project=. scripts/plot_energy_balance_resolutions.jl
 ```
 
 To regenerate only the retarded-field comparison plot from its saved CSV data,
