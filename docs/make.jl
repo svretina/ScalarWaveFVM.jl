@@ -5,6 +5,7 @@ DocMeta.setdocmeta!(ScalarWaveFVM, :DocTestSetup, :(using ScalarWaveFVM); recurs
 
 makedocs(;
     modules=[ScalarWaveFVM],
+    repo=Documenter.Remotes.GitHub("svretina", "ScalarWaveFVM.jl"),
     authors="Stamatis Vretinaris",
     sitename="ScalarWaveFVM.jl",
     format=Documenter.HTML(;
