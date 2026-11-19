@@ -25,4 +25,23 @@ The legacy one- and two-particle plotting/energy modules were retired because
 they encoded the previous mass sign, obsolete puncture signatures, and
 incompatible normalization. The supported diagnostic API is `Diagnostics`;
 retarded-field plots remain available through `enable_plotting!()`.
- 
+
+## Targeted self-force validation
+
+The independent analytical references live in `validation/`:
+
+- `RetardedFieldReference.jl` reconstructs the cell-averaged retarded
+  remainder from a stored numerical trajectory.
+- `SelfForceValidation.jl` contains the shared damped-run configuration,
+  reduced particle reference, and comparison metrics used by the scripts.
+
+The corresponding drivers are:
+
+```sh
+julia --project=. scripts/run_damped_trajectory_resolution_comparison.jl
+julia --project=. scripts/validate_retarded_field_from_trajectory.jl
+julia --project=. scripts/plot_end_to_end_self_force_validation.jl
+```
+
+To regenerate only the retarded-field comparison plot from its saved CSV data,
+use `--plot-only` with `validate_retarded_field_from_trajectory.jl`.

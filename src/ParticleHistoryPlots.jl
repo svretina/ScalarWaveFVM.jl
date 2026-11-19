@@ -6,13 +6,21 @@ using ..PlottingUtils: mytheme_aps
 using ..Diagnostics
 
 export plot_particle_history, plot_particle_trajectory_resolutions,
-       plot_remainder_energy_balance
+       plot_remainder_energy_balance, plot_self_force_validation
 
 function _turning_points(t, position)
     indices = [i for i in 2:(length(position) - 1)
                if abs(position[i]) >= abs(position[i - 1]) &&
                   abs(position[i]) > abs(position[i + 1])]
     return t[indices], abs.(position[indices])
+end
+
+function _position_history(data)
+    if hasproperty(data, :sol)
+        particle = getindex.(getproperty.(data.sol.u, :x), 2)
+        return data.sol.t, getindex.(particle, 2)
+    end
+    return data.t, data.position
 end
 
 """Plot the evolved dynamical mass, position, and velocity of one particle."""
@@ -44,13 +52,13 @@ function plot_particle_history(sim; savepath=nothing)
 end
 
 """Overlay particle trajectories and damping envelopes from several resolutions."""
-function plot_particle_trajectory_resolutions(sims, labels;
+function plot_particle_trajectory_resolutions(histories, labels;
                                               reference=nothing,
                                               reference_label=L"\textrm{reduced ODE}",
                                               savepath=nothing)
-    length(sims) == length(labels) ||
-        throw(ArgumentError("sims and labels must have the same length"))
-    isempty(sims) && throw(ArgumentError("at least one simulation is required"))
+    length(histories) == length(labels) ||
+        throw(ArgumentError("histories and labels must have the same length"))
+    isempty(histories) && throw(ArgumentError("at least one history is required"))
 
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
@@ -71,10 +79,8 @@ function plot_particle_trajectory_resolutions(sims, labels;
                       label=reference_label)
     end
 
-    for (i, (sim, label)) in enumerate(zip(sims, labels))
-        t = sim.sol.t
-        particle = getindex.(getproperty.(sim.sol.u, :x), 2)
-        position = getindex.(particle, 2)
+    for (i, (history, label)) in enumerate(zip(histories, labels))
+        t, position = _position_history(history)
         peak_time, peak_amplitude = _turning_points(t, position)
         linestyle = linestyles[min(i, length(linestyles))]
         line = lines!(axz, t, position; label, linestyle)
@@ -85,6 +91,44 @@ function plot_particle_trajectory_resolutions(sims, labels;
     axislegend(axz; position=:rb, labelsize=8, rowgap=0.1)
     hidexdecorations!(axz; grid=false)
     linkxaxes!(axz, axa)
+    rowgap!(fig.layout, 4)
+    colsize!(fig.layout, 1, Relative(0.9))
+
+    savepath === nothing || save(savepath, fig)
+    return fig
+end
+
+"""Plot the three convergence checks for the complete self-force model."""
+function plot_self_force_validation(field_h, field_errors, h, force_error,
+                                    particle_errors; savepath=nothing)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+
+    fig = Figure(; size=(253, 520), figure_padding=(1, 5, 5, 1))
+    ax_field = Axis(fig[1, 1]; xscale=log10, yscale=log10,
+                    ylabel=L"L^1\ \textrm{error}",
+                    title=L"\textrm{Retarded Field}")
+    ax_force = Axis(fig[2, 1]; xscale=log10, yscale=log10,
+                    ylabel=L"\max_t|\Psi_r+v\Pi_r|_p",
+                    title=L"\textrm{Spatial Self-Force}")
+    ax_particle = Axis(fig[3, 1]; xscale=log10, yscale=log10,
+                       xlabel=L"\Delta x", ylabel=L"\max_t|e|",
+                       title=L"\textrm{Reduced Particle Dynamics}")
+
+    for (errors, label) in zip(field_errors,
+                               (L"\Pi_r", L"\Psi_r", L"\Phi_r"))
+        scatterlines!(ax_field, field_h, errors; label, markersize=5)
+    end
+    scatterlines!(ax_force, h, force_error; markersize=5)
+    for (errors, label) in zip(particle_errors, (L"z", L"v", L"m"))
+        scatterlines!(ax_particle, h, errors; label, markersize=5)
+    end
+
+    axislegend(ax_field; position=:lt, labelsize=8, rowgap=0.1)
+    axislegend(ax_particle; position=:lt, labelsize=8, rowgap=0.1)
+    hidexdecorations!(ax_field; grid=false)
+    hidexdecorations!(ax_force; grid=false)
+    linkxaxes!(ax_field, ax_force, ax_particle)
     rowgap!(fig.layout, 4)
     colsize!(fig.layout, 1, Relative(0.9))
 

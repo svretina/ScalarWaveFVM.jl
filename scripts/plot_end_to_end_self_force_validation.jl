@@ -1,7 +1,6 @@
 using ScalarWaveFVM
 using CairoMakie
 using DelimitedFiles
-using LaTeXStrings
 
 output_dir = joinpath(pkgdir(ScalarWaveFVM), "figures")
 particle_path = joinpath(output_dir,
@@ -41,36 +40,10 @@ open(stem * "_summary.csv", "w") do io
 end
 
 ScalarWaveFVM.enable_plotting!()
-set_theme!(ScalarWaveFVM.PlottingUtils.mytheme_aps())
-fig = Figure(; size=(253, 520), figure_padding=(1, 5, 5, 1))
-ax_field = Axis(fig[1, 1]; xscale=log10, yscale=log10,
-                ylabel=L"L^1\ \textrm{error}",
-                title=L"\textrm{Retarded Field}")
-ax_force = Axis(fig[2, 1]; xscale=log10, yscale=log10,
-                ylabel=L"\max_t|\Psi_r+v\Pi_r|_p",
-                title=L"\textrm{Spatial Self-Force}")
-ax_particle = Axis(fig[3, 1]; xscale=log10, yscale=log10,
-                   xlabel=L"\Delta x", ylabel=L"\max_t|e|",
-                   title=L"\textrm{Reduced Particle Dynamics}")
-
-for (error_values, label) in zip(field_errors,
-                                 (L"\Pi_r", L"\Psi_r", L"\Phi_r"))
-    scatterlines!(ax_field, field_h, error_values; label, markersize=5)
-end
-scatterlines!(ax_force, h, force_error; markersize=5)
-for (error_values, label) in zip(particle_errors, (L"z", L"v", L"m"))
-    scatterlines!(ax_particle, h, error_values; label, markersize=5)
-end
-
-axislegend(ax_field; position=:lt, labelsize=8, rowgap=0.1)
-axislegend(ax_particle; position=:lt, labelsize=8, rowgap=0.1)
-hidexdecorations!(ax_field; grid=false)
-hidexdecorations!(ax_force; grid=false)
-linkxaxes!(ax_field, ax_force, ax_particle)
-rowgap!(fig.layout, 4)
-colsize!(fig.layout, 1, Relative(0.9))
-save(stem * ".png", fig)
-save(stem * ".pdf", fig)
+figure = ScalarWaveFVM.ParticleHistoryPlots.plot_self_force_validation(
+    field_h, field_errors, h, force_error, particle_errors;
+    savepath=stem * ".png")
+save(stem * ".pdf", figure)
 
 println("PASS: retarded fields, spatial self-force, and reduced dynamics converge")
 println("SAVED=$(stem).png")

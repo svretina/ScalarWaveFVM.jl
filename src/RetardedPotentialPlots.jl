@@ -5,6 +5,9 @@ using ..RetardedPotentials
 using ..ScalarField
 using ..ParticleMotion
 using CairoMakie
+using LaTeXStrings
+
+export plot_remainder_reference_comparison
 
 function plot_retarded_Φ(t, sim)
     CairoMakie.activate!()
@@ -262,6 +265,44 @@ function plot_retarded_Ψ(t, sim)
     rowsize!(fig.layout, 2, Relative(0.18))
     rowgap!(fig.layout, 0)  # Small gap between plot and legend
     colsize!(fig.layout, 1, Relative(0.9))
+    return fig
+end
+
+"""Plot numerical remainder fields against cell-averaged retarded references."""
+function plot_remainder_reference_comparison(profile; savepath=nothing)
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+    fig = Figure(; size=(510, 520), figure_padding=(1, 5, 5, 1))
+    fields = ((profile.numerical_pi, profile.reference_pi,
+               profile.error_pi, L"\Pi_r"),
+              (profile.numerical_psi, profile.reference_psi,
+               profile.error_psi, L"\Psi_r"),
+              (profile.numerical_phi, profile.reference_phi,
+               profile.error_phi, L"\Phi_r"))
+    for (row, (numerical, reference, error, label)) in enumerate(fields)
+        value_axis = Axis(fig[row, 1]; ylabel=label,
+                          title=row == 1 ?
+                                L"\textrm{Numerical and Retarded Reference}" : "")
+        error_axis = Axis(fig[row, 2];
+                          ylabel=L"U_{r,h}-\overline{U}_r^{\mathrm{ref}}",
+                          title=row == 1 ? L"\textrm{Cell-Average Error}" : "")
+        lines!(value_axis, profile.x, numerical; label=L"\textrm{numerical}")
+        lines!(value_axis, profile.x, reference;
+               linestyle=:dash, label=L"\textrm{reference}")
+        lines!(error_axis, profile.x, error)
+        row == 1 && axislegend(value_axis; position=:rb, labelsize=8, rowgap=0.1)
+        if row < 3
+            hidexdecorations!(value_axis; grid=false)
+            hidexdecorations!(error_axis; grid=false)
+        else
+            value_axis.xlabel = L"x"
+            error_axis.xlabel = L"x"
+        end
+    end
+    rowgap!(fig.layout, 4)
+    colgap!(fig.layout, 8)
+
+    savepath === nothing || save(savepath, fig)
     return fig
 end
 
