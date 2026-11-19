@@ -7,7 +7,7 @@ using ..Diagnostics
 
 export plot_particle_history, plot_particle_trajectory_resolutions,
        plot_remainder_energy_balance, plot_remainder_energy_balance_resolutions,
-       plot_self_force_validation
+       plot_remainder_energy_power_resolutions, plot_self_force_validation
 
 function _turning_points(t, position)
     indices = [i for i in 2:(length(position) - 1)
@@ -181,43 +181,118 @@ function plot_remainder_energy_balance_resolutions(balances, labels;
 
     CairoMakie.activate!()
     set_theme!(mytheme_aps())
-    fig = Figure(; size=(760, 520), figure_padding=(1, 5, 5, 1))
+    fig = Figure(; size=(760, 650), figure_padding=(1, 5, 5, 1))
     energy_axes = Axis[]
-    term_axes = Axis[]
+    physical_axes = Axis[]
+    numerical_axes = Axis[]
     residual_axes = Axis[]
+
+    domain = first(balances).domain
+    if domain !== nothing
+        Label(fig[0, 1:length(balances)],
+              latexstring("x\\in[", domain[1], ",", domain[2], "]"))
+    end
 
     for (column, (balance, label)) in enumerate(zip(balances, labels))
         energy_axis = Axis(fig[1, column];
                            ylabel=column == 1 ? L"\Delta E_{r,h}" : "",
                            title=label)
-        term_axis = Axis(fig[2, column];
-                         ylabel=column == 1 ? L"\textrm{cumulative}" : "")
-        residual_axis = Axis(fig[3, column]; xlabel=L"t",
+        physical_axis = Axis(fig[2, column];
+                             ylabel=column == 1 ? L"\textrm{physical}" : "")
+        numerical_axis = Axis(fig[3, column];
+                              ylabel=column == 1 ? L"\textrm{numerical}" : "")
+        residual_axis = Axis(fig[4, column]; xlabel=L"t",
                              ylabel=column == 1 ? L"\mathcal{B}_h(t)" : "")
         push!(energy_axes, energy_axis)
-        push!(term_axes, term_axis)
+        push!(physical_axes, physical_axis)
+        push!(numerical_axes, numerical_axis)
         push!(residual_axes, residual_axis)
 
         lines!(energy_axis, balance.t, balance.energy_change;
                label=L"\Delta E_{r,h}")
         lines!(energy_axis, balance.t, balance.predicted_change;
-               linestyle=:dash, label=L"\int(P_S-D_h+R_h)\,dt")
-        lines!(term_axis, balance.t, balance.integrated_source;
+               linestyle=:dash,
+               label=L"\int(P_S-F_L-F_R-D_h+R_h)\,dt")
+        lines!(physical_axis, balance.t, balance.integrated_source;
                label=L"\int P_S\,dt")
-        lines!(term_axis, balance.t, -balance.integrated_dissipation;
+        lines!(physical_axis, balance.t, -balance.integrated_boundary_flux_left;
+               label=L"-\int F_L\,dt")
+        lines!(physical_axis, balance.t, -balance.integrated_boundary_flux_right;
+               label=L"-\int F_R\,dt")
+        lines!(numerical_axis, balance.t, -balance.integrated_dissipation;
                label=L"-\int D_h\,dt")
-        lines!(term_axis, balance.t, balance.integrated_reconstruction;
+        lines!(numerical_axis, balance.t, balance.integrated_reconstruction;
                label=L"\int R_h\,dt")
         lines!(residual_axis, balance.t, balance.residual)
 
         hidexdecorations!(energy_axis; grid=false)
-        hidexdecorations!(term_axis; grid=false)
-        linkxaxes!(energy_axis, term_axis, residual_axis)
+        hidexdecorations!(physical_axis; grid=false)
+        hidexdecorations!(numerical_axis; grid=false)
+        linkxaxes!(energy_axis, physical_axis, numerical_axis, residual_axis)
     end
 
     axislegend(first(energy_axes); position=:rb, labelsize=8, rowgap=0.1)
-    axislegend(first(term_axes); position=:rb, labelsize=8, rowgap=0.1)
+    axislegend(first(physical_axes); position=:rb, labelsize=8, rowgap=0.1)
+    axislegend(first(numerical_axes); position=:rb, labelsize=8, rowgap=0.1)
     linkyaxes!(energy_axes...)
+    linkyaxes!(physical_axes...)
+    linkyaxes!(numerical_axes...)
+    linkyaxes!(residual_axes...)
+    rowgap!(fig.layout, 4)
+    colgap!(fig.layout, 8)
+
+    savepath === nothing || save(savepath, fig)
+    return fig
+end
+
+"""Plot the instantaneous discrete remainder-energy power balance."""
+function plot_remainder_energy_power_resolutions(balances, labels;
+                                                 savepath=nothing)
+    length(balances) == length(labels) ||
+        throw(ArgumentError("balances and labels must have the same length"))
+    isempty(balances) && throw(ArgumentError("at least one balance is required"))
+
+    CairoMakie.activate!()
+    set_theme!(mytheme_aps())
+    fig = Figure(; size=(760, 520), figure_padding=(1, 5, 5, 1))
+    rate_axes = Axis[]
+    term_axes = Axis[]
+    residual_axes = Axis[]
+    domain = first(balances).domain
+    Label(fig[0, 1:length(balances)],
+          latexstring("x\\in[", domain[1], ",", domain[2], "]"))
+
+    for (column, (balance, label)) in enumerate(zip(balances, labels))
+        rate_axis = Axis(fig[1, column];
+                         ylabel=column == 1 ? L"\dot{E}_{r,h}" : "",
+                         title=label)
+        term_axis = Axis(fig[2, column];
+                         ylabel=column == 1 ? L"\textrm{power}" : "")
+        residual_axis = Axis(fig[3, column]; xlabel=L"t",
+                             ylabel=column == 1 ? L"\mathcal{R}_{P,h}" : "")
+        push!(rate_axes, rate_axis)
+        push!(term_axes, term_axis)
+        push!(residual_axes, residual_axis)
+
+        lines!(rate_axis, balance.t, balance.energy_rate;
+               label=L"dE_{r,h}/dt")
+        lines!(rate_axis, balance.t, balance.predicted_rate;
+               linestyle=:dash, label=L"P_S-F_L-F_R-D_h+R_h")
+        lines!(term_axis, balance.t, balance.source_power; label=L"P_S")
+        lines!(term_axis, balance.t, -balance.boundary_flux_left; label=L"-F_L")
+        lines!(term_axis, balance.t, -balance.boundary_flux_right; label=L"-F_R")
+        lines!(term_axis, balance.t, -balance.dissipation; label=L"-D_h")
+        lines!(term_axis, balance.t, balance.reconstruction; label=L"R_h")
+        lines!(residual_axis, balance.t, balance.power_residual)
+
+        hidexdecorations!(rate_axis; grid=false)
+        hidexdecorations!(term_axis; grid=false)
+        linkxaxes!(rate_axis, term_axis, residual_axis)
+    end
+
+    axislegend(first(rate_axes); position=:rb, labelsize=8, rowgap=0.1)
+    axislegend(first(term_axes); position=:rb, labelsize=8, rowgap=0.1)
+    linkyaxes!(rate_axes...)
     linkyaxes!(term_axes...)
     linkyaxes!(residual_axes...)
     rowgap!(fig.layout, 4)

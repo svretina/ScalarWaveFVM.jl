@@ -22,8 +22,20 @@
         terms = DIAG.semidiscrete_energy_terms(Q, source, params)
         @test direct_rate ≈ terms.rate atol=2e-13
         @test terms.dissipation >= 0
+
+        cells = 9:37
+        direct_subdomain_rate = h * sum(
+            @view(Q[cells, 1]) .* @view(dQ[cells, 1]) .+
+            @view(Q[cells, 2]) .* @view(dQ[cells, 2]))
+        subdomain_terms = DIAG.semidiscrete_energy_terms(Q, source, params,
+                                                         cells)
+        @test direct_subdomain_rate ≈ subdomain_terms.rate atol=2e-13
+        @test subdomain_terms.boundary_flux ≈
+              subdomain_terms.boundary_flux_left +
+              subdomain_terms.boundary_flux_right
         if slope_limiter === LIM.upwind
             @test terms.reconstruction_residual ≈ 0 atol=2e-14
+            @test subdomain_terms.reconstruction_residual ≈ 0 atol=2e-14
         end
     end
 end

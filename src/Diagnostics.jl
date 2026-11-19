@@ -9,6 +9,16 @@ export semidiscrete_energy_terms, particle_observables, runtime_health,
        remainder_energy_balance
 
 @inline _energy_dot(q, p, c) = q[1] * p[1] / c^2 + q[2] * p[2]
+@inline _energy_flux(q, equation, c) =
+    0.5 * _energy_dot(q, Equations.principal_part(equation) * q, c)
+
+@inline function _face_flux(Q, i, params, L, R)
+    _, q_left = ODE.reconstruct_cell(Q, i, params.N, L, R,
+                                     params.slope_limiter)
+    q_right, _ = ODE.reconstruct_cell(Q, i + 1, params.N, L, R,
+                                      params.slope_limiter)
+    return params.numerical_flux(q_left, q_right, params.equation)
+end
 
 """
     semidiscrete_energy_terms(Q, source, params)
@@ -56,6 +66,64 @@ function semidiscrete_energy_terms(Q, source, params)
             boundary_flux=zero(rate))
 end
 
+"""
+    semidiscrete_energy_terms(Q, source, params, cells)
+
+Return the exact semidiscrete energy decomposition on a contiguous, interior
+range of finite-volume cells. `boundary_flux_left` and `boundary_flux_right`
+are positive outwards from the selected control volume. With
+`g(Q)=QᵀHAQ/2` and numerical face flux `F̂`, they are
+`g(Q_a)-Q_aᵀHF̂_{a-1/2}` and `Q_bᵀHF̂_{b+1/2}-g(Q_b)`. This gives
+`rate = source_power - boundary_flux - dissipation + reconstruction_residual`.
+"""
+function semidiscrete_energy_terms(Q, source, params,
+                                   cells::AbstractUnitRange{<:Integer})
+    first(cells) > 1 && last(cells) < params.N ||
+        throw(ArgumentError("the control volume must be interior to the grid"))
+
+    h = params.h
+    equation = params.equation
+    c = equation.velocity
+    L = Equations.left_eigenmatrix(equation)
+    R = Equations.right_eigenmatrix(equation)
+    source_power = zero(eltype(Q))
+    dissipation = zero(eltype(Q))
+    reconstruction_residual = zero(eltype(Q))
+
+    for i in cells
+        Qi = SVector(Q[i, 1], Q[i, 2])
+        source_power += h * _energy_dot(Qi,
+                                        SVector(source[i, 1], source[i, 2]), c)
+    end
+
+    for i in first(cells):(last(cells) - 1)
+        Qi = SVector(Q[i, 1], Q[i, 2])
+        Qip1 = SVector(Q[i + 1, 1], Q[i + 1, 2])
+        actual_flux = _face_flux(Q, i, params, L, R)
+        ΔQ = Qip1 - Qi
+        cell_flux = Equations.principal_part(equation) * (Qi + Qip1) / 2 -
+                    c * ΔQ / 2
+        dissipation += 0.5 * c * _energy_dot(ΔQ, ΔQ, c)
+        reconstruction_residual += _energy_dot(ΔQ,
+                                                actual_flux - cell_flux, c)
+    end
+
+    first_cell, last_cell = first(cells), last(cells)
+    Qleft = SVector(Q[first_cell, 1], Q[first_cell, 2])
+    Qright = SVector(Q[last_cell, 1], Q[last_cell, 2])
+    flux_left = _face_flux(Q, first_cell - 1, params, L, R)
+    flux_right = _face_flux(Q, last_cell, params, L, R)
+    boundary_flux_left = _energy_flux(Qleft, equation, c) -
+                         _energy_dot(Qleft, flux_left, c)
+    boundary_flux_right = _energy_dot(Qright, flux_right, c) -
+                          _energy_flux(Qright, equation, c)
+    boundary_flux = boundary_flux_left + boundary_flux_right
+    rate = source_power - boundary_flux - dissipation +
+           reconstruction_residual
+    return (; rate, source_power, dissipation, reconstruction_residual,
+            boundary_flux, boundary_flux_left, boundary_flux_right)
+end
+
 function particle_observables(Q_field, particle, params; m0=params.m0, τ0=0.0)
     m, z, v, τ = particle
     Φr, Πr, Ψr = ODE.regular_fields_at_particle(Q_field, z, params)
@@ -84,8 +152,8 @@ end
     return out
 end
 
-"""Evaluate the actual periodic semidiscrete remainder-energy balance over a solution."""
-function remainder_energy_balance(sim)
+"""Evaluate the semidiscrete remainder-energy balance over a solution."""
+function remainder_energy_balance(sim; domain=nothing)
     t = sim.sol.t
     params = sim.sol.prob.p
     h = params.h
@@ -93,8 +161,27 @@ function remainder_energy_balance(sim)
     nt = length(t)
     energy = zeros(nt)
     source_power = zeros(nt)
+    boundary_flux = zeros(nt)
+    boundary_flux_left = zeros(nt)
+    boundary_flux_right = zeros(nt)
     dissipation = zeros(nt)
     reconstruction = zeros(nt)
+    energy_rate = zeros(nt)
+    source = zeros(eltype(first(sim.sol.u).x[1]), size(first(sim.sol.u).x[1]))
+    dQ = similar(source)
+
+    if domain === nothing
+        cells = 1:params.N
+        actual_domain = nothing
+    else
+        xmin, xmax = domain
+        xmin < xmax || throw(ArgumentError("domain must satisfy xmin < xmax"))
+        indices = findall(x -> xmin <= x <= xmax, params.x)
+        isempty(indices) && throw(ArgumentError("domain contains no grid cells"))
+        cells = first(indices):last(indices)
+        actual_domain = (params.x[first(cells)] - 0.5h,
+                         params.x[last(cells)] + 0.5h)
+    end
 
     for j in eachindex(t)
         Q = sim.sol.u[j].x[1]
@@ -105,31 +192,52 @@ function remainder_energy_balance(sim)
         rates = ODE.particle_rates(m, z, v, params.q, Πr, Ψr,
                                    params.dxPotential;
                                    particle_feedback=feedback)
-        source = zeros(eltype(Q), size(Q))
+        fill!(source, zero(eltype(source)))
         if !hasproperty(params, :field_source) || params.field_source
             for i in 1:params.N
                 ODE.add_singular_sources!(source, i, params.x[i], h, z, v,
                                           params.q, rates.dv)
             end
         end
-        terms = semidiscrete_energy_terms(Q, source, params)
-        energy[j] = 0.5h * sum(@view(Q[:, 1]) .^ 2 ./ c^2 .+
-                               @view(Q[:, 2]) .^ 2)
+        terms = domain === nothing ? semidiscrete_energy_terms(Q, source, params) :
+                semidiscrete_energy_terms(Q, source, params, cells)
+        ODE.muscl_optimized!(dQ, Q, params, t[j])
+        dQ .+= source
+        energy[j] = 0.5h * sum(@view(Q[cells, 1]) .^ 2 ./ c^2 .+
+                               @view(Q[cells, 2]) .^ 2)
+        energy_rate[j] = h * sum(@view(Q[cells, 1]) .* @view(dQ[cells, 1]) ./ c^2 .+
+                                 @view(Q[cells, 2]) .* @view(dQ[cells, 2]))
         source_power[j] = terms.source_power
+        boundary_flux[j] = terms.boundary_flux
+        if domain !== nothing
+            boundary_flux_left[j] = terms.boundary_flux_left
+            boundary_flux_right[j] = terms.boundary_flux_right
+        end
         dissipation[j] = terms.dissipation
         reconstruction[j] = terms.reconstruction_residual
     end
 
     integrated_source = _cumulative_trapezoid(t, source_power)
+    integrated_boundary_flux = _cumulative_trapezoid(t, boundary_flux)
+    integrated_boundary_flux_left = _cumulative_trapezoid(t, boundary_flux_left)
+    integrated_boundary_flux_right = _cumulative_trapezoid(t, boundary_flux_right)
     integrated_dissipation = _cumulative_trapezoid(t, dissipation)
     integrated_reconstruction = _cumulative_trapezoid(t, reconstruction)
     energy_change = energy .- first(energy)
-    predicted_change = integrated_source .- integrated_dissipation .+
-                       integrated_reconstruction
+    predicted_change = integrated_source .- integrated_boundary_flux .-
+                       integrated_dissipation .+ integrated_reconstruction
     residual = energy_change .- predicted_change
-    return (; t, energy, energy_change, source_power, dissipation, reconstruction,
-            integrated_source, integrated_dissipation, integrated_reconstruction,
-            predicted_change, residual)
+    predicted_rate = source_power .- boundary_flux .- dissipation .+
+                     reconstruction
+    power_residual = energy_rate .- predicted_rate
+    return (; t, domain=actual_domain, cells, energy, energy_change, source_power,
+            boundary_flux, boundary_flux_left, boundary_flux_right, dissipation,
+            reconstruction, energy_rate, predicted_rate, power_residual,
+            integrated_source,
+            integrated_boundary_flux,
+            integrated_boundary_flux_left, integrated_boundary_flux_right,
+            integrated_dissipation, integrated_reconstruction, predicted_change,
+            residual)
 end
 
 end
