@@ -28,4 +28,14 @@ using .RetardedFieldReference
     field = retarded_scalar_1d(history, 0.8, 0.5, q)
     @test field.tret !== nothing
     @test 0.8 - field.tret ≈ abs(0.5 - trajectory_state(history, field.tret).z)
+
+    velocity = 0.37
+    gamma = inv(sqrt(1 - velocity^2))
+    left = independent_puncture_1d(-1e-8, 0.0, velocity, q, 0.0)
+    right = independent_puncture_1d(1e-8, 0.0, velocity, q, 0.0)
+    left_force = left.Ψ + velocity * left.Π
+    right_force = right.Ψ + velocity * right.Π
+    @test left_force ≈ -q / (2gamma)
+    @test right_force ≈ q / (2gamma)
+    @test 0.5 * (left_force + right_force) ≈ 0 atol=2e-16
 end
